@@ -2077,7 +2077,7 @@ static void GL_Register(void)
     // are a luxel or two - true to aprq2, but easy to miss on a reel that
     // dwells on each clip for a few seconds. This scales every stain's
     // reach so the gore can be turned up without a rebuild; 1 is aprq2.
-    gl_stain_scale = Cvar_Get("gl_stain_scale", "2.5", CVAR_ARCHIVE);
+    gl_stain_scale = Cvar_Get("gl_stain_scale", "5", CVAR_ARCHIVE);
     gl_stain_blood = Cvar_Get("gl_stain_blood", "210", CVAR_ARCHIVE);
     gl_stain_blood_bright = Cvar_Get("gl_stain_blood_bright", "0.8", CVAR_ARCHIVE);
     gl_stain_darkness = Cvar_Get("gl_stain_darkness", "0.15", CVAR_ARCHIVE);
