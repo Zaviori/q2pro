@@ -1153,6 +1153,10 @@ static void CL_ParsePrint(void)
 
     SHOWNET(3, "    %i \"%s\"\n", level, Com_MakePrintable(s));
 
+    // the round ends here; shooting after it leaves the map clean
+    if (level == PRINT_HIGH && strstr(s, "The round is over:"))
+        cl.sv_round_active = false;
+
     if (level != PRINT_CHAT) {
         if (cl.csr.extended && (level == PRINT_TYPEWRITER || level == PRINT_CENTER))
             SCR_CenterPrint(s, level == PRINT_TYPEWRITER);
@@ -1214,6 +1218,11 @@ static void CL_ParseCenterPrint(void)
     MSG_ReadString(s, sizeof(s));
     SHOWNET(3, "    \"%s\"\n", Com_MakePrintable(s));
     SCR_CenterPrint(s, false);
+
+    // LIGHTS..., ACTION! and "The round will begin" all open a round
+    if (!strncmp(s, "LIGHTS", 6) || !strncmp(s, "ACTION", 6) ||
+        strstr(s, "round will begin"))
+        cl.sv_round_active = true;
 
     if (!cls.demo.playback && cl.serverstate != ss_broadcast) {
         COM_strclr(s);

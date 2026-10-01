@@ -1360,6 +1360,17 @@ void CL_StainFromMVDMulticast(const byte *data, size_t len)
     msg_read = saved;
 }
 
+// Stains are a live round's battle damage. On the live spectator feed, warmup
+// duels and the shooting after "The round is over" leave the map clean - only
+// sv_round_active stains. Demo playback is exempt: a demo seeked into
+// mid-round leaves sv_round_active stale, so its own fresh blood must not be
+// gated away.
+static void CL_RoundStain(const vec3_t pos, int color, float size)
+{
+    if (cls.demo.playback || cl.sv_round_active)
+        R_AddStain(pos, color, size);
+}
+
 void CL_ParseTEnt(void)
 {
     explosion_t *ex;
@@ -1369,7 +1380,7 @@ void CL_ParseTEnt(void)
     case TE_BLOOD:          // bullet hitting flesh
         if (!(cl_disable_particles->integer & NOPART_BLOOD))
             CL_ParticleEffect(te.pos1, te.dir, 0xe8, 60);
-        R_AddStain(te.pos1, STAIN_BLOOD, 18);
+        CL_RoundStain(te.pos1, STAIN_BLOOD, 18);
         break;
 
     case TE_GUNSHOT:            // bullet hitting wall
@@ -1383,7 +1394,7 @@ void CL_ParseTEnt(void)
         if (te.type != TE_SPARKS) {
             CL_SmokeAndFlash(te.pos1);
             if (cl_stain_bullets->integer)
-                R_AddStain(te.pos1, STAIN_BULLET, te.type == TE_GUNSHOT ? 5 : 9);
+                CL_RoundStain(te.pos1, STAIN_BULLET, te.type == TE_GUNSHOT ? 5 : 9);
 
             // impact sound
             r = Q_rand() & 15;
@@ -1450,7 +1461,7 @@ void CL_ParseTEnt(void)
     case TE_BLASTER:            // blaster hitting wall
     case TE_BLASTER2:           // green blaster hitting wall
     case TE_FLECHETTE:          // flechette
-        R_AddStain(te.pos1, STAIN_BLASTER, 10);
+        CL_RoundStain(te.pos1, STAIN_BLASTER, 10);
         ex = CL_AllocExplosion();
         VectorCopy(te.pos1, ex->ent.origin);
         dirtoangles(ex->ent.angles);
@@ -1489,7 +1500,7 @@ void CL_ParseTEnt(void)
     case TE_GRENADE_EXPLOSION:
     case TE_GRENADE_EXPLOSION_WATER:
         if (te.type != TE_GRENADE_EXPLOSION_WATER)
-            R_AddStain(te.pos1, STAIN_SCORCH, 35);
+            CL_RoundStain(te.pos1, STAIN_SCORCH, 35);
         ex = CL_PlainExplosion();
         ex->frames = 19;
         ex->baseframe = 30;
@@ -1679,7 +1690,7 @@ void CL_ParseTEnt(void)
         // marks every surface within reach, so this reddens the floor under
         // it and the walls around.
         if (cl_stain_gibs->integer)
-            R_AddStain(te.pos1, STAIN_BLOOD, 30);
+            CL_RoundStain(te.pos1, STAIN_BLOOD, 30);
         break;
 
     case TE_CHAINFIST_SMOKE:

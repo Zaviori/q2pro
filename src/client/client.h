@@ -289,6 +289,10 @@ typedef struct {
 
     char        mapname[MAX_QPATH]; // short format - q2dm1, etc
 
+    // round in progress (or the LIGHTS/ACTION countdown running), read
+    // off the mod's own prints - stains are only made inside one
+    bool        sv_round_active;
+
 #if USE_AUTOREPLY
     unsigned    reply_time;
     unsigned    reply_delta;

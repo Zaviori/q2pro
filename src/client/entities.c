@@ -1001,7 +1001,8 @@ static void CL_AddPacketEntities(void)
             // but stain_surface stops writing once the luxels are saturated,
             // so a resting chunk quietly stops marking. Off by cvar, and
             // only when a stainmap exists to write into.
-            if (cl_stain_gibs->integer && R_StainmapsActive()) {
+            if (cl_stain_gibs->integer && R_StainmapsActive()
+                && (cls.demo.playback || cl.sv_round_active)) {
                 trace_t gtr;
                 CL_Trace(&gtr, cent->lerp_origin, ent.origin,
                          vec3_origin, vec3_origin, MASK_SOLID);
