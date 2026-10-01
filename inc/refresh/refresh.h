@@ -215,6 +215,16 @@ void    R_EndRegistration(void);
 void    R_RenderFrame(const refdef_t *fd);
 void    R_LightPoint(const vec3_t origin, vec3_t light);
 
+// Marks the world where something hit it: blood, a bullet scar, scorch.
+// `color` is one of the STAIN_* below, `size` a radius in world units.
+// Does nothing unless gl_stainmaps is on.
+#define STAIN_BLOOD     0
+#define STAIN_BULLET    1
+#define STAIN_BLASTER   2
+#define STAIN_SCORCH    3
+void    R_AddStain(const vec3_t origin, int color, float size);
+bool    R_StainmapsActive(void);   // is gl_stainmaps on and a buffer live
+
 void    R_ClearColor(void);
 void    R_SetAlpha(float clpha);
 void    R_SetColor(uint32_t color);

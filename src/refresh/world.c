@@ -587,6 +587,11 @@ void GL_DrawWorld(void)
 
     glr.ent = &gl_world;
 
+    // a stainmap that was thrown away or newly made wants the world lit
+    // from it again, and this is the first place in the frame where the
+    // light styles are real
+    GL_StainApply();
+
     GL_MarkLeaves();
 
     GL_MarkLights();

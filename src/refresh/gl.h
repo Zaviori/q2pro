@@ -231,6 +231,12 @@ extern cvar_t *gl_partscale;
 extern cvar_t *gl_partstyle;
 extern cvar_t *gl_beamstyle;
 extern cvar_t *gl_celshading;
+extern cvar_t *gl_stainmaps;
+extern cvar_t *gl_stain_floor;
+extern cvar_t *gl_stain_scale;
+extern cvar_t *gl_stain_blood;
+extern cvar_t *gl_stain_blood_bright;
+extern cvar_t *gl_stain_darkness;
 extern cvar_t *gl_dotshading;
 extern cvar_t *gl_shadows;
 extern cvar_t *gl_modulate;
@@ -494,6 +500,14 @@ typedef struct {
     uint16_t    inuse[LM_MAX_BLOCK_WIDTH];
     GLuint      texnums[LM_MAX_LIGHTMAPS];
     lightmap_t  lightmaps[LM_MAX_LIGHTMAPS];
+    // A writable copy of the whole lightmap lump, which is what the world
+    // is actually lit by once stains exist. The BSP's own lump stays as it
+    // was loaded: it is cached across map changes, and it is what entities
+    // are lit from, so a man standing in a pool of blood is not tinted by
+    // it. NULL when gl_stainmaps is off, which costs nothing at all.
+    byte        *stainmap;
+    bool        stains_dirty;   // a stain landed: upload the blocks it touched
+    bool        stains_pending; // ...and the whole world wants relighting
 } lightmap_builder_t;
 
 extern lightmap_builder_t lm;
@@ -503,6 +517,10 @@ int GL_EffectiveLightstyles(void);
 bool GL_EffectiveMuzzleflash(void);
 bool GL_AnyDynamic(void);
 void GL_PushLights(mface_t *surf);
+void GL_StainReset(void);
+void GL_StainApply(void);
+int GL_StainCount(void);
+void GL_StainWorld(const vec3_t org, const vec3_t color, float size);
 void GL_UploadLightmaps(void);
 
 void GL_RebuildLighting(void);

@@ -993,6 +993,21 @@ static void CL_AddPacketEntities(void)
             else
                 V_AddLight(ent.origin, 200, 1, 1, 0);
         } else if (effects & EF_GIB) {
+            // Mark the world where the gib strikes it. lerp_origin is where
+            // it was last frame and ent.origin where it is now, so a trace
+            // between them catches the surface it hit this frame; over the
+            // gib's short life these land as an arc of blood radiating from
+            // the body. A gib skidding to rest keeps tracing the same spot,
+            // but stain_surface stops writing once the luxels are saturated,
+            // so a resting chunk quietly stops marking. Off by cvar, and
+            // only when a stainmap exists to write into.
+            if (cl_stain_gibs->integer && R_StainmapsActive()) {
+                trace_t gtr;
+                CL_Trace(&gtr, cent->lerp_origin, ent.origin,
+                         vec3_origin, vec3_origin, MASK_SOLID);
+                if (gtr.fraction < 1.0f)
+                    R_AddStain(gtr.endpos, STAIN_BLOOD, 8);
+            }
             CL_DiminishingTrail(cent, ent.origin, DT_GIB);
             has_trail = true;
         } else if (effects & EF_GRENADE) {

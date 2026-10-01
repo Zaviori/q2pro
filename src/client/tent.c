@@ -1293,6 +1293,73 @@ CL_ParseTEnt
 */
 static const byte splash_color[] = {0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8};
 
+// Apply only the permanent marks of a temp-entity multicast, from its raw
+// bytes, without spawning any of the transient effect. The MVD relay drops
+// these while seeking a demo (mvd->demoseeking), so the blood, scars and
+// scorch of the fighting a highlight clip seeks past never reach the client
+// - this puts them back, so a clip lands in a room as lived-in as it was in
+// the live game. During a seek glr.fd.lightstyles is NULL, so each stain
+// only writes bytes and flags the world for one relight on the next frame
+// (see stain_surface) rather than rebuilding thousands of times here.
+void CL_StainFromMVDMulticast(const byte *data, size_t len)
+{
+    sizebuf_t saved;
+    vec3_t pos;
+    int cmd, type;
+    bool ext;
+
+    if (!R_StainmapsActive() || len < 2)
+        return;
+
+    saved = msg_read;                   // this runs mid-parse: do not disturb it
+    SZ_InitRead(&msg_read, data, len);
+    msg_read.allowunderflow = true;
+
+    cmd = MSG_ReadByte();
+    if (cmd != svc_temp_entity) {
+        msg_read = saved;
+        return;
+    }
+    type = MSG_ReadByte();
+    ext = cl.esFlags & MSG_ES_EXTENSIONS_2;
+
+    switch (type) {
+    case TE_BLOOD:
+    case TE_GUNSHOT:
+    case TE_BULLET_SPARKS:
+    case TE_BLASTER:
+    case TE_BLASTER2:
+    case TE_FLECHETTE:
+    case TE_MOREBLOOD:
+    case TE_GRENADE_EXPLOSION:          // not _WATER: no scorch underwater
+        MSG_ReadPos(pos, ext);
+        break;
+    default:
+        msg_read = saved;
+        return;
+    }
+
+    switch (type) {
+    case TE_BLOOD:              R_AddStain(pos, STAIN_BLOOD, 18); break;
+    case TE_GUNSHOT:
+    case TE_BULLET_SPARKS:
+        // bullet scars are off unless asked for (cl_stain_bullets)
+        if (cl_stain_bullets->integer)
+            R_AddStain(pos, STAIN_BULLET, type == TE_GUNSHOT ? 5 : 9);
+        break;
+    case TE_BLASTER:
+    case TE_BLASTER2:
+    case TE_FLECHETTE:         R_AddStain(pos, STAIN_BLASTER, 10); break;
+    case TE_GRENADE_EXPLOSION: R_AddStain(pos, STAIN_SCORCH, 35); break;
+    case TE_MOREBLOOD:
+        if (cl_stain_gibs->integer)
+            R_AddStain(pos, STAIN_BLOOD, 30);
+        break;
+    }
+
+    msg_read = saved;
+}
+
 void CL_ParseTEnt(void)
 {
     explosion_t *ex;
@@ -1302,6 +1369,7 @@ void CL_ParseTEnt(void)
     case TE_BLOOD:          // bullet hitting flesh
         if (!(cl_disable_particles->integer & NOPART_BLOOD))
             CL_ParticleEffect(te.pos1, te.dir, 0xe8, 60);
+        R_AddStain(te.pos1, STAIN_BLOOD, 18);
         break;
 
     case TE_GUNSHOT:            // bullet hitting wall
@@ -1314,6 +1382,8 @@ void CL_ParseTEnt(void)
 
         if (te.type != TE_SPARKS) {
             CL_SmokeAndFlash(te.pos1);
+            if (cl_stain_bullets->integer)
+                R_AddStain(te.pos1, STAIN_BULLET, te.type == TE_GUNSHOT ? 5 : 9);
 
             // impact sound
             r = Q_rand() & 15;
@@ -1380,6 +1450,7 @@ void CL_ParseTEnt(void)
     case TE_BLASTER:            // blaster hitting wall
     case TE_BLASTER2:           // green blaster hitting wall
     case TE_FLECHETTE:          // flechette
+        R_AddStain(te.pos1, STAIN_BLASTER, 10);
         ex = CL_AllocExplosion();
         VectorCopy(te.pos1, ex->ent.origin);
         dirtoangles(ex->ent.angles);
@@ -1417,6 +1488,8 @@ void CL_ParseTEnt(void)
 
     case TE_GRENADE_EXPLOSION:
     case TE_GRENADE_EXPLOSION_WATER:
+        if (te.type != TE_GRENADE_EXPLOSION_WATER)
+            R_AddStain(te.pos1, STAIN_SCORCH, 35);
         ex = CL_PlainExplosion();
         ex->frames = 19;
         ex->baseframe = 30;
@@ -1601,6 +1674,12 @@ void CL_ParseTEnt(void)
 
     case TE_MOREBLOOD:
         CL_ParticleEffect(te.pos1, te.dir, 0xe8, 250);
+        // The heavy-blood burst of a gib: a big splat pooled where the body
+        // came apart. te.pos1 is in the air at chest height, and R_AddStain
+        // marks every surface within reach, so this reddens the floor under
+        // it and the walls around.
+        if (cl_stain_gibs->integer)
+            R_AddStain(te.pos1, STAIN_BLOOD, 30);
         break;
 
     case TE_CHAINFIST_SMOKE:

@@ -593,6 +593,8 @@ extern cvar_t   *cl_changemapcmd;
 extern cvar_t   *cl_beginmapcmd;
 
 extern cvar_t   *cl_gibs;
+extern cvar_t   *cl_stain_gibs;
+extern cvar_t   *cl_stain_bullets;
 extern cvar_t   *cl_flares;
 
 extern cvar_t   *cl_thirdperson;
@@ -857,6 +859,7 @@ void CL_PlayFootstepSfx(int step_id, int entnum, float volume, float attenuation
 void CL_RegisterTEntSounds(void);
 void CL_RegisterTEntModels(void);
 void CL_ParseTEnt(void);
+void CL_StainFromMVDMulticast(const byte *data, size_t len);
 void CL_AddTEnts(void);
 void CL_ClearTEnts(void);
 void CL_InitTEnts(void);

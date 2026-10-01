@@ -150,8 +150,16 @@ static void MVD_ParseMulticast(mvd_t *mvd, multicast_t to, int extrabits)
         MVD_Destroyf(mvd, "read past end of message");
     }
 
-    if (mvd->demoseeking)
+    if (mvd->demoseeking) {
+#if USE_REF
+        // Seeking drops the transient effects, but the permanent marks of a
+        // fight should stay: pre-stain the world so a highlight clip lands
+        // where the blood already is. No-op unless gl_stainmaps is on.
+        extern void CL_StainFromMVDMulticast(const byte *data, size_t len);
+        CL_StainFromMVDMulticast(data, length);
+#endif
         return;
+    }
 
     if (to) {
         leaf1 = CM_LeafNum(&mvd->cm, leafnum);

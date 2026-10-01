@@ -72,6 +72,8 @@ cvar_t  *cl_ignore_stufftext;
 cvar_t  *cl_allow_vid_restart;
 
 cvar_t  *cl_gibs;
+cvar_t  *cl_stain_gibs;
+cvar_t  *cl_stain_bullets;
 cvar_t  *cl_flares;
 #if USE_FPS
 cvar_t  *cl_updaterate;
@@ -2829,6 +2831,12 @@ static void CL_InitLocal(void)
     cl_dlight_hacks = Cvar_Get("cl_dlight_hacks", "0", 0);
 
     cl_gibs = Cvar_Get("cl_gibs", "1", 0);
+    // Whether gibs and the heavy-blood burst leave stains on the world,
+    // separate from gl_stainmaps (which has to be on for any of it). A
+    // gib's flight is traced and marked where it strikes; the burst pools
+    // a big splat where the body came apart.
+    cl_stain_gibs = Cvar_Get("cl_stain_gibs", "1", CVAR_ARCHIVE);
+    cl_stain_bullets = Cvar_Get("cl_stain_bullets", "0", CVAR_ARCHIVE);
     cl_gibs->changed = cl_gibs_changed;
 
     cl_flares = Cvar_Get("cl_flares", "1", 0);

@@ -46,6 +46,12 @@ cvar_t *gl_partscale;
 cvar_t *gl_partstyle;
 cvar_t *gl_beamstyle;
 cvar_t *gl_celshading;
+cvar_t *gl_stainmaps;
+cvar_t *gl_stain_floor;
+cvar_t *gl_stain_scale;
+cvar_t *gl_stain_blood;
+cvar_t *gl_stain_blood_bright;
+cvar_t *gl_stain_darkness;
 cvar_t *gl_dotshading;
 cvar_t *gl_shadows;
 cvar_t *gl_modulate;
@@ -1935,6 +1941,24 @@ void R_EndFrame(void)
 
 // ==============================================================================
 
+// stain <radius> [color]: mark the world at the camera. A developer's
+// tool for proving the stainmap path with a mark big enough to see,
+// since the in-game ones are a luxel or two wide.
+static void GL_Stain_f(void)
+{
+    if (Cmd_Argc() < 2) {
+        Com_Printf("Usage: %s <radius> [color 0-3]\n", Cmd_Argv(0));
+        return;
+    }
+    if (!gl_stainmaps->integer) {
+        Com_Printf("gl_stainmaps is off\n");
+        return;
+    }
+    R_AddStain(glr.fd.vieworg, Cmd_Argc() > 2 ? Q_atoi(Cmd_Argv(2)) : 0,
+               Q_atof(Cmd_Argv(1)));
+    Com_Printf("stained %d surface(s)\n", GL_StainCount());
+}
+
 static void GL_Strings_f(void)
 {
     GLint integer = 0;
@@ -1988,6 +2012,15 @@ static size_t GL_ViewCluster_m(char *buffer, size_t size)
     return Q_snprintf(buffer, size, "%d", glr.viewcluster1);
 }
 
+static void gl_stainmaps_changed(cvar_t *self)
+{
+    // Turned on, the world needs a writable copy of its light; turned off,
+    // the copy goes and the BSP's own lump lights it again - so the stains
+    // of the match so far vanish rather than lingering until a map change.
+    if (gl_static.world.cache)
+        GL_StainReset();
+}
+
 static void gl_lightmap_changed(cvar_t *self)
 {
     lm.scale = Cvar_ClampValue(gl_coloredlightmaps, 0, 1);
@@ -2037,6 +2070,17 @@ static void GL_Register(void)
     gl_partstyle = Cvar_Get("gl_partstyle", "0", 0);
     gl_beamstyle = Cvar_Get("gl_beamstyle", "0", 0);
     gl_celshading = Cvar_Get("gl_celshading", "0", 0);
+    gl_stainmaps = Cvar_Get("gl_stainmaps", "0", CVAR_ARCHIVE);
+    gl_stainmaps->changed = gl_stainmaps_changed;
+    gl_stain_floor = Cvar_Get("gl_stain_floor", "0.35", CVAR_ARCHIVE);
+    // In-game impacts are 5-35 units and a luxel is 16, so the base marks
+    // are a luxel or two - true to aprq2, but easy to miss on a reel that
+    // dwells on each clip for a few seconds. This scales every stain's
+    // reach so the gore can be turned up without a rebuild; 1 is aprq2.
+    gl_stain_scale = Cvar_Get("gl_stain_scale", "2.5", CVAR_ARCHIVE);
+    gl_stain_blood = Cvar_Get("gl_stain_blood", "210", CVAR_ARCHIVE);
+    gl_stain_blood_bright = Cvar_Get("gl_stain_blood_bright", "0.8", CVAR_ARCHIVE);
+    gl_stain_darkness = Cvar_Get("gl_stain_darkness", "0.15", CVAR_ARCHIVE);
     gl_dotshading = Cvar_Get("gl_dotshading", "1", 0);
     gl_shadows = Cvar_Get("gl_shadows", "0", CVAR_ARCHIVE);
     gl_modulate = Cvar_Get("gl_modulate", "1", CVAR_ARCHIVE);
@@ -2117,12 +2161,14 @@ static void GL_Register(void)
     gl_swapinterval_changed(gl_swapinterval);
 
     Cmd_AddCommand("strings", GL_Strings_f);
+    Cmd_AddCommand("stain", GL_Stain_f);
     Cmd_AddMacro("gl_viewcluster", GL_ViewCluster_m);
 }
 
 static void GL_Unregister(void)
 {
     Cmd_RemoveCommand("strings");
+    Cmd_RemoveCommand("stain");
 }
 
 static void APIENTRY myDebugProc(GLenum source, GLenum type, GLuint id, GLenum severity,

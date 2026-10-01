@@ -190,6 +190,15 @@ static void add_dynamic_lights(const mface_t *surf)
     }
 }
 
+// Where this surface's light actually comes from. The stained copy holds
+// the same bytes at the same offsets, so one subtraction finds it.
+static const byte *surf_lightmap(const mface_t *surf)
+{
+    if (!lm.stainmap)
+        return surf->lightmap;
+    return lm.stainmap + (surf->lightmap - gl_static.world.cache->lightmap);
+}
+
 static void add_light_styles(mface_t *surf)
 {
     const lightstyle_t *style;
@@ -206,7 +215,7 @@ static void add_light_styles(mface_t *surf)
     // init primary lightmap
     style = LIGHT_STYLE(surf->styles[0]);
 
-    src = surf->lightmap;
+    src = surf_lightmap(surf);
     bl = blocklights;
     if (style->white == 1) {
         for (j = 0; j < size; j++, bl += 3, src += 3)
@@ -230,10 +239,25 @@ static void add_light_styles(mface_t *surf)
     }
 }
 
+// The block this surface sits in has changed, so the region it occupies
+// wants uploading again before the next draw.
+static void mark_lightmap_dirty(const mface_t *surf)
+{
+    lightmap_t *m = surf->light_m;
+    int s0 = surf->light_s;
+    int t0 = surf->light_t;
+    int s1 = s0 + surf->lm_width;
+    int t1 = t0 + surf->lm_height;
+
+    m->mins[0] = min(m->mins[0], s0);
+    m->mins[1] = min(m->mins[1], t0);
+
+    m->maxs[0] = max(m->maxs[0], s1);
+    m->maxs[1] = max(m->maxs[1], t1);
+}
+
 static void update_dynamic_lightmap(mface_t *surf)
 {
-    int s0, t0, s1, t1;
-
     // add all the lightmaps
     add_light_styles(surf);
 
@@ -246,20 +270,7 @@ static void update_dynamic_lightmap(mface_t *surf)
     // put into texture format
     put_blocklights(surf);
 
-    // add to dirty region
-    s0 = surf->light_s;
-    t0 = surf->light_t;
-
-    s1 = s0 + surf->lm_width;
-    t1 = t0 + surf->lm_height;
-
-    lightmap_t *m = surf->light_m;
-
-    m->mins[0] = min(m->mins[0], s0);
-    m->mins[1] = min(m->mins[1], t0);
-
-    m->maxs[0] = max(m->maxs[0], s1);
-    m->maxs[1] = max(m->maxs[1], t1);
+    mark_lightmap_dirty(surf);
 }
 
 // updates lightmaps in RAM
@@ -334,6 +345,8 @@ void GL_UploadLightmaps(void)
 
     if (set)
         qglPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+
+    lm.stains_dirty = false;
 }
 
 /*
@@ -392,7 +405,10 @@ bool GL_EffectiveMuzzleflash(void)
 
 bool GL_AnyDynamic(void)
 {
-    return GL_EffectiveLightstyles() || GL_EffectiveMuzzleflash();
+    // Stains ride in on this too: it is what gates both GL_PushLights and
+    // GL_UploadLightmaps for the frame, so without it a stain on a still
+    // map would never reach the texture.
+    return lm.stains_dirty || GL_EffectiveLightstyles() || GL_EffectiveMuzzleflash();
 }
 
 static void build_style_map(int dynamic)
@@ -484,6 +500,295 @@ static void build_primary_lightmap(mface_t *surf)
 
     // put into texture format
     put_blocklights(surf);
+}
+
+// defined below, and wanted by GL_StainReset above it
+static void LM_RebuildSurfaces(void);
+
+/*
+=============================================================================
+
+STAINMAPS
+
+Blood, bullet scars and scorch, burned into the lightmap itself rather than
+drawn as decals: the mark is lit like the wall it is on, costs no geometry
+and no overdraw, and needs nothing of the renderer that the dynamic lights
+did not already need. Ported from aprq2, whose version is Discoloda's.
+
+Two things are ours rather than theirs. The stained bytes live in a copy of
+the lump instead of in the BSP's own, because q2pro caches world models and
+reuses them across map changes - staining the cached lump would leave last
+night's blood on the map when it came round again, and its surfaces would
+be pointing into a freed buffer if we repointed them. And the mark reaches
+the screen through the existing dirty-region machinery: setting dlightframe
+to a frame that is not this one makes GL_PushLights rebuild that surface
+exactly once and clear the flag itself.
+
+=============================================================================
+*/
+
+// Multipliers, so a stain darkens what is already there rather than
+// painting over it - blood leaves red by taking green and blue away.
+static bool stain_bloody;   // this stain is blood: tint red, do not darken
+
+static const vec3_t stain_colors[4] = {
+    { 1.00f, 0.80f, 0.80f },    // STAIN_BLOOD
+    { 0.89f, 0.89f, 0.89f },    // STAIN_BULLET
+    { 1.10f, 1.10f, 0.00f },    // STAIN_BLASTER
+    { 0.80f, 0.80f, 0.80f },    // STAIN_SCORCH
+};
+
+// Throw the stains away: a fresh copy of the lump, or none at all when the
+// cvar is off. Says nothing about the lightmaps already built from it.
+static void stain_alloc(void)
+{
+    const bsp_t *bsp = gl_static.world.cache;
+
+    Z_Free(lm.stainmap);
+    lm.stainmap = NULL;
+
+    if (bsp && bsp->lightmap && bsp->numlightmapbytes && gl_stainmaps->integer) {
+        lm.stainmap = Z_Malloc(bsp->numlightmapbytes);
+        memcpy(lm.stainmap, bsp->lightmap, bsp->numlightmapbytes);
+    }
+}
+
+// ...and ask for the world to be lit from it again. The relighting cannot
+// happen here: LM_RebuildSurfaces reads the light styles through
+// LIGHT_STYLE, which is `glr.fd.lightstyles[...]`, and that pointer is only
+// filled for the duration of a frame - it is NULL between them (see the end
+// of GL_LoadWorld). Called from a cvar callback, which is to say from the
+// console, it read straight through NULL and the client died with a
+// segfault at 0 inside add_light_styles. So the work is left for the frame.
+void GL_StainReset(void)
+{
+    stain_alloc();
+    lm.stains_pending = true;
+}
+
+// At frame time, where the light styles exist. Cheap when there is nothing
+// to do, which is every frame but the one after a reset.
+void GL_StainApply(void)
+{
+    if (!lm.stains_pending)
+        return;
+
+    lm.stains_pending = false;
+
+    if (gl_static.world.cache && lm.nummaps)
+        LM_RebuildSurfaces();
+}
+
+static int stain_faces;     // touched by the stain being applied, for the log
+
+static void stain_surface(mface_t *surf, const vec3_t org,
+                          const vec3_t color, float size)
+{
+    vec_t   dist, rad, minlight, sd, td, floor;
+    vec3_t  point;
+    vec2_t  local;
+    const byte *src;
+    byte    *dst;
+    bool    touched = false;
+    int     s, t;
+
+    // No lightmap to stain, or one we never built a block for
+    if (!surf->lightmap || !surf->light_m)
+        return;
+    if (surf->drawflags & gl_static.nolm_mask)
+        return;
+
+    // A stain is not a light and must not borrow the light's threshold.
+    // The dynamic-light code either side of this reads `rad < DLIGHT_CUTOFF`
+    // as "too dim to bother with", and q2pro puts that constant at 64 -
+    // while aprq2, where this routine comes from, defines it as 0, so there
+    // it never rejects anything. Carried over unchanged it silently killed
+    // the whole feature: a bullet stain has a radius of 5 and a blood spray
+    // 18, so every one of them was under 64 and returned here. Measured on
+    // a demo before the fix: 302 stains, 302 of them touching no surface at
+    // all. What is left is the only test that means anything - the impact
+    // has to be within `size` of the plane for any of its radius to survive.
+    dist = PlaneDiffFast(org, surf->plane);
+    rad = size - fabsf(dist);
+    if (rad <= 0)
+        return;
+    minlight = rad;
+
+    // Onto the plane, then into lightmap space - the same projection the
+    // dynamic lights use, so odd lightmap scales come out right
+    VectorMA(org, -dist, surf->plane->normal, point);
+    local[0] = DotProduct(point, surf->lm_axis[0]) + surf->lm_offset[0];
+    local[1] = DotProduct(point, surf->lm_axis[1]) + surf->lm_offset[1];
+
+    // A plane is infinite and a surface is not. Everything above tests the
+    // impact against the surface's *plane*, so a shot at one end of a long
+    // floor passes for every face coplanar with it - 417 surfaces for a
+    // radius-5 bullet, measured. Reject on the surface's own extent before
+    // walking a luxel of it: `local` is already in luxels, so the radius
+    // converts by the same scale.
+    if (surf->lm_scale[0] > 0 && surf->lm_scale[1] > 0) {
+        vec_t sr = rad / surf->lm_scale[0];
+        vec_t tr = rad / surf->lm_scale[1];
+        if (local[0] < -sr || local[0] > surf->lm_width - 1 + sr ||
+            local[1] < -tr || local[1] > surf->lm_height - 1 + tr)
+            return;
+    }
+
+    // Only the first style's block: the others are switchable lights, and
+    // a stain belongs to the surface rather than to whether a lamp is lit
+    dst = lm.stainmap + (surf->lightmap - gl_static.world.cache->lightmap);
+
+    // The blend is multiplicative and there is no decay, so the same spot
+    // shot twenty times would walk to zero and take the wall with it. The
+    // floor is a fraction of what the luxel *started* at, read from the
+    // BSP's own lump - an absolute floor would lift the dark corners of a
+    // map instead of holding the bright parts down, which is backwards.
+    // Repeated hits then converge on it rather than on black.
+    floor = Cvar_ClampValue(gl_stain_floor, 0, 1);
+    src = surf->lightmap;
+
+    for (t = 0; t < surf->lm_height; t++) {
+        td = fabsf(local[1] - t) * surf->lm_scale[1];
+        for (s = 0; s < surf->lm_width; s++, dst += 3, src += 3) {
+            sd = fabsf(local[0] - s) * surf->lm_scale[0];
+            if (sd > td)
+                dist = sd + td * 0.5f;
+            else
+                dist = td + sd * 0.5f;
+            if (dist >= minlight)
+                continue;
+            if (stain_bloody) {
+                // Blend toward a bright red instead of multiplying down, so
+                // blood reads as a red splash on any surface - a dark floor
+                // multiplied only ever goes blacker. Soft falloff to the
+                // edge; red pushes up, green and blue pull down; repeated
+                // hits converge on the red rather than on the wall's light.
+                // The stainmap is the lightmap, so a luxel pushed to an
+                // absolute red is lit like a lamp - on a dark map every
+                // splash read as a red light source. Blood is a dark,
+                // matte material: its red is the surface's own brightness
+                // (from the pristine lump) times gl_stain_blood_bright,
+                // never more, with gl_stain_blood as a ceiling on top.
+                float lum = src[0] * 0.30f + src[1] * 0.59f + src[2] * 0.11f;
+                int red = (int)(lum * Cvar_ClampValue(gl_stain_blood_bright, 0, 1));
+                red = min(red, gl_stain_blood->integer);
+                float a = 0.75f * (minlight - dist) / minlight;
+                int tgt[3] = { red, red / 6, red / 6 };
+                bool hit = false;
+                for (int i = 0; i < 3; i++) {
+                    int v = dst[i] + (int)((tgt[i] - dst[i]) * a);
+                    v = min(max(v, 0), 255);
+                    if (v != dst[i]) { dst[i] = v; hit = true; }
+                }
+                if (hit) touched = true;
+                continue;
+            }
+            for (int i = 0; i < 3; i++) {
+                int v = dst[i] * color[i];
+                int lo = src[i] * floor;
+                v = min(max(v, lo), 255);
+                if (v != dst[i]) {
+                    dst[i] = v;
+                    touched = true;
+                }
+            }
+        }
+    }
+
+    // Nothing actually changed - the reach fell between luxels, or they
+    // were already at the floor. Rebuilding would cost the same as a real
+    // stain and upload an identical block.
+    if (!touched)
+        return;
+
+    // The bytes are in lm.stainmap now; what remains is to relight the
+    // surface's texture block from them. Normally do it here rather than
+    // flag it for the dynamic-light path: that path runs only when
+    // GL_AnyDynamic() says so, and a map with no switchable lights and
+    // nobody firing would never come back for a flagged surface. A stain
+    // is a one-off edit, so it pays for itself once, on screen and off.
+    //
+    // But build_primary_lightmap reads the light styles through
+    // glr.fd.lightstyles, and that pointer is only live for the duration
+    // of a rendered frame - GL_LoadWorld leaves it NULL. A thrown-knife or
+    // grenade impact parsed in the gap between a map loading and its first
+    // frame (a clip seeking into a mid-fight citygate did exactly this)
+    // would dereference NULL: segfault at 0 in add_light_styles, the whole
+    // client gone, the reel black from that map on. When the styles are
+    // not there, leave the relight to the frame - GL_StainApply does the
+    // whole world once, which is heavy but only until the first frame.
+    if (glr.fd.lightstyles) {
+        build_primary_lightmap(surf);
+        mark_lightmap_dirty(surf);
+        lm.stains_dirty = true;     // ...and the frame uploads what changed
+    } else {
+        lm.stains_pending = true;   // relight everything next frame instead
+    }
+    stain_faces++;
+}
+
+static void stain_node(mnode_t *node, const vec3_t org,
+                       const vec3_t color, float size)
+{
+    mface_t *face;
+    vec_t   dot;
+    int     i;
+
+    while (node->plane) {
+        dot = PlaneDiffFast(org, node->plane);
+        if (dot > size) {
+            node = node->children[0];
+            continue;
+        }
+        if (dot < -size) {
+            node = node->children[1];
+            continue;
+        }
+
+        for (i = 0, face = node->firstface; i < node->numfaces; i++, face++)
+            stain_surface(face, org, color, size);
+
+        stain_node(node->children[0], org, color, size);
+        node = node->children[1];
+    }
+}
+
+void GL_StainWorld(const vec3_t org, const vec3_t color, float size)
+{
+    if (!lm.stainmap || !gl_static.world.cache)
+        return;
+    stain_faces = 0;
+    stain_node(gl_static.world.cache->nodes, org, color, size);
+}
+
+// How many surfaces the last stain touched, for the `stain` console command
+int GL_StainCount(void)
+{
+    return stain_faces;
+}
+
+bool R_StainmapsActive(void)
+{
+    return gl_stainmaps->integer && lm.stainmap != NULL;
+}
+
+void R_AddStain(const vec3_t org, int color, float size)
+{
+    vec3_t c;
+    float dark;
+
+    if (!gl_stainmaps->integer || (unsigned)color >= q_countof(stain_colors))
+        return;
+    stain_bloody = (color == STAIN_BLOOD);
+
+    // Every stain is darkened by gl_stain_darkness on top of its own colour,
+    // so the marks can be deepened without touching the four base tints -
+    // 0.15 takes 15% off each channel, blood included, which reads as more
+    // of a mark on any surface. The floor (gl_stain_floor) still limits how
+    // dark a much-hit luxel can finally go.
+    dark = 1.0f - Cvar_ClampValue(gl_stain_darkness, 0, 0.9f);
+    VectorScale(stain_colors[color], dark, c);
+    GL_StainWorld(org, c, size * Cvar_ClampValue(gl_stain_scale, 0.1f, 10));
 }
 
 static void LM_BuildSurface(mface_t *surf)
@@ -1008,6 +1313,8 @@ void GL_FreeWorld(void)
 
     BSP_Free(gl_static.world.cache);
     Z_Free(gl_static.world.vertices);
+    Z_Free(lm.stainmap);
+    lm.stainmap = NULL;
     GL_DeleteBuffer(gl_static.world.buffer);
 
     if (gls.currentva == VA_3D)
@@ -1110,6 +1417,7 @@ void GL_LoadWorld(const char *name)
 
         Com_DPrintf("%s: reused old world model\n", __func__);
         bsp->refcount--;
+        GL_StainReset();    // a reused map starts clean, like a fresh one
         return;
     }
 
@@ -1121,6 +1429,9 @@ void GL_LoadWorld(const char *name)
     GL_InitQueries();
 
     gl_static.world.cache = bsp;
+
+    // before the lightmaps are built, so they are built from it
+    stain_alloc();
 
     // calculate world size for far clip plane and sky box
     set_world_size(bsp->nodes);
