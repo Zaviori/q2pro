@@ -1646,7 +1646,11 @@ static void GL_DrawEntities(int musthave, int canthave)
 
         model = MOD_ForHandle(ent->model);
         if (!model) {
-            GL_DrawNullModel();
+            // a debug marker, drawn through walls: AQtion has no smoke or
+            // flash model, so without the cvar every bullet impact put two
+            // of these on screen, behind walls too
+            if (gl_showorigins->integer)
+                GL_DrawNullModel();
             continue;
         }
 
