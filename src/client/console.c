@@ -712,8 +712,8 @@ Con_HitColor: the colour con_hitcolors gives a line, or 0. The lines are
 the mod's own (g_combat.c, p_hud.c): "You hit X in the chest" and the
 helmet/vest notices go to the attacker, "Chest damage" and "Kevlar Vest
 absorbed..." to the one hit. The players' team-chat kill reports are
-"Enemy Down" or carry the charset's skull (byte 6, typed into their
-binds: "(m4tic): 1 <skull> iK. MaggeR!"), and are drawn cyan to stand
+"Enemy Down" or carry the charset's skull (byte 6) or dead face (8),
+typed into their binds: "(m4tic): 1 <skull> iK. MaggeR!", drawn cyan to stand
 out of the chat. A hit on a teammate keeps its colour.
 */
 #define HIT_COLOR_GIVEN     MakeColor( 90, 160, 255, 255)
@@ -736,7 +736,8 @@ uint32_t Con_HitColor(const char *s, size_t len)
         len--;
     buf[len] = 0;
 
-    if (Q_strcasestr(buf, "enemy down") || strchr(buf, 6))
+    // the charset's skull (6) or dead face (8, FragBait's binds)
+    if (Q_strcasestr(buf, "enemy down") || strchr(buf, 6) || strchr(buf, 8))
         return HIT_COLOR_KILL;      // a player's kill report
     if (!strncmp(buf, "You hit ", 8))
         return strncmp(buf, "You hit your TEAMMATE", 21) ? HIT_COLOR_GIVEN : 0;
