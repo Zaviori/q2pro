@@ -2125,6 +2125,7 @@ sit over their columns, a captain's "2C" lines up with the team digits.
 */
 #define LAY_MAX_COLS    32
 static int  lay_cols[LAY_MAX_COLS];
+static int  lay_orgs[LAY_MAX_COLS];     // the x the strings start at: one table
 static int  lay_hits[LAY_MAX_COLS];     // how many lines end a number there
 static int  lay_ncols;
 
@@ -2138,11 +2139,14 @@ static size_t lay_digits(const char *w, size_t len)
     return d > n ? d : 0;
 }
 
-// A column: numbers end there on two lines or more ("..and 2 more" is text)
-static bool lay_is_col(int x)
+// A column: numbers end there on two lines or more ("..and 2 more" is
+// text), lines that start at the same x - a table's caption and rows, not
+// the team plate's "72/ 4/0" 32 units over, whose digits may end where a
+// row's do
+static bool lay_is_col(int org, int x)
 {
     for (int i = 0; i < lay_ncols; i++)
-        if (lay_cols[i] == x)
+        if (lay_cols[i] == x && lay_orgs[i] == org)
             return lay_hits[i] > 1;
     return false;
 }
@@ -2160,12 +2164,13 @@ static void lay_add_cols(int x, const char *s)
         size_t d = lay_digits(s + i, j - i);
         if (d) {
             int end = x + (int)(i + d) * CONCHAR_WIDTH, k;
-            for (k = 0; k < lay_ncols && lay_cols[k] != end; k++)
+            for (k = 0; k < lay_ncols && (lay_cols[k] != end || lay_orgs[k] != x); k++)
                 ;
             if (k < lay_ncols)
                 lay_hits[k]++;
             else if (lay_ncols < LAY_MAX_COLS) {
                 lay_cols[lay_ncols] = end;
+                lay_orgs[lay_ncols] = x;
                 lay_hits[lay_ncols++] = 1;
             }
         }
@@ -2208,8 +2213,8 @@ static bool lay_has_cols(int x, const char *s, size_t len)
         while (j < len && s[j] != ' ')
             j++;
         size_t d = lay_digits(s + i, j - i);
-        if ((d && lay_is_col(x + (int)(i + d) * CONCHAR_WIDTH)) ||
-            lay_is_col(x + (int)j * CONCHAR_WIDTH))
+        if ((d && lay_is_col(x, x + (int)(i + d) * CONCHAR_WIDTH)) ||
+            lay_is_col(x, x + (int)j * CONCHAR_WIDTH))
             return true;
         i = j;
     }
@@ -2241,7 +2246,7 @@ static void SCR_LayoutWords(int x, int y, int flags, float size, uint32_t color,
         size_t d = lay_digits(s + i, j - i);
         int dend = x + (int)(i + d) * CONCHAR_WIDTH;
 
-        if (d && lay_is_col(dend)) {
+        if (d && lay_is_col(x, dend)) {
             // a number in its column; a mark after its digits ("1C", "2S")
             // follows them, the digits lined up with the rest
             SCR_DrawTextCell(dend, y, CONCHAR_HEIGHT, colors | UI_RIGHT,
@@ -2250,7 +2255,7 @@ static void SCR_LayoutWords(int x, int y, int flags, float size, uint32_t color,
                 SCR_DrawTextCell(dend, y, CONCHAR_HEIGHT, colors, TEXT_SHADOW,
                                  size, color, s + i + d, j - i - d);
             last = 0;       // a phrase starts afresh after a column
-        } else if (lay_is_col(end)) {
+        } else if (lay_is_col(x, end)) {
             // a caption word over a column
             SCR_DrawTextCell(end, y, CONCHAR_HEIGHT, colors | UI_RIGHT, TEXT_SHADOW,
                              size, color, s + i, j - i);
