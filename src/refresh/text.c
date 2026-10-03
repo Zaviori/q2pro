@@ -424,13 +424,23 @@ static inline float text_icon_advance(const textsize_t *ts)
     return text_icon_side(ts) + max(1, ts->px / 12);
 }
 
+// TEXT_MONO: every letter, icon or space takes a conchar's width, so a
+// line laid out for conchars - a scoreboard's columns - keeps its places
+static inline float text_cell_px(void)
+{
+    return CONCHAR_WIDTH / draw.scale;
+}
+
 // Width in pixels of the screen, not virtual units
-static float text_width_px(textsize_t *ts, const char *s, size_t maxlen)
+static float text_width_px(textsize_t *ts, int flags, const char *s, size_t maxlen)
 {
     font_t *f = &fonts[ts->font];
     float w = 0;
     int prev = 0;
     bool alt;
+
+    if (flags & TEXT_MONO)
+        return Q_strnlen(s, maxlen) * text_cell_px();
 
     while (maxlen-- && *s) {
         if (text_icon((byte)*s)) {
@@ -459,7 +469,7 @@ int R_MeasureText(int flags, float size, const char *s, size_t maxlen)
 
     if (!ts)
         return 0;
-    return Q_rint(text_width_px(ts, s, maxlen) * draw.scale);
+    return Q_rint(text_width_px(ts, flags, s, maxlen) * draw.scale);
 }
 
 // Height of one line of this size in virtual units: ascent, descent and
@@ -506,7 +516,7 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
 
     // Positions are worked in screen pixels and snapped there, so every
     // glyph lands on whole pixels whatever the HUD scale is
-    w = text_width_px(ts, s, maxlen);
+    w = text_width_px(ts, flags, s, maxlen);
     pen = x / sc;
     if (flags & TEXT_RIGHT)
         pen -= w;
@@ -523,6 +533,8 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
     float icon = text_icon_side(ts);
     float icon_y = floorf(base - icon * 0.85f + 0.5f);
     uint32_t icon_color = text_scale_alpha(U32_WHITE, alpha);
+    bool mono = flags & TEXT_MONO;
+    float cell = text_cell_px();
 
     // Edges first, all of them, so no letter's outline covers its
     // neighbour's fill
@@ -537,7 +549,7 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                 int b = (byte)*t++;
                 if (!charset)
                     charset = text_charset();
-                float gx = floorf(p + 0.5f);
+                float gx = floorf(p + (mono ? (cell - icon) * 0.5f : 0) + 0.5f);
                 float s1 = (b & 15) * 0.0625f, t1 = (b >> 4) * 0.0625f;
 
                 if (pass == 0)
@@ -548,7 +560,7 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                     GL_TextQuad(gx * sc, icon_y * sc, icon * sc, icon * sc,
                                 s1, t1, s1 + 0.0625f, t1 + 0.0625f,
                                 icon_color, charset);
-                p += text_icon_advance(ts);
+                p += mono ? cell : text_icon_advance(ts);
                 prev = 0;
                 continue;
             }
@@ -556,12 +568,12 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
             int c = text_char((byte)*t++, &is_alt);
             const glyph_t *g = &ts->glyphs[c - TEXT_FIRST];
 
-            if (prev)
+            if (prev && !mono)
                 p += stbtt_GetCodepointKernAdvance(&f->info, prev, c) * ts->scale;
             prev = c;
 
             if (c != ' ' && g->w > 0) {
-                float gx = floorf(p + 0.5f) + g->xoff;
+                float gx = floorf(p + (mono ? (cell - g->advance) * 0.5f : 0) + 0.5f) + g->xoff;
                 float gy = base + g->yoff;
 
                 if (pass == 0 && (flags & TEXT_OUTLINE)) {
@@ -582,7 +594,7 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                                    is_alt ? alt : text_tint(color, raw), ts->texnum);
                 }
             }
-            p += g->advance;
+            p += mono ? cell : g->advance;
         }
     }
 
