@@ -40,6 +40,17 @@ static byte     buttondown[256 / 8];
 
 static bool     key_overstrike;
 
+// 0: US layout, 1: typed text from the system layout, 2: binds as well
+static cvar_t   *key_layout;
+
+// the video driver sends Key_CharEvent (only Windows does so far)
+static bool     key_native;
+
+// the last key press may type a character (it went to the console, a menu
+// or the message line), and what it types on the US layout if anything
+static bool     key_char_ok;
+static int      key_char_us;
+
 typedef struct {
     const char  *name;
     int         keynum;
@@ -495,6 +506,12 @@ static const cmdreg_t c_keys[] = {
     { NULL }
 };
 
+static void key_layout_changed(cvar_t *self)
+{
+    // a held key could come up under another keynum
+    Key_ClearStates();
+}
+
 /*
 ===================
 Key_Init
@@ -597,6 +614,9 @@ void Key_Init(void)
 // register our functions
 //
     Cmd_Register(c_keys);
+
+    key_layout = Cvar_Get("key_layout", "1", CVAR_ARCHIVE);
+    key_layout->changed = key_layout_changed;
 }
 
 /*
@@ -616,6 +636,11 @@ void Key_Event(unsigned key, bool down, unsigned time)
 
     Com_DDDPrintf("%u: %c%s\n", time,
                   down ? '+' : '-', Key_KeynumToString(key));
+
+    if (down) {
+        key_char_ok = false;
+        key_char_us = 0;
+    }
 
     // hack for menu key binding
     if (key_wait_cb && down && !key_wait_cb(key_wait_arg, key)) {
@@ -769,6 +794,17 @@ void Key_Event(unsigned key, bool down, unsigned time)
         Key_Message(key);
     }
 
+    // with the system layout, the driver sends the character in
+    // Key_CharEvent; AltGr is a Ctrl+Alt on Windows, so modifiers are
+    // left for the system to judge
+    if (Key_NativeLayout()) {
+        key_char_ok = true;
+        if (!Key_IsDown(K_CTRL) && !Key_IsDown(K_ALT) &&
+            key >= K_ASCIIFIRST && key < K_ASCIILAST)
+            key_char_us = Key_IsDown(K_SHIFT) ? keyshift[key] : key;
+        return;
+    }
+
     if (Key_IsDown(K_CTRL) || Key_IsDown(K_ALT)) {
         return;
     }
@@ -837,6 +873,104 @@ void Key_Event(unsigned key, bool down, unsigned time)
     } else if (cls.key_dest & KEY_MESSAGE) {
         Char_Message(key);
     }
+}
+
+static void key_char(int ch)
+{
+    if (cls.key_dest & KEY_CONSOLE) {
+        Char_Console(ch);
+    } else if (cls.key_dest & KEY_MENU) {
+        UI_CharEvent(ch);
+    } else if (cls.key_dest & KEY_MESSAGE) {
+        Char_Message(ch);
+    }
+}
+
+// Latin-1 letters without their accents; the charset has none
+static const char latin1_ascii[] =
+    "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTs"
+    "aaaaaaaceeeeiiiidnooooo/ouuuuyty";
+
+/*
+===================
+Key_SetNativeLayout
+
+Called by a video driver that sends Key_CharEvent with the characters
+the system layout types, dead keys composed.
+===================
+*/
+void Key_SetNativeLayout(bool native)
+{
+    key_native = native;
+}
+
+bool Key_NativeLayout(void)
+{
+    return key_native && key_layout->integer;
+}
+
+/*
+===================
+Key_CharEvent
+
+A character typed on the system layout, as a Unicode code point. Comes
+after the Key_Event of the key press that typed it.
+===================
+*/
+void Key_CharEvent(int ch)
+{
+    if (!Key_NativeLayout() || !key_char_ok) {
+        return;
+    }
+
+    // left Alt is a shortcut, never AltGr
+    if (Key_IsDown(K_LALT)) {
+        return;
+    }
+
+    if (ch >= 0xc0 && ch <= 0xff) {
+        ch = latin1_ascii[ch - 0xc0];
+    } else if (ch == 0xa0) {
+        ch = ' ';
+    } else if (ch == 0xb4) {
+        ch = '\'';
+    } else if (ch > 0xff) {
+        // another script entirely: type what the key types in US
+        ch = key_char_us;
+    }
+
+    if (ch < 32 || ch >= 127) {
+        return;
+    }
+
+    key_char(ch);
+}
+
+/*
+===================
+Key_LayoutKey
+
+The keynum a driver reports for a key: its US layout keynum, or with
+key_layout 2, the character it types unshifted on the system layout.
+The console key keeps its place, as does a key that types nothing
+the charset has.
+===================
+*/
+unsigned Key_LayoutKey(unsigned key, int ch)
+{
+    if (!key_native || key_layout->integer < 2) {
+        return key;
+    }
+
+    if (key < K_ASCIIFIRST || key >= K_ASCIILAST || key == '`') {
+        return key;
+    }
+
+    if (ch <= K_ASCIIFIRST || ch >= K_ASCIILAST || ch == '`') {
+        return key;
+    }
+
+    return Q_tolower(ch);
 }
 
 /*

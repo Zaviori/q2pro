@@ -117,6 +117,7 @@
     - [win\_noresize](#win_noresize)
     - [win\_notitle](#win_notitle)
     - [win\_alwaysontop](#win_alwaysontop)
+    - [key\_layout](#key_layout)
     - [sys\_viewlog](#sys_viewlog)
     - [sys\_disablecrashdump](#sys_disablecrashdump)
     - [sys\_exitonerror](#sys_exitonerror)
@@ -1014,6 +1015,17 @@ Hides the main window title bar. Default is 0 (show title bar).
 ### win\_alwaysontop  
 Puts the main window on top of other windows. Default is 0 (main window
 can be obscured by other windows).
+
+### key\_layout  
+Keyboard layout of the console, the menus and the chat line. Characters
+the console font lacks lose their accents (ä types a); keys typing
+another script entirely type what they would on a US layout. Default is 1.
+  - 0 — US layout everywhere, as in Quake II
+  - 1 — type text in the system keyboard layout, dead keys and AltGr
+included; binds stay on the US key positions
+  - 2 — binds also follow the system layout: a key is bound by what it
+types unshifted (AZERTY's A key is `a`). Keys that type nothing in
+ASCII keep their US names, and the console key always stays in place
 
 ### sys\_viewlog  
 Show system console window when running a client. Can be set from

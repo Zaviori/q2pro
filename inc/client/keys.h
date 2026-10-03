@@ -125,7 +125,10 @@ void    Key_Init(void);
 
 void    Key_Event(unsigned key, bool down, unsigned time);
 void    Key_Event2(unsigned key, bool down, unsigned time);
-void    Key_CharEvent(int key);
+void    Key_CharEvent(int ch);
+void    Key_SetNativeLayout(bool native);
+bool    Key_NativeLayout(void);
+unsigned Key_LayoutKey(unsigned key, int ch);
 
 bool        Key_GetOverstrikeMode(void);
 void        Key_SetOverstrikeMode(bool overstrike);
