@@ -94,7 +94,10 @@ static cvar_t   *r_font;
 static cvar_t   *r_font_bold;
 
 static font_t       fonts[2];
-static uint32_t     text_tints[128];    // the charset's colour per cell, 0 = none
+static uint32_t     text_tints[256];    // the charset's colour per cell, 0 = none
+static cvar_t       *r_ttf;
+static cvar_t       *r_ttf_size;
+static bool         text_bypass;        // the test panel's conchars sample
 static textsize_t   sizes[TEXT_SIZES];
 static unsigned     text_clock;
 
@@ -341,7 +344,8 @@ Text_SampleCharset: called by the image loader with conchars' pixels just
 before upload. A cell whose opaque pixels average to a colour rather than
 a grey keeps that colour, its brightest channel raised to full; a white
 or grey letter keeps none, so plain text is not dimmed by its shading.
-Only the low half is sampled: high-bit letters take the caller's alt.
+Both halves are sampled: the high half is the charset's alt letters (the
+green), used where the font stands in for conchars (TEXT_CHARSET).
 */
 void Text_SampleCharset(const byte *pic, int w, int h)
 {
@@ -351,7 +355,7 @@ void Text_SampleCharset(const byte *pic, int w, int h)
     if (cw < 1 || ch < 1)
         return;
 
-    for (int c = 0; c < 128; c++) {
+    for (int c = 0; c < 256; c++) {
         const byte *cell = pic + ((c >> 4) * ch * w + (c & 15) * cw) * 4;
         float sum[3] = { 0 }, wsum = 0;
 
@@ -382,7 +386,7 @@ void Text_SampleCharset(const byte *pic, int w, int h)
 // A letter's colour: the caller's, times the charset's for that cell
 static inline uint32_t text_tint(uint32_t color, int c)
 {
-    if (c >= 128 || !text_tints[c])
+    if (c >= 256 || !text_tints[c])
         return color;
 
     color_t a = { .u32 = color }, t = { .u32 = text_tints[c] };
@@ -396,7 +400,7 @@ static inline uint32_t text_tint(uint32_t color, int c)
 // orange brackets - where the plain multiply would mix the two
 static inline uint32_t text_letter_color(int flags, uint32_t color, int c)
 {
-    if ((flags & TEXT_OWNTINT) && c < 128 && text_tints[c]) {
+    if ((flags & TEXT_OWNTINT) && c < 256 && text_tints[c]) {
         color_t t = { .u32 = text_tints[c] }, a = { .u32 = color };
         t.u8[3] = a.u8[3];
         return t.u32;
@@ -414,7 +418,7 @@ static GLuint text_charset(void)
 }
 
 // A byte the font has no letter for but the charset has a picture: the
-// control codes, bar white space and the bold brackets Q_charascii turns
+// control codes, bar the newline and the bold brackets Q_charascii turns
 // into [ and ]
 static inline bool text_icon(int c)
 {
@@ -422,7 +426,9 @@ static inline bool text_icon(int c)
 
     if (b == 127)
         return true;
-    return b < 32 && b != 16 && b != 17 && !Q_isspace(c);
+    // every control code but the newline and the bold brackets: the
+    // charset draws a picture for 13 (the menus' arrow) and the rest too
+    return b < 32 && b != '\n' && b != 16 && b != 17;
 }
 
 // An icon is a conchar cell a little under the font's pixel size, square,
@@ -471,9 +477,53 @@ static float text_width_px(textsize_t *ts, int flags, const char *s, size_t maxl
     return w;
 }
 
+// r_ttf 0 is conchars everywhere: every caller falls back on this
 bool R_TextAvailable(void)
 {
-    return text_font(0) != NULL;
+    return r_ttf->integer && text_font(0) != NULL;
+}
+
+/*
+r_ttf 2: every string still drawn in conchars - menus, the server browser,
+inventory, debug text, anything without a font of its own - is drawn in
+the font instead, a letter per conchar cell (TEXT_MONO), so layouts made
+for conchars stand. R_DrawString and R_DrawChar come here. The colours
+are the conchars': a letter in the draw colour times the charset's colour
+for it, a high-bit letter in the alt slot times the charset's (green).
+*/
+bool Text_ReplacesConchars(void)
+{
+    return r_ttf->integer >= 2 && !text_bypass && text_font(0) != NULL;
+}
+
+int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
+{
+    char buf[MAX_STRING_CHARS];
+    size_t n = 0;
+
+    while (n < maxlen && n < sizeof(buf) - 1 && s[n]) {
+        int c = (byte)s[n];
+        if (uiflags & UI_ALTCOLOR)
+            c |= 0x80;
+        if (uiflags & UI_XORCOLOR)
+            c ^= 0x80;
+        buf[n++] = c;
+    }
+    buf[n] = 0;
+    if (!n)
+        return x;
+
+    float size = Cvar_ClampValue(r_ttf_size, 6, 16);
+    int flags = TEXT_MONO | TEXT_CHARSET;
+    if ((uiflags & UI_DROPSHADOW) || gl_fontshadow->integer > 0)
+        flags |= TEXT_SHADOW;
+
+    color_t c0 = draw.colors[0], c1 = draw.colors[1];
+    c0.u8[3] = c1.u8[3] = 255;      // R_DrawText takes the alpha from draw
+
+    int lh = R_TextLineHeight(flags, size);
+    R_DrawText(x, y + (CONCHAR_HEIGHT - lh) / 2, flags, size, c0.u32, c1.u32, buf, n);
+    return x + (int)n * CONCHAR_WIDTH;
 }
 
 int R_MeasureText(int flags, float size, const char *s, size_t maxlen)
@@ -543,11 +593,13 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
     // icons: their cell sits on the baseline, reaching a little below it
     // the way the conchars do; drawn as they are, not in the text colour
     GLuint charset = 0;
-    float icon = text_icon_side(ts);
-    float icon_y = floorf(base - icon * 0.85f + 0.5f);
-    uint32_t icon_color = text_scale_alpha(U32_WHITE, alpha);
     bool mono = flags & TEXT_MONO;
     float cell = text_cell_px();
+    float icon = text_icon_side(ts);
+    if (mono)
+        icon = min(icon, cell);     // an icon keeps to its conchar cell
+    float icon_y = floorf(base - icon * 0.85f + 0.5f);
+    uint32_t icon_color = text_scale_alpha(U32_WHITE, alpha);
 
     // Edges first, all of them, so no letter's outline covers its
     // neighbour's fill
@@ -604,7 +656,8 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                     GL_TextQuad(gx * sc, gy * sc, g->w * sc, g->h * sc,
                                    g->x * tw, g->y * th,
                                    (g->x + g->w) * tw, (g->y + g->h) * th,
-                                   is_alt ? alt : text_letter_color(flags, color, raw),
+                                   is_alt ? ((flags & TEXT_CHARSET) ? text_tint(alt, raw) : alt) :
+                                   text_letter_color(flags, color, raw),
                                    ts->texnum);
                 }
             }
@@ -636,9 +689,11 @@ void Text_DrawTest(void)
 
     R_DrawFill32(20, y - 6, vw - 40, 230, MakeColor(30, 40, 50, 200));
     qhandle_t conchars = R_RegisterFont("conchars");
+    text_bypass = true;     // the real conchars, for comparison
     R_DrawString(30, y, 0, MAX_STRING_CHARS, "conchars (8):", conchars);
     y += 10;
     R_DrawString(30, y, UI_DROPSHADOW, MAX_STRING_CHARS, sample, conchars);
+    text_bypass = false;
     y += 16;
 
     for (int i = 0; i < q_countof(test_sizes); i++) {
@@ -666,6 +721,10 @@ void Text_Init(void)
     r_font->changed = r_font_changed;
     r_font_bold->changed = r_font_changed;
     r_font_test = Cvar_Get("r_font_test", "0", 0);
+    // 0 conchars everywhere; 1 the font where a place has its own switch
+    // (each *_font cvar); 2 also every other string, in conchar cells
+    r_ttf = Cvar_Get("r_ttf", "2", CVAR_ARCHIVE);
+    r_ttf_size = Cvar_Get("r_ttf_size", "10", CVAR_ARCHIVE);
 
     for (int i = 0; i < TEXT_SIZES; i++)
         sizes[i].font = -1;

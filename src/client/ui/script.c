@@ -792,6 +792,30 @@ typedef struct {
     const char  *script;    // that menu, and any it opens
 } ui_extra_t;
 
+// TrueType text: the master switch, then each place's switch and size
+static const char ui_menu_ttf[] =
+    "begin ttf\n"
+    "title \"TrueType Text\"\n"
+    "pairs \"truetype text\" r_ttf off 0 \"own places\" 1 everywhere 2\n"
+    "range \"text size\" r_ttf_size 8 14 1\n"
+    "blank\n"
+    "toggle \"messages & chat\" con_notify_font\n"
+    "range \"messages size\" con_notify_size 8 24 1\n"
+    "toggle \"chat hud\" scr_chathud_font\n"
+    "range \"chat hud size\" scr_chathud_size 8 24 1\n"
+    "toggle \"centre prints\" scr_center_font\n"
+    "range \"centre print size\" scr_center_size 8 32 1\n"
+    "pairs \"scoreboard & mod menus\" scr_layout_font off 0 aligned 1 proportional 2\n"
+    "range \"scoreboard size\" scr_layout_size 8 16 1\n"
+    "toggle \"console\" con_text_font\n"
+    "range \"console size\" con_text_size 8 16 1\n"
+    "toggle \"game hud\" scr_ghud_font\n"
+    "range \"game hud size\" scr_ghud_size 8 24 1\n"
+    "blank\n"
+    "toggle \"hit colours\" con_hitcolors\n"
+    "toggle \"font sample\" r_font_test\n"
+    "end\n";
+
 // Stainmaps: blood, bullet scars and scorch burned into the lightmap
 static const char ui_menu_stains[] =
     "begin stains\n"
@@ -808,6 +832,7 @@ static const char ui_menu_stains[] =
     "end\n";
 
 static const ui_extra_t ui_extras[] = {
+    { "TrueType Text", "ttf", ui_menu_ttf },
     { "Stainmaps", "stains", ui_menu_stains },
     { NULL }
 };

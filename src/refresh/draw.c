@@ -386,6 +386,13 @@ static inline void draw_char(int x, int y, int flags, int c, const image_t *imag
 
 void R_DrawChar(int x, int y, int flags, int c, qhandle_t font)
 {
+    if (Text_ReplacesConchars()) {     // r_ttf 2: the font, in the cell
+        char s[2] = { c, 0 };
+        if (c)
+            Text_DrawConchars(x, y, flags, 1, s);
+        return;
+    }
+
     if (gl_fontshadow->integer > 0)
         flags |= UI_DROPSHADOW;
 
@@ -395,6 +402,9 @@ void R_DrawChar(int x, int y, int flags, int c, qhandle_t font)
 int R_DrawString(int x, int y, int flags, size_t maxlen, const char *s, qhandle_t font)
 {
     const image_t *image = IMG_ForHandle(font);
+
+    if (Text_ReplacesConchars())       // r_ttf 2: the font, in the cells
+        return Text_DrawConchars(x, y, flags, maxlen, s);
 
     if (gl_fontshadow->integer > 0)
         flags |= UI_DROPSHADOW;
