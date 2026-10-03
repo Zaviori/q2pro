@@ -1713,9 +1713,10 @@ void SCR_Init(void)
     // so their 8-unit rows stand
     scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
     scr_layout_size = Cvar_Get("scr_layout_size", "10", CVAR_ARCHIVE);
-    // ...and the game's own HUD elements (ghud) the same way
+    // ...and the game's own HUD elements (ghud). The game places them
+    // for 8-unit text, so a large size can reach past their boxes
     scr_ghud_font = Cvar_Get("scr_ghud_font", "1", CVAR_ARCHIVE);
-    scr_ghud_size = Cvar_Get("scr_ghud_size", "10", CVAR_ARCHIVE);
+    scr_ghud_size = Cvar_Get("scr_ghud_size", "16", CVAR_ARCHIVE);
     scr_demobar = Cvar_Get("scr_demobar", "1", 0);
     scr_font = Cvar_Get("scr_font", "conchars", 0);
     scr_font->changed = scr_font_changed;
