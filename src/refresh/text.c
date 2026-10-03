@@ -97,6 +97,7 @@ static font_t       fonts[2];
 static uint32_t     text_tints[256];    // the charset's colour per cell, 0 = none
 static cvar_t       *r_ttf;
 static cvar_t       *r_ttf_size;
+static cvar_t       *r_ttf_cells;
 static bool         text_bypass;        // the test panel's conchars sample
 static textsize_t   sizes[TEXT_SIZES];
 static unsigned     text_clock;
@@ -486,8 +487,8 @@ bool R_TextAvailable(void)
 /*
 r_ttf 2: every string still drawn in conchars - menus, the server browser,
 inventory, debug text, anything without a font of its own - is drawn in
-the font instead, a letter per conchar cell (TEXT_MONO), so layouts made
-for conchars stand. R_DrawString and R_DrawChar come here. The colours
+the font instead, inside the span conchars would take so layouts made
+for conchars stand (or a letter per cell, r_ttf_cells). R_DrawString and R_DrawChar come here. The colours
 are the conchars': a letter in the draw colour times the charset's colour
 for it, a high-bit letter in the alt slot times the charset's (green).
 */
@@ -514,7 +515,7 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
         return x;
 
     float size = Cvar_ClampValue(r_ttf_size, 6, 16);
-    int flags = TEXT_MONO | TEXT_CHARSET;
+    int flags = TEXT_CHARSET;
     if ((uiflags & UI_DROPSHADOW) || gl_fontshadow->integer > 0)
         flags |= TEXT_SHADOW;
 
@@ -522,8 +523,57 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
     c0.u8[3] = c1.u8[3] = 255;      // R_DrawText takes the alpha from draw
 
     int lh = R_TextLineHeight(flags, size);
-    R_DrawText(x, y + (CONCHAR_HEIGHT - lh) / 2, flags, size, c0.u32, c1.u32, buf, n);
-    return x + (int)n * CONCHAR_WIDTH;
+    int ty = y + (CONCHAR_HEIGHT - lh) / 2;
+    int end = x + (int)n * CONCHAR_WIDTH;
+
+    // An input line places its cursor by conchar cells, and r_ttf_cells
+    // asks for cells everywhere: a letter per cell
+    if ((uiflags & UI_DRAWCURSOR) || r_ttf_cells->integer) {
+        R_DrawText(x, ty, flags | TEXT_MONO, size, c0.u32, c1.u32, buf, n);
+        return end;
+    }
+
+    /*
+    Otherwise the text at its own width inside the span conchars would
+    take, so callers that placed it by counting cells - menus centre and
+    right-align that way - still have it where they meant. A padded line
+    (a column of the server browser, a table) splits at runs of two or
+    more spaces, each field kept to its own span: a number ends where its
+    cells end, anything else starts where its cells start. A lone field
+    takes the caller's alignment.
+    */
+    int start[32], len[32], nf = 0;
+    for (int i = 0; i < (int)n && nf < 32; ) {
+        if (buf[i] == ' ') {
+            i++;
+            continue;
+        }
+        int j = i;
+        while (j < (int)n && !(buf[j] == ' ' && (j + 1 >= (int)n || buf[j + 1] == ' ')))
+            j++;
+        start[nf] = i;
+        len[nf] = j - i;
+        nf++;
+        i = j;
+    }
+
+    for (int f = 0; f < nf; f++) {
+        int fx = x + start[f] * CONCHAR_WIDTH;
+        int fw = len[f] * CONCHAR_WIDTH;
+        int tflags = flags;
+        const char *fs = buf + start[f];
+
+        if (nf == 1 && (uiflags & UI_CENTER) == UI_CENTER) {
+            fx += fw / 2;
+            tflags |= TEXT_CENTER;
+        } else if (nf == 1 ? (uiflags & UI_RIGHT) :
+                   (Q_isdigit(fs[0]) || (fs[0] == '-' && Q_isdigit(fs[1])))) {
+            fx += fw;
+            tflags |= TEXT_RIGHT;
+        }
+        R_DrawText(fx, ty, tflags, size, c0.u32, c1.u32, fs, len[f]);
+    }
+    return end;
 }
 
 int R_MeasureText(int flags, float size, const char *s, size_t maxlen)
@@ -725,6 +775,8 @@ void Text_Init(void)
     // (each *_font cvar); 2 also every other string, in conchar cells
     r_ttf = Cvar_Get("r_ttf", "2", CVAR_ARCHIVE);
     r_ttf_size = Cvar_Get("r_ttf_size", "10", CVAR_ARCHIVE);
+    // ...set at its own width (0), or a letter per conchar cell (1)
+    r_ttf_cells = Cvar_Get("r_ttf_cells", "0", CVAR_ARCHIVE);
 
     for (int i = 0; i < TEXT_SIZES; i++)
         sizes[i].font = -1;
