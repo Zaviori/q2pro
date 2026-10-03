@@ -134,6 +134,7 @@ void SCR_UpdateScreen(void);
 #define UI_AUTOWRAP         BIT(8)
 #define UI_MULTILINE        BIT(9)
 #define UI_DRAWCURSOR       BIT(10)
+#define UI_CELLSTART        BIT(11) // laid out by cells: the font keeps their start
 
 extern const uint32_t   colorTable[8];
 

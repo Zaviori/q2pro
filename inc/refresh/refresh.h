@@ -241,6 +241,7 @@ void    R_DrawStretchPic(int x, int y, int w, int h, qhandle_t pic);
 #define TEXT_CHARSET    BIT(7)  // high-bit letters: alt times the charset's colour
 bool    R_TextAvailable(void);
 void    R_TextMenu(bool on);    // the menus draw: r_ttf 2 text at r_ttf_menu_size
+int     R_TextMenuRow(void);    // a menu row tall enough for that text, or 0
 int     R_DrawText(int x, int y, int flags, float size, uint32_t color,
                    uint32_t alt, const char *s, size_t maxlen);
 int     R_MeasureText(int flags, float size, const char *s, size_t maxlen);

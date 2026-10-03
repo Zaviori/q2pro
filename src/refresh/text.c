@@ -499,6 +499,15 @@ void R_TextMenu(bool on)
     text_menu = on;
 }
 
+// The height a menu or list row needs for r_ttf 2's text at the menu size,
+// in virtual units; 0 when conchars draw the menus
+int R_TextMenuRow(void)
+{
+    if (r_ttf->integer < 2 || !text_font(0))
+        return 0;
+    return Q_rint(Cvar_ClampValue(r_ttf_menu_size, 6, 24) * 1.2f);
+}
+
 bool Text_ReplacesConchars(void)
 {
     return r_ttf->integer >= 2 && !text_bypass && text_font(0) != NULL;
@@ -550,6 +559,16 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
     cells end, anything else starts where its cells start. A lone field
     takes the caller's alignment.
     */
+    // Fields split at runs of three or more spaces: two are prose ("I died
+    // in one hit!  What gives?"). A string padded with spaces at either
+    // end was laid out by its cells - AQtion pads menu lines to one length
+    // so they start in one column - so its fields keep to their cells'
+    // start; an unpadded lone field takes the caller's alignment.
+    // padding is two spaces or more: AQtion wraps its buttons in single
+    // spaces (" Play Online "), which centre like any other
+    bool padded = (uiflags & UI_CELLSTART) ||
+                  (n > 2 && ((buf[0] == ' ' && buf[1] == ' ') ||
+                             (buf[n - 1] == ' ' && buf[n - 2] == ' ')));
     int start[32], len[32], nf = 0;
     for (int i = 0; i < (int)n && nf < 32; ) {
         if (buf[i] == ' ') {
@@ -557,7 +576,8 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
             continue;
         }
         int j = i;
-        while (j < (int)n && !(buf[j] == ' ' && (j + 1 >= (int)n || buf[j + 1] == ' ')))
+        while (j < (int)n && !(buf[j] == ' ' && (j + 2 >= (int)n ||
+               (buf[j + 1] == ' ' && buf[j + 2] == ' '))))
             j++;
         start[nf] = i;
         len[nf] = j - i;
@@ -571,10 +591,11 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
         int tflags = flags;
         const char *fs = buf + start[f];
 
-        if (nf == 1 && (uiflags & UI_CENTER) == UI_CENTER) {
+        bool lone = nf == 1 && !padded;
+        if (lone && (uiflags & UI_CENTER) == UI_CENTER) {
             fx += fw / 2;
             tflags |= TEXT_CENTER;
-        } else if (nf == 1 ? (uiflags & UI_RIGHT) :
+        } else if (lone ? (uiflags & UI_RIGHT) :
                    (Q_isdigit(fs[0]) || (fs[0] == '-' && Q_isdigit(fs[1])))) {
             fx += fw;
             tflags |= TEXT_RIGHT;
