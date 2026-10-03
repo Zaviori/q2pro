@@ -1,0 +1,11 @@
+#!/bin/sh
+# pkg-config for the Windows cross build. It looks in the mingw sysroot
+# only, never at the host's .pc files: a host library it hands over (curl
+# finding the host's libnghttp2, say) brings Linux include paths into a
+# mingw compile, and the build dies on missing headers. With nothing to
+# find here, every dependency comes from its subprojects/ wrap.
+PKG_CONFIG_LIBDIR=/usr/x86_64-w64-mingw32/lib/pkgconfig
+PKG_CONFIG_SYSROOT_DIR=/usr/x86_64-w64-mingw32
+PKG_CONFIG_PATH=
+export PKG_CONFIG_LIBDIR PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_PATH
+exec pkg-config "$@"
