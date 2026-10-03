@@ -833,9 +833,23 @@ static const char ui_menu_stains[] =
     "range \"darkest floor\" gl_stain_floor 0 0.8 0.05\n"
     "end\n";
 
+#ifdef _WIN32
+// Keyboard: typing, and optionally binds, in the system layout - only
+// the Windows driver sends the characters (Key_SetNativeLayout)
+static const char ui_menu_keyboard[] =
+    "begin keyboard\n"
+    "title Keyboard\n"
+    "pairs \"keyboard layout\" key_layout "
+        "US 0 \"system: typing\" 1 \"system: typing & binds\" 2\n"
+    "end\n";
+#endif
+
 static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
     { "Stainmaps", "stains", ui_menu_stains },
+#ifdef _WIN32
+    { "Keyboard", "keyboard", ui_menu_keyboard },
+#endif
     { NULL }
 };
 
