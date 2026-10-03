@@ -71,6 +71,14 @@ static inline void GL_StretchPic_(
 #define GL_StretchPic(x,y,w,h,s1,t1,s2,t2,color,image) \
     GL_StretchPic_(x,y,w,h,s1,t1,s2,t2,color,(image)->texnum,(image)->flags)
 
+// One glyph of TrueType text (text.c): a blended quad from a font atlas
+void GL_TextQuad(float x, float y, float w, float h,
+                 float s1, float t1, float s2, float t2,
+                 uint32_t color, GLuint texnum)
+{
+    GL_StretchPic_(x, y, w, h, s1, t1, s2, t2, color, texnum, IF_TRANSPARENT);
+}
+
 static void GL_DrawVignette(float frac, color_t outer, color_t inner)
 {
     static const byte indices[24] = {

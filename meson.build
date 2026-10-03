@@ -93,6 +93,7 @@ refresh_src = [
   'src/refresh/state.c',
   'src/refresh/surf.c',
   'src/refresh/tess.c',
+  'src/refresh/text.c',
   'src/refresh/texture.c',
   'src/refresh/world.c',
 ]

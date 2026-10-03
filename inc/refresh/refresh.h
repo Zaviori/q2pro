@@ -227,6 +227,21 @@ int     R_DrawString(int x, int y, int flags, size_t maxChars,
 bool    R_GetPicSize(int *w, int *h, qhandle_t pic);   // returns transparency bit
 void    R_DrawPic(int x, int y, qhandle_t pic);
 void    R_DrawStretchPic(int x, int y, int w, int h, qhandle_t pic);
+
+// TrueType text: Quake strings in a real font, rasterised at the size they
+// land on screen. `size` is the font's pixel height in virtual units (a
+// conchar is 8); y is the top of the line. High-bit characters take `alt`.
+#define TEXT_SHADOW     BIT(0)
+#define TEXT_OUTLINE    BIT(1)
+#define TEXT_BOLD       BIT(2)
+#define TEXT_RIGHT      BIT(3)  // x is where the text ends
+#define TEXT_CENTER     BIT(4)  // x is its middle
+bool    R_TextAvailable(void);
+int     R_DrawText(int x, int y, int flags, float size, uint32_t color,
+                   uint32_t alt, const char *s, size_t maxlen);
+int     R_MeasureText(int flags, float size, const char *s, size_t maxlen);
+int     R_TextLineHeight(int flags, float size);
+
 void    R_DrawKeepAspectPic(int x, int y, int w, int h, qhandle_t pic);
 void    R_DrawStretchRaw(int x, int y, int w, int h);
 void    R_UpdateRawPic(int pic_w, int pic_h, const uint32_t *pic);

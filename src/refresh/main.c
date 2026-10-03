@@ -1922,6 +1922,7 @@ void R_EndFrame(void)
     if (gl_showscrap->integer)
         Draw_Scrap();
 #endif
+    Text_DrawTest();
     GL_Flush2D();
 
     if (gl_showtearing->integer)
@@ -2115,6 +2116,8 @@ static void GL_Register(void)
     gl_lightmap_changed(NULL);
     gl_modulate_entities_changed(NULL);
     gl_swapinterval_changed(gl_swapinterval);
+
+    Text_Init();
 
     Cmd_AddCommand("strings", GL_Strings_f);
     Cmd_AddMacro("gl_viewcluster", GL_ViewCluster_m);
@@ -2355,6 +2358,7 @@ void R_Shutdown(bool total)
     GL_FreeWorld();
     GL_DeleteQueries();
     GL_ShutdownImages();
+    Text_Shutdown(total);
     MOD_Shutdown();
 
     if (!total)

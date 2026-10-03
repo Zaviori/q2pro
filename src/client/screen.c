@@ -101,6 +101,10 @@ static cvar_t   *scr_chathud_lines;
 static cvar_t   *scr_chathud_time;
 static cvar_t   *scr_chathud_x;
 static cvar_t   *scr_chathud_y;
+static cvar_t   *scr_chathud_font;
+static cvar_t   *scr_chathud_size;
+static cvar_t   *scr_center_font;
+static cvar_t   *scr_center_size;
 
 static cvar_t   *xhair_dot;
 static cvar_t   *xhair_length;
@@ -214,6 +218,40 @@ void SCR_DrawStringMulti(int x, int y, int flags, size_t maxlen,
 
     if (flags & UI_DRAWCURSOR && com_localTime & BIT(8))
         R_DrawChar(last_x, last_y, flags, 11, font);
+}
+
+/*
+==============
+SCR_DrawTextCell
+
+One line of TrueType text standing in for a conchars one. It takes the
+conchars' UI_* flags - UI_RIGHT / UI_CENTER align on x, UI_ALTCOLOR makes
+the whole line the alt colour, UI_XORCOLOR swaps the two - and `tflags`
+adds the TEXT_* look. y is the top of a cell `cellh` tall with the font's
+line centred in it, so a caller laid out in conchar rows keeps its y.
+Returns the x the text ends at, as R_DrawText does.
+==============
+*/
+int SCR_DrawTextCell(int x, int y, int cellh, int flags, int tflags, float size,
+                     uint32_t color, const char *s, size_t maxlen)
+{
+    uint32_t alt = SCR_TEXT_ALT;
+
+    if ((flags & UI_CENTER) == UI_CENTER)
+        tflags |= TEXT_CENTER;
+    else if (flags & UI_RIGHT)
+        tflags |= TEXT_RIGHT;
+
+    if (flags & UI_ALTCOLOR) {
+        color = alt;
+    } else if (flags & UI_XORCOLOR) {
+        uint32_t t = color;
+        color = alt;
+        alt = t;
+    }
+
+    y += (cellh - R_TextLineHeight(tflags, size)) / 2;
+    return R_DrawText(x, y, tflags, size, color, alt, s, maxlen);
 }
 
 
@@ -588,6 +626,44 @@ void SCR_CenterPrint(const char *str, bool typewrite)
         scr_centertail++;
 }
 
+// The centre print in the TrueType font: SCR_DrawStringMulti's lines at
+// the font's height, outlined to read over any scene, each centred on its
+// own measure. `maxlen` is the typewriter's budget across all the lines;
+// the cursor follows the last letter drawn. The block keeps its centre
+// where the conchars one had it, a quarter of the way down.
+static void SCR_DrawCenterText(int y, int flags, size_t maxlen,
+                               const char *s, int lines)
+{
+    float size = Cvar_ClampValue(scr_center_size, 6, 40);
+    int lh = R_TextLineHeight(TEXT_OUTLINE, size);
+    int cx = scr.hud_width / 2;
+    int last_x = cx, last_y;
+    uint32_t white = U32_WHITE;
+
+    y += lines * CONCHAR_HEIGHT / 2 - lines * lh / 2;
+    last_y = y;
+
+    while (*s && maxlen) {
+        const char *p = strchr(s, '\n');
+        size_t len = p ? (size_t)(p - s) : strlen(s);
+        size_t n = min(len, maxlen);
+
+        // centred on the whole line, so the typewriter fills it in place
+        int w = R_MeasureText(TEXT_OUTLINE, size, s, len);
+        last_x = R_DrawText(cx - w / 2, y, TEXT_OUTLINE, size, white,
+                            SCR_TEXT_ALT, s, n);
+        last_y = y;
+        maxlen -= n;
+        if (!p)
+            break;
+        y += lh;
+        s = p + 1;
+    }
+
+    if (flags & UI_DRAWCURSOR && com_localTime & BIT(8))
+        R_DrawText(last_x, last_y, TEXT_OUTLINE, size, white, white, "_", 1);
+}
+
 static void SCR_DrawCenterString(void)
 {
     centerprint_t *cp;
@@ -624,8 +700,11 @@ static void SCR_DrawCenterString(void)
         maxlen = MAX_STRING_CHARS;
     }
 
-    SCR_DrawStringMulti(scr.hud_width / 2, y, flags,
-                        maxlen, cp->string, scr.font_pic);
+    if (scr_center_font->integer && R_TextAvailable())
+        SCR_DrawCenterText(y, flags, maxlen, cp->string, cp->lines);
+    else
+        SCR_DrawStringMulti(scr.hud_width / 2, y, flags,
+                            maxlen, cp->string, scr.font_pic);
 
     R_SetAlpha(scr_alpha->value);
 }
@@ -1027,8 +1106,9 @@ void SCR_AddToChatHUD(const char *text)
 
 static void SCR_DrawChatHUD(void)
 {
-    int x, y, i, lines, flags, step;
-    float alpha;
+    int x, y, i, lines, flags, step, rh;
+    float alpha, size = 0;
+    bool ttf;
     chatline_t *line;
 
     if (scr_chathud->integer == 0)
@@ -1036,6 +1116,15 @@ static void SCR_DrawChatHUD(void)
 
     x = scr_chathud_x->integer + scr.hud_x;
     y = scr_chathud_y->integer + scr.hud_y;
+
+    // The TrueType lines are as tall as the font's, the conchars ones 8
+    ttf = scr_chathud_font->integer && R_TextAvailable();
+    if (ttf) {
+        size = Cvar_ClampValue(scr_chathud_size, 6, 40);
+        rh = R_TextLineHeight(0, size);
+    } else {
+        rh = CONCHAR_HEIGHT;
+    }
 
     if (scr_chathud->integer == 2)
         flags = UI_ALTCOLOR;
@@ -1050,10 +1139,10 @@ static void SCR_DrawChatHUD(void)
     }
 
     if (y < 0) {
-        y += scr.hud_height - CONCHAR_HEIGHT + 1;
-        step = -CONCHAR_HEIGHT;
+        y += scr.hud_height - rh + 1;
+        step = -rh;
     } else {
-        step = CONCHAR_HEIGHT;
+        step = rh;
     }
 
     lines = scr_chathud_lines->integer;
@@ -1063,17 +1152,20 @@ static void SCR_DrawChatHUD(void)
     for (i = 0; i < lines; i++) {
         line = &scr_chatlines[(scr_chathead - i - 1) & CHAT_LINE_MASK];
 
+        alpha = 1;
         if (scr_chathud_time->integer) {
             alpha = SCR_FadeAlpha(line->time, scr_chathud_time->integer, 1000);
             if (!alpha)
                 break;
-
-            R_SetAlpha(alpha * scr_alpha->value);
-            SCR_DrawString(x, y, flags, line->text);
-            R_SetAlpha(scr_alpha->value);
-        } else {
-            SCR_DrawString(x, y, flags, line->text);
         }
+
+        R_SetAlpha(alpha * scr_alpha->value);
+        if (ttf)
+            SCR_DrawTextCell(x, y, rh, flags, TEXT_SHADOW, size, U32_WHITE,
+                             line->text, MAX_STRING_CHARS);
+        else
+            SCR_DrawString(x, y, flags, line->text);
+        R_SetAlpha(scr_alpha->value);
 
         y += step;
     }
@@ -1490,6 +1582,11 @@ void SCR_Init(void)
     scr_centertime->changed = scr_centertime_changed;
     scr_centertime->changed(scr_centertime);
     scr_printspeed = Cvar_Get("scr_printspeed", "16", 0);
+    // Centre prints (LIGHTS... ACTION!, round results) in the TrueType
+    // font, outlined; 0 is conchars. Sizes in these cvars are the font's
+    // pixel height in HUD units, a conchar being 8.
+    scr_center_font = Cvar_Get("scr_center_font", "1", CVAR_ARCHIVE);
+    scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
     scr_demobar = Cvar_Get("scr_demobar", "1", 0);
     scr_font = Cvar_Get("scr_font", "conchars", 0);
     scr_font->changed = scr_font_changed;
@@ -1512,6 +1609,8 @@ void SCR_Init(void)
     scr_chathud_time->changed(scr_chathud_time);
     scr_chathud_x = Cvar_Get("scr_chathud_x", "8", 0);
     scr_chathud_y = Cvar_Get("scr_chathud_y", "-64", 0);
+    scr_chathud_font = Cvar_Get("scr_chathud_font", "1", CVAR_ARCHIVE);
+    scr_chathud_size = Cvar_Get("scr_chathud_size", "12", CVAR_ARCHIVE);
 
     scr_lag_draw_scale = Cvar_Get("scr_lag_draw_scale", "1", 0);
     scr_lag_draw_scale->changed = scr_lag_draw_scale_changed;

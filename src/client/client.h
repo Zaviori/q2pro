@@ -1049,6 +1049,10 @@ void    SCR_AddNetgraph(void);
 float   SCR_FadeAlpha(unsigned startTime, unsigned visTime, unsigned fadeTime);
 int     SCR_DrawStringEx(int x, int y, int flags, size_t maxlen, const char *s, qhandle_t font);
 void    SCR_DrawStringMulti(int x, int y, int flags, size_t maxlen, const char *s, qhandle_t font);
+// TrueType text in place of a conchars line; see screen.c
+#define SCR_TEXT_ALT    MakeColor(140, 230, 140, 255)   // the conchars' green half
+int     SCR_DrawTextCell(int x, int y, int cellh, int flags, int tflags, float size,
+                         uint32_t color, const char *s, size_t maxlen);
 
 void    SCR_ClearChatHUD_f(void);
 void    SCR_AddToChatHUD(const char *text);
