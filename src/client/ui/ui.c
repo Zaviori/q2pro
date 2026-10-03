@@ -424,6 +424,7 @@ void UI_Draw(unsigned realtime)
 
     R_ClearColor();
     R_SetScale(uis.scale);
+    R_TextMenu(true);
 
     if (1) {
         // draw top menu
@@ -462,6 +463,7 @@ void UI_Draw(unsigned realtime)
         S_StartLocalSound("misc/menu1.wav");
     }
 
+    R_TextMenu(false);
     R_ClearColor();
     R_SetScale(1.0f);
 }
