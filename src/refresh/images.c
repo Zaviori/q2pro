@@ -2017,6 +2017,10 @@ static image_t *find_or_load_image(const char *name, size_t len,
         IMG_Load(&temporary, pic);
         image->texnum2 = temporary.texnum;
     } else {
+        // the TrueType text takes its letter colours from the charset
+        if (type == IT_FONT && !Q_strncasecmp(image->name, "pics/conchars.", 14))
+            Text_SampleCharset(pic, image->upload_width, image->upload_height);
+
         // upload the image
         IMG_Load(image, pic);
     }

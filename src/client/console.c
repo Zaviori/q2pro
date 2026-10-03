@@ -760,6 +760,36 @@ static void Con_DrawNotifyText(int v, int row, float alpha, float size, int lh)
                      line->text + line->ts_len, w);
 }
 
+// The chat input under the notify lines in the TrueType font: the prompt,
+// the line scrolled the way IF_Draw scrolls it, and the cursor after the
+// measured text before it - the overstrike block is conchars' own picture
+static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
+{
+    const inputField_t *f = &con.chatPrompt.inputLine;
+    size_t cursor = f->cursorPos, offset = 0;
+
+    R_ClearColor();
+    R_SetAlpha(1);
+    int x = SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, 0, TEXT_SHADOW, size,
+                             U32_WHITE, prompt, MAX_STRING_CHARS);
+    x += Q_rint(size * 0.4f);
+
+    if (!f->maxChars || !f->visibleChars)
+        return;
+    if (cursor >= f->visibleChars) {
+        cursor = f->visibleChars - 1;
+        offset = f->cursorPos - cursor;
+    }
+
+    SCR_DrawTextCell(x, v, lh, 0, TEXT_SHADOW, size, U32_WHITE,
+                     f->text + offset, f->visibleChars);
+    if (com_localTime & BIT(8)) {
+        int cx = x + R_MeasureText(TEXT_SHADOW, size, f->text + offset, cursor);
+        SCR_DrawTextCell(cx, v, lh, 0, TEXT_SHADOW, size, U32_WHITE,
+                         Key_GetOverstrikeMode() ? "\x0b" : "_", 1);
+    }
+}
+
 #define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
 
 /*
@@ -832,9 +862,13 @@ static void Con_DrawNotify(void)
             skip = 5;
         }
 
+        con.chatPrompt.inputLine.visibleChars = con.linewidth - skip + 1;
+        if (ttf) {
+            Con_DrawChatInputText(v, text, size, lh);
+            return;
+        }
         R_DrawString(CONCHAR_WIDTH, v, 0, MAX_STRING_CHARS, text,
                      con.charsetImage);
-        con.chatPrompt.inputLine.visibleChars = con.linewidth - skip + 1;
         IF_Draw(&con.chatPrompt.inputLine, skip * CONCHAR_WIDTH, v,
                 UI_DRAWCURSOR, con.charsetImage);
     }

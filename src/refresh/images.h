@@ -95,6 +95,9 @@ image_t *IMG_ForHandle(qhandle_t h);
 void IMG_Unload(image_t *image);
 void IMG_Load(image_t *image, byte *pic);
 
+// text.c: the TrueType text's letter colours, from conchars before upload
+void Text_SampleCharset(const byte *pic, int w, int h);
+
 typedef struct screenshot_s screenshot_t;
 
 typedef int (*save_cb_t)(const screenshot_t *);

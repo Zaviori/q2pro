@@ -29,7 +29,14 @@ A handful of sizes are kept; the least recently drawn one is dropped
 when a new size needs the slot.
 
 Strings are Quake strings: a byte with the high bit set is the alternate
-colour, drawn as its low-bit ASCII in the caller's alt colour.
+colour, drawn as its low-bit ASCII in the caller's alt colour. The control
+codes are no letters at all but the charset's own pictures - AQtion's
+conchars put a skull and a gun there, which the game's kill reports use -
+so those bytes are drawn from the conchars image, inline, scaled to the
+font's size. The charset colours some letters too (the brackets and
+parentheses AQtion's chat is full of are orange): each cell's colour is
+sampled when conchars loads, and a letter in the caller's colour takes it
+the way a conchar does, multiplied in.
 */
 
 #include "gl.h"
@@ -87,6 +94,7 @@ static cvar_t   *r_font;
 static cvar_t   *r_font_bold;
 
 static font_t       fonts[2];
+static uint32_t     text_tints[128];    // the charset's colour per cell, 0 = none
 static textsize_t   sizes[TEXT_SIZES];
 static unsigned     text_clock;
 
@@ -328,6 +336,94 @@ static inline int text_char(int c, bool *alt)
     return c;
 }
 
+/*
+Text_SampleCharset: called by the image loader with conchars' pixels just
+before upload. A cell whose opaque pixels average to a colour rather than
+a grey keeps that colour, its brightest channel raised to full; a white
+or grey letter keeps none, so plain text is not dimmed by its shading.
+Only the low half is sampled: high-bit letters take the caller's alt.
+*/
+void Text_SampleCharset(const byte *pic, int w, int h)
+{
+    int cw = w / 16, ch = h / 16;
+
+    memset(text_tints, 0, sizeof(text_tints));
+    if (cw < 1 || ch < 1)
+        return;
+
+    for (int c = 0; c < 128; c++) {
+        const byte *cell = pic + ((c >> 4) * ch * w + (c & 15) * cw) * 4;
+        float sum[3] = { 0 }, wsum = 0;
+
+        for (int y = 0; y < ch; y++) {
+            const byte *p = cell + y * w * 4;
+            for (int x = 0; x < cw; x++, p += 4) {
+                float a = p[3] / 255.0f;
+                sum[0] += p[0] * a;
+                sum[1] += p[1] * a;
+                sum[2] += p[2] * a;
+                wsum += a;
+            }
+        }
+        if (wsum < 1)
+            continue;
+
+        float r = sum[0] / wsum, g = sum[1] / wsum, b = sum[2] / wsum;
+        float hi = max(r, max(g, b)), lo = min(r, min(g, b));
+        if (hi < 1 || (hi - lo) / hi < 0.25f)
+            continue;   // a grey: no colour of its own
+
+        color_t t = { .u8 = { Q_rint(r * 255 / hi), Q_rint(g * 255 / hi),
+                              Q_rint(b * 255 / hi), 255 } };
+        text_tints[c] = t.u32;
+    }
+}
+
+// A letter's colour: the caller's, times the charset's for that cell
+static inline uint32_t text_tint(uint32_t color, int c)
+{
+    if (c >= 128 || !text_tints[c])
+        return color;
+
+    color_t a = { .u32 = color }, t = { .u32 = text_tints[c] };
+    for (int i = 0; i < 3; i++)
+        a.u8[i] = a.u8[i] * t.u8[i] / 255;
+    return a.u32;
+}
+
+// The conchars image the icons come from, looked up by name each string -
+// a hash hit once loaded, and never a handle gone stale across a map load
+static GLuint text_charset(void)
+{
+    qhandle_t h = R_RegisterFont("conchars");
+
+    return h ? IMG_ForHandle(h)->texnum : 0;
+}
+
+// A byte the font has no letter for but the charset has a picture: the
+// control codes, bar white space and the bold brackets Q_charascii turns
+// into [ and ]
+static inline bool text_icon(int c)
+{
+    int b = c & 127;
+
+    if (b == 127)
+        return true;
+    return b < 32 && b != 16 && b != 17 && !Q_isspace(c);
+}
+
+// An icon is a conchar cell a little under the font's pixel size, square,
+// with a sliver of room after it; in screen pixels
+static inline float text_icon_side(const textsize_t *ts)
+{
+    return floorf(ts->px * 0.9f + 0.5f);
+}
+
+static inline float text_icon_advance(const textsize_t *ts)
+{
+    return text_icon_side(ts) + max(1, ts->px / 12);
+}
+
 // Width in pixels of the screen, not virtual units
 static float text_width_px(textsize_t *ts, const char *s, size_t maxlen)
 {
@@ -337,6 +433,12 @@ static float text_width_px(textsize_t *ts, const char *s, size_t maxlen)
     bool alt;
 
     while (maxlen-- && *s) {
+        if (text_icon((byte)*s)) {
+            w += text_icon_advance(ts);
+            prev = 0;
+            s++;
+            continue;
+        }
         int c = text_char((byte)*s++, &alt);
         if (prev)
             w += stbtt_GetCodepointKernAdvance(&f->info, prev, c) * ts->scale;
@@ -415,6 +517,12 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
 
     float tw = 1.0f / TEXT_ATLAS_W, th = 1.0f / ts->atlas_h;
     int shadow = max(1, ts->px / 14);
+    // icons: their cell sits on the baseline, reaching a little below it
+    // the way the conchars do; drawn as they are, not in the text colour
+    GLuint charset = 0;
+    float icon = text_icon_side(ts);
+    float icon_y = floorf(base - icon * 0.85f + 0.5f);
+    uint32_t icon_color = text_scale_alpha(U32_WHITE, alpha);
 
     // Edges first, all of them, so no letter's outline covers its
     // neighbour's fill
@@ -425,6 +533,26 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
         size_t n = maxlen;
 
         for (const char *t = s; n-- && *t; ) {
+            if (text_icon((byte)*t)) {
+                int b = (byte)*t++;
+                if (!charset)
+                    charset = text_charset();
+                float gx = floorf(p + 0.5f);
+                float s1 = (b & 15) * 0.0625f, t1 = (b >> 4) * 0.0625f;
+
+                if (pass == 0)
+                    GL_TextQuad((gx + shadow) * sc, (icon_y + shadow) * sc,
+                                icon * sc, icon * sc, s1, t1,
+                                s1 + 0.0625f, t1 + 0.0625f, edge, charset);
+                else
+                    GL_TextQuad(gx * sc, icon_y * sc, icon * sc, icon * sc,
+                                s1, t1, s1 + 0.0625f, t1 + 0.0625f,
+                                icon_color, charset);
+                p += text_icon_advance(ts);
+                prev = 0;
+                continue;
+            }
+            int raw = (byte)*t;
             int c = text_char((byte)*t++, &is_alt);
             const glyph_t *g = &ts->glyphs[c - TEXT_FIRST];
 
@@ -451,7 +579,7 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                     GL_TextQuad(gx * sc, gy * sc, g->w * sc, g->h * sc,
                                    g->x * tw, g->y * th,
                                    (g->x + g->w) * tw, (g->y + g->h) * th,
-                                   is_alt ? alt : color, ts->texnum);
+                                   is_alt ? alt : text_tint(color, raw), ts->texnum);
                 }
             }
             p += g->advance;
