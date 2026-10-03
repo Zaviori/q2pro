@@ -566,9 +566,10 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
     // start; an unpadded lone field takes the caller's alignment.
     // padding is two spaces or more: AQtion wraps its buttons in single
     // spaces (" Play Online "), which centre like any other
+    // a lone string's trailing spaces are not taken for layout: the main
+    // menu pads a button or two and centres them like the rest
     bool padded = (uiflags & UI_CELLSTART) ||
-                  (n > 2 && ((buf[0] == ' ' && buf[1] == ' ') ||
-                             (buf[n - 1] == ' ' && buf[n - 2] == ' ')));
+                  (n > 2 && buf[0] == ' ' && buf[1] == ' ');
     int start[32], len[32], nf = 0;
     for (int i = 0; i < (int)n && nf < 32; ) {
         if (buf[i] == ' ') {

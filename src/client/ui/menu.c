@@ -61,20 +61,25 @@ Action_Draw
 */
 // A menu whose lines are padded with spaces to one length was laid out to
 // start in one column (AQtion's help menus): the font keeps every line,
-// the unpadded longest too, to its cells' start
+// the unpadded longest too, to its cells' start. Most of its lines must
+// be padded - the main menu pads a couple of buttons and is centred.
 static bool Menu_IsPadded(const menuFrameWork_t *m)
 {
+    int actions = 0, padded = 0;
+
     if (!m)
         return false;
     for (int i = 0; i < m->nitems; i++) {
         const menuCommon_t *item = m->items[i];
         const char *s = item->name;
         size_t len = s ? strlen(s) : 0;
-        if (item->type == MTYPE_ACTION && len > 1 &&
-            (s[len - 1] == ' ' && s[len - 2] == ' '))
-            return true;
+        if (item->type != MTYPE_ACTION || !len)
+            continue;
+        actions++;
+        if (len > 1 && s[len - 1] == ' ' && s[len - 2] == ' ')
+            padded++;
     }
-    return false;
+    return actions >= 3 && padded * 2 > actions;
 }
 
 static void Action_Draw(menuAction_t *a)
