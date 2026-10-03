@@ -391,6 +391,19 @@ static inline uint32_t text_tint(uint32_t color, int c)
     return a.u32;
 }
 
+// A letter's colour by the flags: TEXT_OWNTINT gives a letter the charset
+// colours that colour itself (the alpha the caller's) - a cyan line with
+// orange brackets - where the plain multiply would mix the two
+static inline uint32_t text_letter_color(int flags, uint32_t color, int c)
+{
+    if ((flags & TEXT_OWNTINT) && c < 128 && text_tints[c]) {
+        color_t t = { .u32 = text_tints[c] }, a = { .u32 = color };
+        t.u8[3] = a.u8[3];
+        return t.u32;
+    }
+    return text_tint(color, c);
+}
+
 // The conchars image the icons come from, looked up by name each string -
 // a hash hit once loaded, and never a handle gone stale across a map load
 static GLuint text_charset(void)
@@ -591,8 +604,8 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                     GL_TextQuad(gx * sc, gy * sc, g->w * sc, g->h * sc,
                                    g->x * tw, g->y * th,
                                    (g->x + g->w) * tw, (g->y + g->h) * th,
-                                   is_alt ? alt : (flags & TEXT_NOTINT) ? color :
-                                   text_tint(color, raw), ts->texnum);
+                                   is_alt ? alt : text_letter_color(flags, color, raw),
+                                   ts->texnum);
                 }
             }
             p += mono ? cell : g->advance;
