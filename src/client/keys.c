@@ -534,6 +534,9 @@ void Key_Init(void)
     K(TAB);
     K(ENTER);
 
+    // types < > | on ISO layouts
+    K(102ND);
+
     K(UPARROW);
     K(DOWNARROW);
     K(LEFTARROW);
