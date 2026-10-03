@@ -792,7 +792,23 @@ typedef struct {
     const char  *script;    // that menu, and any it opens
 } ui_extra_t;
 
+// Stainmaps: blood, bullet scars and scorch burned into the lightmap
+static const char ui_menu_stains[] =
+    "begin stains\n"
+    "title Stainmaps\n"
+    "toggle \"stainmaps\" gl_stainmaps\n"
+    "toggle \"gibs & heavy blood\" cl_stain_gibs\n"
+    "toggle \"bullet scars\" cl_stain_bullets\n"
+    "blank\n"
+    "range \"mark reach\" gl_stain_scale 1 10 0.5\n"
+    "range \"blood tint\" gl_stain_blood 120 255 5\n"
+    "range \"blood brightness\" gl_stain_blood_bright 0.3 1 0.05\n"
+    "range \"darkest mark\" gl_stain_darkness 0 0.5 0.05\n"
+    "range \"darkest floor\" gl_stain_floor 0 0.8 0.05\n"
+    "end\n";
+
 static const ui_extra_t ui_extras[] = {
+    { "Stainmaps", "stains", ui_menu_stains },
     { NULL }
 };
 
