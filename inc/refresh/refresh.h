@@ -242,6 +242,7 @@ void    R_DrawStretchPic(int x, int y, int w, int h, qhandle_t pic);
 bool    R_TextAvailable(void);
 void    R_TextMenu(bool on);    // the menus draw: r_ttf 2 text at r_ttf_menu_size
 int     R_TextMenuRow(void);    // a menu row tall enough for that text, or 0
+void    R_TextConchars(bool on);    // real conchars for now, whatever r_ttf says
 int     R_DrawText(int x, int y, int flags, float size, uint32_t color,
                    uint32_t alt, const char *s, size_t maxlen);
 int     R_MeasureText(int flags, float size, const char *s, size_t maxlen);

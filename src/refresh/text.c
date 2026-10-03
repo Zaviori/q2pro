@@ -499,6 +499,12 @@ void R_TextMenu(bool on)
     text_menu = on;
 }
 
+// A place whose own switch is off keeps the conchars under r_ttf 2
+void R_TextConchars(bool on)
+{
+    text_bypass = on;
+}
+
 // The height a menu or list row needs for r_ttf 2's text at the menu size,
 // in virtual units; 0 when conchars draw the menus
 int R_TextMenuRow(void)
