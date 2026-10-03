@@ -98,6 +98,8 @@ static uint32_t     text_tints[256];    // the charset's colour per cell, 0 = no
 static cvar_t       *r_ttf;
 static cvar_t       *r_ttf_size;
 static cvar_t       *r_ttf_cells;
+static cvar_t       *r_ttf_menu_size;
+static bool         text_menu;          // R_TextMenu: the menus are drawing
 static bool         text_bypass;        // the test panel's conchars sample
 static textsize_t   sizes[TEXT_SIZES];
 static unsigned     text_clock;
@@ -492,6 +494,11 @@ for conchars stand (or a letter per cell, r_ttf_cells). R_DrawString and R_DrawC
 are the conchars': a letter in the draw colour times the charset's colour
 for it, a high-bit letter in the alt slot times the charset's (green).
 */
+void R_TextMenu(bool on)
+{
+    text_menu = on;
+}
+
 bool Text_ReplacesConchars(void)
 {
     return r_ttf->integer >= 2 && !text_bypass && text_font(0) != NULL;
@@ -514,7 +521,8 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
     if (!n)
         return x;
 
-    float size = Cvar_ClampValue(r_ttf_size, 6, 16);
+    float size = text_menu ? Cvar_ClampValue(r_ttf_menu_size, 6, 24)
+                           : Cvar_ClampValue(r_ttf_size, 6, 16);
     int flags = TEXT_CHARSET;
     if ((uiflags & UI_DROPSHADOW) || gl_fontshadow->integer > 0)
         flags |= TEXT_SHADOW;
@@ -777,6 +785,8 @@ void Text_Init(void)
     r_ttf_size = Cvar_Get("r_ttf_size", "10", CVAR_ARCHIVE);
     // ...set at its own width (0), or a letter per conchar cell (1)
     r_ttf_cells = Cvar_Get("r_ttf_cells", "0", CVAR_ARCHIVE);
+    // the menus' text, larger than the rest: they have the screen to it
+    r_ttf_menu_size = Cvar_Get("r_ttf_menu_size", "14", CVAR_ARCHIVE);
 
     for (int i = 0; i < TEXT_SIZES; i++)
         sizes[i].font = -1;
