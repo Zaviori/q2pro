@@ -422,6 +422,13 @@ static void GL_DrawNullModel(void)
         VectorMA(e->origin, -16, glr.entaxis[0], points[0]);
         VectorMA(e->origin, -16, glr.entaxis[1], points[2]);
         VectorMA(e->origin, -16, glr.entaxis[2], points[4]);
+        // and the far ends, which the legacy path draws too: left unset
+        // they were stack garbage, often zero, so every model-less entity
+        // (AQtion has no smoke or flash model for bullet impacts) drew
+        // lines to the world origin
+        VectorMA(e->origin, 16, glr.entaxis[0], points[1]);
+        VectorMA(e->origin, 16, glr.entaxis[1], points[3]);
+        VectorMA(e->origin, 16, glr.entaxis[2], points[5]);
     //}
     //rekkie -- allow gl_showtris to show nodes points as a cross configuration -- e
 
