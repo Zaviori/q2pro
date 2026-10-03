@@ -603,6 +603,11 @@ static void legacy_key_event(WPARAM wParam, LPARAM lParam, bool down)
         return;
     }
 
+    // what the key types unshifted; dead keys come with the top bit set
+    UINT vk = MapVirtualKeyA(scancode, MAPVK_VSC_TO_VK);
+    UINT ch = MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0x7fffffff;
+    result = Key_LayoutKey(result, ch);
+
     Key_Event2(result, down, win.lastMsgTime);
 }
 
@@ -892,13 +897,23 @@ void Win_PumpEvents(void)
     MSG        msg;
 
     win.lastMsgTime = Sys_Milliseconds();
-    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+    // the wide calls get WM_CHAR, which TranslateMessage posts after the
+    // key press and composes dead keys for, in UTF-16 from the ANSI window
+    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
             Com_Quit(NULL, ERR_DISCONNECT);
             break;
         }
+        if (msg.message == WM_CHAR) {
+            // a surrogate pair is beyond the charset: one fallback for both
+            if (IS_HIGH_SURROGATE(msg.wParam))
+                Key_CharEvent(0x10000);
+            else if (!IS_LOW_SURROGATE(msg.wParam))
+                Key_CharEvent(msg.wParam);
+            continue;
+        }
         TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        DispatchMessageW(&msg);
     }
 
     if (win.mode_changed) {
@@ -983,6 +998,9 @@ void Win_Init(void)
         Com_Error(ERR_FATAL, "Couldn't get DC of the main window");
     }
 
+    // WM_CHAR is handled in Win_PumpEvents
+    Key_SetNativeLayout(true);
+
     // init gamma ramp
     if (vid_hwgamma->integer) {
         if (GetDeviceGammaRamp(win.dc, win.gamma_orig)) {
@@ -1003,6 +1021,8 @@ Win_Shutdown
 */
 void Win_Shutdown(void)
 {
+    Key_SetNativeLayout(false);
+
     if (win.flags & QVF_GAMMARAMP) {
         SetDeviceGammaRamp(win.dc, win.gamma_orig);
     }
