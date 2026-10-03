@@ -471,7 +471,8 @@ void Con_Init(void)
     con_text_font = Cvar_Get("con_text_font", "1", CVAR_ARCHIVE);
     con_text_size = Cvar_Get("con_text_size", "10", CVAR_ARCHIVE);
     // Colour the fight's messages: hits you land blue, damage you take
-    // red, the players' "Enemy Down" reports green; 0 leaves them be
+    // red, the players' kill reports ("Enemy Down", the skull) cyan;
+    // 0 leaves them be
     con_hitcolors = Cvar_Get("con_hitcolors", "1", CVAR_ARCHIVE);
     con_clock = Cvar_Get("con_clock", "0", 0);
     con_height = Cvar_Get("con_height", "0.5", 0);
@@ -710,12 +711,14 @@ DRAWING
 Con_HitColor: the colour con_hitcolors gives a line, or 0. The lines are
 the mod's own (g_combat.c, p_hud.c): "You hit X in the chest" and the
 helmet/vest notices go to the attacker, "Chest damage" and "Kevlar Vest
-absorbed..." to the one hit; "Enemy Down" is the players' team-chat
-report. A hit on a teammate keeps its colour.
+absorbed..." to the one hit. The players' team-chat kill reports are
+"Enemy Down" or carry the charset's skull (byte 6, typed into their
+binds: "(m4tic): 1 <skull> iK. MaggeR!"), and are drawn cyan to stand
+out of the chat. A hit on a teammate keeps its colour.
 */
 #define HIT_COLOR_GIVEN     MakeColor( 90, 160, 255, 255)
 #define HIT_COLOR_TAKEN     MakeColor(255,  90,  80, 255)
-#define HIT_COLOR_DOWN      MakeColor( 90, 230,  90, 255)
+#define HIT_COLOR_KILL      MakeColor( 80, 225, 235, 255)
 
 uint32_t Con_HitColor(const char *s, size_t len)
 {
@@ -733,8 +736,8 @@ uint32_t Con_HitColor(const char *s, size_t len)
         len--;
     buf[len] = 0;
 
-    if (Q_strcasestr(buf, "enemy down"))
-        return HIT_COLOR_DOWN;
+    if (Q_strcasestr(buf, "enemy down") || strchr(buf, 6))
+        return HIT_COLOR_KILL;      // a player's kill report
     if (!strncmp(buf, "You hit ", 8))
         return strncmp(buf, "You hit your TEAMMATE", 21) ? HIT_COLOR_GIVEN : 0;
     if (strstr(buf, " - AIM FOR THE "))
@@ -803,9 +806,11 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
         R_ClearColor();
         R_SetAlpha(alpha);
         // chat is prose, never a table: its runs of spaces are the
-        // players' own, so it is drawn as it comes
-        if (line->color == COLOR_ALT)
-            return SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, flags, TEXT_SHADOW,
+        // players' own, so it is drawn as it comes; so is a coloured
+        // line, that colour throughout
+        if (line->color == COLOR_ALT || hit)
+            return SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, flags,
+                                    TEXT_SHADOW | (hit ? TEXT_NOTINT : 0),
                                     size, color, s, w);
         return SCR_DrawTextGrid(x, v, CONCHAR_HEIGHT, flags, size, color, NULL, s, w);
     }
@@ -861,9 +866,11 @@ static void Con_DrawNotifyText(int v, int row, float alpha, float size, int lh)
         flags = 0;
     }
 
+    // a coloured line is that colour throughout, its brackets included
     R_ClearColor();
     R_SetAlpha(alpha);
-    SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, flags, TEXT_SHADOW, size, color,
+    SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, flags,
+                     TEXT_SHADOW | (hit ? TEXT_NOTINT : 0), size, color,
                      line->text + line->ts_len, w);
 }
 

@@ -247,6 +247,7 @@ void    R_DrawStretchPic(int x, int y, int w, int h, qhandle_t pic);
 #define TEXT_RIGHT      BIT(3)  // x is where the text ends
 #define TEXT_CENTER     BIT(4)  // x is its middle
 #define TEXT_MONO       BIT(5)  // each letter centred in a conchar cell
+#define TEXT_NOTINT     BIT(6)  // the colour as given, no charset colours
 bool    R_TextAvailable(void);
 int     R_DrawText(int x, int y, int flags, float size, uint32_t color,
                    uint32_t alt, const char *s, size_t maxlen);
