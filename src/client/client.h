@@ -1053,6 +1053,10 @@ void    SCR_DrawStringMulti(int x, int y, int flags, size_t maxlen, const char *
 #define SCR_TEXT_ALT    MakeColor(140, 230, 140, 255)   // the conchars' green half
 int     SCR_DrawTextCell(int x, int y, int cellh, int flags, int tflags, float size,
                          uint32_t color, const char *s, size_t maxlen);
+uint32_t Con_HitColor(const char *s, size_t len);    // con_hitcolors
+int     SCR_DrawTextGrid(int x, int y, int cellh, int flags, float size,
+                         uint32_t color, const char *align, const char *s,
+                         size_t maxlen);
 
 void    SCR_ClearChatHUD_f(void);
 void    SCR_AddToChatHUD(const char *text);

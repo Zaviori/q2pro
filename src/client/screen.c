@@ -105,6 +105,10 @@ static cvar_t   *scr_chathud_font;
 static cvar_t   *scr_chathud_size;
 static cvar_t   *scr_center_font;
 static cvar_t   *scr_center_size;
+static cvar_t   *scr_layout_font;
+static cvar_t   *scr_layout_size;
+static cvar_t   *scr_ghud_font;
+static cvar_t   *scr_ghud_size;
 
 static cvar_t   *xhair_dot;
 static cvar_t   *xhair_length;
@@ -252,6 +256,110 @@ int SCR_DrawTextCell(int x, int y, int cellh, int flags, int tflags, float size,
 
     y += (cellh - R_TextLineHeight(tflags, size)) / 2;
     return R_DrawText(x, y, tflags, size, color, alt, s, maxlen);
+}
+
+/*
+==============
+SCR_DrawTextGrid
+
+A space-padded conchars line - a scoreboard row, a console table - in the
+TrueType font with its columns kept. The line splits into fields at runs
+of two or more spaces - the padding of a table; a single space is inside
+a field, so prose ("M4 Assault Rifle", "11 of 536") holds together - and
+each field goes to the character column it has in the conchars line: a
+number aligned on its last column,
+anything else on its first, unless `align` says otherwise (a letter per
+field, 'l' or 'r', the last repeating). A left-aligned field is cut by
+measure to end before the next. A line of one field is just text: it is
+aligned as a whole by UI_CENTER / UI_RIGHT on x, by measure. Otherwise x
+is where the conchars line would start. Returns the x the text ends at.
+==============
+*/
+#define GRID_MAX_FIELDS 32
+
+static bool grid_numeric(const char *s, int len)
+{
+    if (len > 1 && (s[0] == '-' || s[0] == '+'))
+        s++, len--;
+    return len > 0 && Q_isdigit(s[0]);
+}
+
+int SCR_DrawTextGrid(int x, int y, int cellh, int flags, float size,
+                     uint32_t color, const char *align, const char *s,
+                     size_t maxlen)
+{
+    int start[GRID_MAX_FIELDS], len[GRID_MAX_FIELDS], n = 0;
+    int slen = (int)Q_strnlen(s, maxlen);
+    int nalign = align ? (int)strlen(align) : 0;
+    int colors = flags & (UI_XORCOLOR | UI_ALTCOLOR);
+    int end = x;
+
+    for (int i = 0; i < slen && n < GRID_MAX_FIELDS; ) {
+        if (s[i] == ' ') {
+            i++;
+            continue;
+        }
+        int j = i;
+        while (j < slen) {
+            if (s[j] != ' ') {
+                j++;
+                continue;
+            }
+            // a single space is part of the field
+            if (j + 1 < slen && s[j + 1] != ' ') {
+                j++;
+                continue;
+            }
+            break;
+        }
+        start[n] = i;
+        len[n] = j - i;
+        n++;
+        i = j;
+    }
+
+    if (n == 0)
+        return x;
+    if (n == 1 && !nalign) {
+        // plain text: its own measure, aligned as asked
+        int lead = start[0] * CONCHAR_WIDTH;
+        if ((flags & UI_CENTER) == UI_CENTER)
+            return SCR_DrawTextCell(x, y, cellh, colors | UI_CENTER, TEXT_SHADOW,
+                                    size, color, s + start[0], len[0]);
+        if (flags & UI_RIGHT)
+            return SCR_DrawTextCell(x, y, cellh, colors | UI_RIGHT, TEXT_SHADOW,
+                                    size, color, s + start[0], len[0]);
+        return SCR_DrawTextCell(x + lead, y, cellh, colors, TEXT_SHADOW,
+                                size, color, s + start[0], len[0]);
+    }
+
+    // where the conchars line would start
+    if ((flags & UI_CENTER) == UI_CENTER)
+        x -= slen * CONCHAR_WIDTH / 2;
+    else if (flags & UI_RIGHT)
+        x -= slen * CONCHAR_WIDTH;
+
+    for (int f = 0; f < n; f++) {
+        const char *fs = s + start[f];
+        bool right = nalign ? align[min(f, nalign - 1)] == 'r'
+                            : grid_numeric(fs, len[f]);
+        if (right) {
+            int fx = x + (start[f] + len[f]) * CONCHAR_WIDTH;
+            SCR_DrawTextCell(fx, y, cellh, colors | UI_RIGHT, TEXT_SHADOW, size,
+                             color, fs, len[f]);
+            end = max(end, fx);
+            continue;
+        }
+        int l = len[f];
+        if (f + 1 < n) {
+            int room = (start[f + 1] - start[f]) * CONCHAR_WIDTH - CONCHAR_WIDTH / 2;
+            while (l > 1 && R_MeasureText(TEXT_SHADOW, size, fs, l) > room)
+                l--;
+        }
+        end = max(end, SCR_DrawTextCell(x + start[f] * CONCHAR_WIDTH, y, cellh,
+                                        colors, TEXT_SHADOW, size, color, fs, l));
+    }
+    return end;
 }
 
 
@@ -1159,12 +1267,23 @@ static void SCR_DrawChatHUD(void)
                 break;
         }
 
+        // con_hitcolors: an "Enemy Down" report in its own colour
+        uint32_t hit = Con_HitColor(line->text, strlen(line->text));
+        int lflags = hit ? flags & ~UI_ALTCOLOR : flags;
+
         R_SetAlpha(alpha * scr_alpha->value);
-        if (ttf)
-            SCR_DrawTextCell(x, y, rh, flags, TEXT_SHADOW, size, U32_WHITE,
-                             line->text, MAX_STRING_CHARS);
-        else
-            SCR_DrawString(x, y, flags, line->text);
+        if (ttf) {
+            SCR_DrawTextCell(x, y, rh, lflags, TEXT_SHADOW, size,
+                             hit ? hit : U32_WHITE, line->text, MAX_STRING_CHARS);
+        } else {
+            if (hit) {
+                R_SetColor(hit);
+                R_SetAlpha(alpha * scr_alpha->value);
+            }
+            SCR_DrawString(x, y, lflags, line->text);
+            if (hit)
+                R_ClearColor();
+        }
         R_SetAlpha(scr_alpha->value);
 
         y += step;
@@ -1587,6 +1706,14 @@ void SCR_Init(void)
     // pixel height in HUD units, a conchar being 8.
     scr_center_font = Cvar_Get("scr_center_font", "1", CVAR_ARCHIVE);
     scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
+    // The server's layouts - scoreboard, menus, the "Viewing" line - in
+    // the TrueType font; 10 has a conchar's cap height, so their 8-unit
+    // rows stand
+    scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
+    scr_layout_size = Cvar_Get("scr_layout_size", "10", CVAR_ARCHIVE);
+    // ...and the game's own HUD elements (ghud) the same way
+    scr_ghud_font = Cvar_Get("scr_ghud_font", "1", CVAR_ARCHIVE);
+    scr_ghud_size = Cvar_Get("scr_ghud_size", "10", CVAR_ARCHIVE);
     scr_demobar = Cvar_Get("scr_demobar", "1", 0);
     scr_font = Cvar_Get("scr_font", "conchars", 0);
     scr_font->changed = scr_font_changed;
@@ -1964,6 +2091,68 @@ static void SCR_DrawHealthBar(int x, int y, int value)
     R_DrawFill8(x + w, y, bar_width - w, h, 4);
 }
 
+/*
+A layout's string in the TrueType font: line by line, the space-padded
+columns of a scoreboard row kept by SCR_DrawTextGrid, a plain line aligned
+by its own measure. `color` is the layout's current one (its "color"
+command), 0 for none. In conchars, the string as the macros drew it.
+
+Layouts build a line out of strings placed side by side in conchar
+columns - "Viewing" and then the player's name 8 columns on - and a
+string in the font is shorter than its columns. So a left-aligned string
+that starts on the same row where the last one ended in conchars (or a
+column or two after) flows on from where the last one really ended.
+*/
+static struct {
+    bool    on;
+    int     y;
+    int     cend;   // where the last string ended in conchars
+    int     tend;   // ...and in the font
+} lay_flow;
+
+static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
+                             const char *s)
+{
+    if (!scr_layout_font->integer || !R_TextAvailable()) {
+        if ((flags & UI_CENTER) == UI_CENTER)
+            SCR_DrawStringMulti(x, y, flags, MAX_STRING_CHARS, s, scr.font_pic);
+        else
+            SCR_DrawStringEx(x, y, flags, MAX_STRING_CHARS, s, scr.font_pic);
+        return;
+    }
+
+    float size = Cvar_ClampValue(scr_layout_size, 6, 20);
+    uint32_t c = color ? color : U32_WHITE;
+    bool left = !(flags & UI_RIGHT);    // UI_CENTER includes UI_RIGHT
+
+    if (left && !strchr(s, '\n')) {
+        int cx = x, len = (int)strlen(s);
+        if (lay_flow.on && y == lay_flow.y && x >= lay_flow.cend &&
+            x - lay_flow.cend <= 2 * CONCHAR_WIDTH) {
+            int gap = (x - lay_flow.cend) / CONCHAR_WIDTH;
+            x = lay_flow.tend + gap * R_MeasureText(TEXT_SHADOW, size, " ", 1);
+        }
+        lay_flow.tend = SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, flags, size, c,
+                                         NULL, s, len);
+        lay_flow.cend = cx + len * CONCHAR_WIDTH;
+        lay_flow.y = y;
+        lay_flow.on = true;
+        return;
+    }
+
+    lay_flow.on = false;
+    while (*s) {
+        const char *nl = strchr(s, '\n');
+        size_t len = nl ? (size_t)(nl - s) : strlen(s);
+
+        SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, flags, size, c, NULL, s, len);
+        if (!nl)
+            break;
+        s = nl + 1;
+        y += CONCHAR_HEIGHT;
+    }
+}
+
 static void SCR_ExecuteLayoutString(const char *s)
 {
     char    buffer[MAX_QPATH];
@@ -1973,9 +2162,11 @@ static void SCR_ExecuteLayoutString(const char *s)
     int     width;
     int     index;
     clientinfo_t    *ci;
+    uint32_t        lay_color = 0;  // the "color" command's, for the font
 
     if (!s[0])
         return;
+    lay_flow.on = false;
 
     x = scr.hud_x;
     y = scr.hud_y;
@@ -2083,14 +2274,14 @@ static void SCR_ExecuteLayoutString(const char *s)
             token = COM_Parse(&s);
             time = Q_atoi(token);
 
-            HUD_DrawAltString(x + 32, y, ci->name);
-            HUD_DrawString(x + 32, y + CONCHAR_HEIGHT, "Score: ");
+            SCR_LayoutString(x + 32, y, UI_XORCOLOR, lay_color, ci->name);
+            SCR_LayoutString(x + 32, y + CONCHAR_HEIGHT, 0, lay_color, "Score: ");
             Q_snprintf(buffer, sizeof(buffer), "%i", score);
-            HUD_DrawAltString(x + 32 + 7 * CONCHAR_WIDTH, y + CONCHAR_HEIGHT, buffer);
+            SCR_LayoutString(x + 32 + 7 * CONCHAR_WIDTH, y + CONCHAR_HEIGHT, UI_XORCOLOR, lay_color, buffer);
             Q_snprintf(buffer, sizeof(buffer), "Ping:  %i", ping);
-            HUD_DrawString(x + 32, y + 2 * CONCHAR_HEIGHT, buffer);
+            SCR_LayoutString(x + 32, y + 2 * CONCHAR_HEIGHT, 0, lay_color, buffer);
             Q_snprintf(buffer, sizeof(buffer), "Time:  %i", time);
-            HUD_DrawString(x + 32, y + 3 * CONCHAR_HEIGHT, buffer);
+            SCR_LayoutString(x + 32, y + 3 * CONCHAR_HEIGHT, 0, lay_color, buffer);
 
             if (!ci->icon) {
                 ci = &cl.baseclientinfo;
@@ -2126,9 +2317,9 @@ static void SCR_ExecuteLayoutString(const char *s)
             Q_snprintf(buffer, sizeof(buffer), "%3d %3d %-12.12s",
                        score, ping, ci->name);
             if (value == cl.frame.clientNum) {
-                HUD_DrawAltString(x, y, buffer);
+                SCR_LayoutString(x, y, UI_XORCOLOR, lay_color, buffer);
             } else {
-                HUD_DrawString(x, y, buffer);
+                SCR_LayoutString(x, y, 0, lay_color, buffer);
             }
             continue;
         }
@@ -2225,53 +2416,53 @@ static void SCR_ExecuteLayoutString(const char *s)
             }
             token = cl.configstrings[index];
             if (!strcmp(cmd, "string"))
-                HUD_DrawString(x, y, token);
+                SCR_LayoutString(x, y, 0, lay_color, token);
             else if (!strcmp(cmd, "string2"))
-                HUD_DrawAltString(x, y, token);
+                SCR_LayoutString(x, y, UI_XORCOLOR, lay_color, token);
             else if (!strcmp(cmd, "cstring"))
-                HUD_DrawCenterString(x + 320 / 2, y, token);
+                SCR_LayoutString(x + 320 / 2, y, UI_CENTER, lay_color, token);
             else if (!strcmp(cmd, "cstring2"))
-                HUD_DrawAltCenterString(x + 320 / 2, y, token);
+                SCR_LayoutString(x + 320 / 2, y, UI_CENTER | UI_XORCOLOR, lay_color, token);
             else if (!strcmp(cmd, "rstring"))
-                HUD_DrawRightString(x, y, token);
+                SCR_LayoutString(x, y, UI_RIGHT, lay_color, token);
             else if (!strcmp(cmd, "rstring2"))
-                HUD_DrawAltRightString(x, y, token);
+                SCR_LayoutString(x, y, UI_RIGHT | UI_XORCOLOR, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "cstring")) {
             token = COM_Parse(&s);
-            HUD_DrawCenterString(x + 320 / 2, y, token);
+            SCR_LayoutString(x + 320 / 2, y, UI_CENTER, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "cstring2")) {
             token = COM_Parse(&s);
-            HUD_DrawAltCenterString(x + 320 / 2, y, token);
+            SCR_LayoutString(x + 320 / 2, y, UI_CENTER | UI_XORCOLOR, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "string")) {
             token = COM_Parse(&s);
-            HUD_DrawString(x, y, token);
+            SCR_LayoutString(x, y, 0, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "string2")) {
             token = COM_Parse(&s);
-            HUD_DrawAltString(x, y, token);
+            SCR_LayoutString(x, y, UI_XORCOLOR, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "rstring")) {
             token = COM_Parse(&s);
-            HUD_DrawRightString(x, y, token);
+            SCR_LayoutString(x, y, UI_RIGHT, lay_color, token);
             continue;
         }
 
         if (!strcmp(token, "rstring2")) {
             token = COM_Parse(&s);
-            HUD_DrawAltRightString(x, y, token);
+            SCR_LayoutString(x, y, UI_RIGHT | UI_XORCOLOR, lay_color, token);
             continue;
         }
 
@@ -2303,6 +2494,9 @@ static void SCR_ExecuteLayoutString(const char *s)
             if (SCR_ParseColor(token, &color)) {
                 color.u8[3] *= scr_alpha->value;
                 R_SetColor(color.u32);
+                // the TrueType text takes the colour itself; the alpha
+                // is already the draw colour's
+                lay_color = color.u32 | MakeColor(0, 0, 0, 255);
             }
             continue;
         }
@@ -2321,7 +2515,7 @@ static void SCR_ExecuteLayoutString(const char *s)
                 Com_Error(ERR_DROP, "%s: invalid string index", __func__);
             }
 
-            HUD_DrawCenterString(x + 320 / 2, y, cl.configstrings[index]);
+            SCR_LayoutString(x + 320 / 2, y, UI_CENTER, lay_color, cl.configstrings[index]);
             SCR_DrawHealthBar(x + 320 / 2, y + CONCHAR_HEIGHT + 4, value & 0xff);
             SCR_DrawHealthBar(x + 320 / 2, y + CONCHAR_HEIGHT + 12, (value >> 8) & 0xff);
             continue;
@@ -2647,6 +2841,21 @@ static void SCR_DrawGhudElement(ghud_element_t *element, float alpha_base, color
     case GHT_TEXT:;
         int length = strlen(element->text);
         int uiflags = element->size[0] | (element->size[1] << 16);
+        if (scr_ghud_font->integer && R_TextAvailable()) {
+            // the font: aligned on x by measure (a padded line by its
+            // conchars columns), the game's vertical placement kept
+            int align = uiflags & UI_CENTER;
+            if ((uiflags & UI_MIDDLE) == UI_MIDDLE)
+                y -= (length * CONCHAR_HEIGHT * 0.5);
+            else if (uiflags & UI_BOTTOM)
+                y -= (length * CONCHAR_HEIGHT);
+            uiflags &= UI_ALTCOLOR | UI_XORCOLOR;
+            SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, uiflags | align,
+                             Cvar_ClampValue(scr_ghud_size, 6, 20),
+                             color_base.u32 | MakeColor(0, 0, 0, 255), NULL,
+                             element->text, MAX_STRING_CHARS);
+            break;
+        }
         if ((uiflags & UI_CENTER) == UI_CENTER)
             x -= (length * CONCHAR_WIDTH * 0.5);
         else if (uiflags & UI_RIGHT)
