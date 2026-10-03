@@ -1707,9 +1707,8 @@ void SCR_Init(void)
     scr_center_font = Cvar_Get("scr_center_font", "1", CVAR_ARCHIVE);
     scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
     // The server's layouts - scoreboard, menus, the "Viewing" line - in
-    // the TrueType font: 1 keeps the mod's columns - the name flows, each
-    // column word ends where the mod's does (SCR_LayoutWords); 2 is proportional, the
-    // columns guessed from the spacing. 10 has a conchar's cap height,
+    // the TrueType font with the mod's columns kept (SCR_LayoutWords); 0
+    // is the conchars, even under r_ttf 2. 10 has a conchar's cap height,
     // so their 8-unit rows stand
     scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
     scr_layout_size = Cvar_Get("scr_layout_size", "10", CVAR_ARCHIVE);
@@ -2126,20 +2125,25 @@ sit over their columns, a captain's "2C" lines up with the team digits.
 */
 #define LAY_MAX_COLS    32
 static int  lay_cols[LAY_MAX_COLS];
+static int  lay_hits[LAY_MAX_COLS];     // how many lines end a number there
 static int  lay_ncols;
 
-static bool lay_numeric(const char *w, size_t len)
+// The digits a word starts with: "1C" is a team digit and a captain mark
+static size_t lay_digits(const char *w, size_t len)
 {
-    if (len > 1 && (w[0] == '-' || w[0] == '+'))
-        w++, len--;
-    return len && Q_isdigit(w[0]);
+    size_t n = (len > 1 && (w[0] == '-' || w[0] == '+')) ? 1 : 0;
+    size_t d = n;
+    while (d < len && (Q_isdigit(w[d]) || w[d] == '.' || w[d] == '%'))
+        d++;
+    return d > n ? d : 0;
 }
 
+// A column: numbers end there on two lines or more ("..and 2 more" is text)
 static bool lay_is_col(int x)
 {
     for (int i = 0; i < lay_ncols; i++)
         if (lay_cols[i] == x)
-            return true;
+            return lay_hits[i] > 1;
     return false;
 }
 
@@ -2153,9 +2157,18 @@ static void lay_add_cols(int x, const char *s)
         size_t j = i;
         while (j < len && s[j] != ' ' && s[j] != '\n')
             j++;
-        int end = x + (int)j * CONCHAR_WIDTH;
-        if (lay_numeric(s + i, j - i) && !lay_is_col(end) && lay_ncols < LAY_MAX_COLS)
-            lay_cols[lay_ncols++] = end;
+        size_t d = lay_digits(s + i, j - i);
+        if (d) {
+            int end = x + (int)(i + d) * CONCHAR_WIDTH, k;
+            for (k = 0; k < lay_ncols && lay_cols[k] != end; k++)
+                ;
+            if (k < lay_ncols)
+                lay_hits[k]++;
+            else if (lay_ncols < LAY_MAX_COLS) {
+                lay_cols[lay_ncols] = end;
+                lay_hits[lay_ncols++] = 1;
+            }
+        }
         i = j;
     }
 }
@@ -2194,7 +2207,9 @@ static bool lay_has_cols(int x, const char *s, size_t len)
         size_t j = i;
         while (j < len && s[j] != ' ')
             j++;
-        if (lay_numeric(s + i, j - i) || lay_is_col(x + (int)j * CONCHAR_WIDTH))
+        size_t d = lay_digits(s + i, j - i);
+        if ((d && lay_is_col(x + (int)(i + d) * CONCHAR_WIDTH)) ||
+            lay_is_col(x + (int)j * CONCHAR_WIDTH))
             return true;
         i = j;
     }
@@ -2223,11 +2238,23 @@ static void SCR_LayoutWords(int x, int y, int flags, float size, uint32_t color,
         while (j < len && s[j] != ' ')
             j++;
         int end = x + (int)j * CONCHAR_WIDTH;
+        size_t d = lay_digits(s + i, j - i);
+        int dend = x + (int)(i + d) * CONCHAR_WIDTH;
 
-        if (lay_numeric(s + i, j - i) || lay_is_col(end)) {
+        if (d && lay_is_col(dend)) {
+            // a number in its column; a mark after its digits ("1C", "2S")
+            // follows them, the digits lined up with the rest
+            SCR_DrawTextCell(dend, y, CONCHAR_HEIGHT, colors | UI_RIGHT,
+                             TEXT_SHADOW, size, color, s + i, d);
+            if (d < j - i)
+                SCR_DrawTextCell(dend, y, CONCHAR_HEIGHT, colors, TEXT_SHADOW,
+                                 size, color, s + i + d, j - i - d);
+            last = 0;       // a phrase starts afresh after a column
+        } else if (lay_is_col(end)) {
+            // a caption word over a column
             SCR_DrawTextCell(end, y, CONCHAR_HEIGHT, colors | UI_RIGHT, TEXT_SHADOW,
                              size, color, s + i, j - i);
-            last = 0;       // a phrase starts afresh after a column
+            last = 0;
         } else {
             // one space after the last word: the phrase goes on; else a new
             // one starts in this word's cell
@@ -2244,10 +2271,13 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
                              const char *s)
 {
     if (!scr_layout_font->integer || !R_TextAvailable()) {
+        // off: the real conchars, even where r_ttf 2 replaces the rest
+        R_TextConchars(true);
         if ((flags & UI_CENTER) == UI_CENTER)
             SCR_DrawStringMulti(x, y, flags, MAX_STRING_CHARS, s, scr.font_pic);
         else
             SCR_DrawStringEx(x, y, flags, MAX_STRING_CHARS, s, scr.font_pic);
+        R_TextConchars(false);
         return;
     }
 
@@ -2262,8 +2292,7 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
         x0 -= (int)strlen(s) * CONCHAR_WIDTH / 2;
     else if (flags & UI_RIGHT)
         x0 -= (int)strlen(s) * CONCHAR_WIDTH;
-    if (scr_layout_font->integer == 1 &&
-        (strchr(s, '\n') || lay_has_cols(x0, s, strlen(s)))) {
+    if (strchr(s, '\n') || lay_has_cols(x0, s, strlen(s))) {
         while (*s) {
             const char *nl = strchr(s, '\n');
             size_t len = nl ? (size_t)(nl - s) : strlen(s);
@@ -2319,7 +2348,7 @@ static void SCR_ExecuteLayoutString(const char *s)
     if (!s[0])
         return;
     lay_flow.on = false;
-    if (scr_layout_font->integer == 1 && R_TextAvailable())
+    if (scr_layout_font->integer && R_TextAvailable())
         SCR_ScanLayoutColumns(s);
 
     x = scr.hud_x;

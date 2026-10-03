@@ -807,7 +807,7 @@ static const char ui_menu_ttf[] =
     "range \"chat hud size\" scr_chathud_size 8 24 1\n"
     "toggle \"centre prints\" scr_center_font\n"
     "range \"centre print size\" scr_center_size 8 32 1\n"
-    "pairs \"scoreboard & mod menus\" scr_layout_font off 0 aligned 1 proportional 2\n"
+    "toggle \"scoreboard & mod menus\" scr_layout_font\n"
     "range \"scoreboard size\" scr_layout_size 8 16 1\n"
     "toggle \"console\" con_text_font\n"
     "range \"console size\" con_text_size 8 16 1\n"
