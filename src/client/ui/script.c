@@ -609,23 +609,16 @@ static void Parse_Banner(menuFrameWork_t *menu)
     }
 }
 
-static bool Parse_File(const char *path, int depth)
+static bool Parse_File(const char *path, int depth);
+
+// One script in a writable buffer, which this takes apart: a file's, or
+// one of the menus built into the client (UI_LoadExtras)
+static void Parse_Script(char *data, int depth)
 {
-    char *raw, *data, *p, *cmd;
+    char *p, *cmd;
     int argc;
     menuFrameWork_t *menu = NULL;
-    int ret;
 
-    ret = FS_LoadFile(path, (void **)&raw);
-    if (!raw) {
-        if (ret != Q_ERR(ENOENT) || depth) {
-            Com_WPrintf("Couldn't %s %s: %s\n", depth ? "include" : "load",
-                        path, Q_ErrorString(ret));
-        }
-        return false;
-    }
-
-    data = raw;
     COM_Compress(data);
 
     while (*data) {
@@ -753,17 +746,107 @@ static bool Parse_File(const char *path, int depth)
         data = p + 1;
     }
 
-    FS_FreeFile(raw);
-
     if (menu) {
         Com_WPrintf("Menu entry without 'end' terminator\n");
         menu->free(menu);
     }
+}
 
+static bool Parse_File(const char *path, int depth)
+{
+    char *raw;
+    int ret;
+
+    ret = FS_LoadFile(path, (void **)&raw);
+    if (!raw) {
+        if (ret != Q_ERR(ENOENT) || depth) {
+            Com_WPrintf("Couldn't %s %s: %s\n", depth ? "include" : "load",
+                        path, Q_ErrorString(ret));
+        }
+        return false;
+    }
+
+    Parse_Script(raw, depth);
+    FS_FreeFile(raw);
     return true;
+}
+
+/*
+==============================================================================
+
+EXTRAS
+
+The client's own settings, in menus built into it: the menu file comes
+with the game's data (AQtion's q2pro.menu is in its pak), which this
+client does not ship. Each feature adds a ui_extras entry - its line in
+the Extras menu and its menus in the script language - and "Extras" is
+appended to the game's settings menu (AQtion's "settings", q2pro's
+"options").
+
+==============================================================================
+*/
+
+typedef struct {
+    const char  *label;     // its line in the Extras menu
+    const char  *menu;      // the menu that line opens
+    const char  *script;    // that menu, and any it opens
+} ui_extra_t;
+
+static const ui_extra_t ui_extras[] = {
+    { NULL }
+};
+
+static void Parse_Builtin(const char *script)
+{
+    char *s = UI_CopyString(script);
+
+    Parse_Script(s, 0);
+    Z_Free(s);
+}
+
+static void UI_LoadExtras(void)
+{
+    char buf[MAX_STRING_CHARS];
+    size_t len;
+    menuFrameWork_t *menu;
+
+    if (!ui_extras[0].label)
+        return;
+
+    for (const ui_extra_t *e = ui_extras; e->label; e++)
+        Parse_Builtin(e->script);
+
+    len = Q_strlcpy(buf, "begin extras\ntitle Extras\n", sizeof(buf));
+    for (const ui_extra_t *e = ui_extras; e->label && len < sizeof(buf); e++)
+        len += Q_snprintf(buf + len, sizeof(buf) - len,
+                          "action \"%s\" pushmenu %s\n", e->label, e->menu);
+    if (len < sizeof(buf))
+        Q_strlcat(buf, "end\n", sizeof(buf));
+    Parse_Builtin(buf);
+
+    // and its line in the game's settings, once
+    menu = UI_FindMenu("settings");
+    if (!menu)
+        menu = UI_FindMenu("options");
+    if (!menu)
+        return;
+    for (int i = 0; i < menu->nitems; i++) {
+        menuCommon_t *item = menu->items[i];
+        if (item->type == MTYPE_ACTION && item->name && !strcmp(item->name, "Extras"))
+            return;
+    }
+
+    menuAction_t *a = UI_Mallocz(sizeof(*a));
+    a->generic.type = MTYPE_ACTION;
+    a->generic.name = UI_CopyString("Extras");
+    a->generic.activate = Activate;
+    a->generic.uiFlags = UI_CENTER;
+    a->cmd = UI_CopyString("pushmenu extras");
+    Menu_AddItem(menu, a);
 }
 
 void UI_LoadScript(void)
 {
     Parse_File("q2pro.menu", 0);
+    UI_LoadExtras();
 }
