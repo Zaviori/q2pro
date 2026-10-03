@@ -591,7 +591,8 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                     GL_TextQuad(gx * sc, gy * sc, g->w * sc, g->h * sc,
                                    g->x * tw, g->y * th,
                                    (g->x + g->w) * tw, (g->y + g->h) * th,
-                                   is_alt ? alt : text_tint(color, raw), ts->texnum);
+                                   is_alt ? alt : (flags & TEXT_NOTINT) ? color :
+                                   text_tint(color, raw), ts->texnum);
                 }
             }
             p += mono ? cell : g->advance;

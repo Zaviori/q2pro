@@ -1273,8 +1273,8 @@ static void SCR_DrawChatHUD(void)
 
         R_SetAlpha(alpha * scr_alpha->value);
         if (ttf) {
-            SCR_DrawTextCell(x, y, rh, lflags, TEXT_SHADOW, size,
-                             hit ? hit : U32_WHITE, line->text, MAX_STRING_CHARS);
+            SCR_DrawTextCell(x, y, rh, lflags, TEXT_SHADOW | (hit ? TEXT_NOTINT : 0),
+                             size, hit ? hit : U32_WHITE, line->text, MAX_STRING_CHARS);
         } else {
             if (hit) {
                 R_SetColor(hit);
