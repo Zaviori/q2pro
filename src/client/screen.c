@@ -1707,8 +1707,8 @@ void SCR_Init(void)
     scr_center_font = Cvar_Get("scr_center_font", "1", CVAR_ARCHIVE);
     scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
     // The server's layouts - scoreboard, menus, the "Viewing" line - in
-    // the TrueType font: 1 sets each letter in its conchar cell, so every
-    // column and caption is where the mod put it; 2 is proportional, the
+    // the TrueType font: 1 keeps the mod's columns - the name flows, each
+    // column word ends where the mod's does (SCR_LayoutWords); 2 is proportional, the
     // columns guessed from the spacing. 10 has a conchar's cap height,
     // so their 8-unit rows stand
     scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
@@ -2113,6 +2113,133 @@ static struct {
     int     tend;   // ...and in the font
 } lay_flow;
 
+/*
+The mod's columns, for the font. A scoreboard is a run of strings like
+"%-15s %3d %3d %3s" under "Name            Frg Tim Png": the caption words
+end where the numbers under them end, and nothing in the caption's own
+string says so. So before a layout is drawn its strings are scanned for
+where their numbers end (lay_cols, screen x of the cell after the last
+digit); then a word that is a number, or ends on such a column, is
+right-aligned to its end, and the words between them flow as text from
+the cell the first one starts in - a name reads as a name, the captions
+sit over their columns, a captain's "2C" lines up with the team digits.
+*/
+#define LAY_MAX_COLS    32
+static int  lay_cols[LAY_MAX_COLS];
+static int  lay_ncols;
+
+static bool lay_numeric(const char *w, size_t len)
+{
+    if (len > 1 && (w[0] == '-' || w[0] == '+'))
+        w++, len--;
+    return len && Q_isdigit(w[0]);
+}
+
+static bool lay_is_col(int x)
+{
+    for (int i = 0; i < lay_ncols; i++)
+        if (lay_cols[i] == x)
+            return true;
+    return false;
+}
+
+static void lay_add_cols(int x, const char *s)
+{
+    for (size_t i = 0, len = strlen(s); i < len; ) {
+        if (s[i] == ' ' || s[i] == '\n') {
+            i++;
+            continue;
+        }
+        size_t j = i;
+        while (j < len && s[j] != ' ' && s[j] != '\n')
+            j++;
+        int end = x + (int)j * CONCHAR_WIDTH;
+        if (lay_numeric(s + i, j - i) && !lay_is_col(end) && lay_ncols < LAY_MAX_COLS)
+            lay_cols[lay_ncols++] = end;
+        i = j;
+    }
+}
+
+// The scan: x as SCR_ExecuteLayoutString keeps it, the plain strings
+static void SCR_ScanLayoutColumns(const char *s)
+{
+    int x = scr.hud_x;
+    char *token;
+
+    lay_ncols = 0;
+    while (s) {
+        token = COM_Parse(&s);
+        if (!*token && !s)
+            break;
+        if (!strcmp(token, "xl")) {
+            x = Q_atoi(COM_Parse(&s));
+        } else if (!strcmp(token, "xr")) {
+            x = scr.hud_width + Q_atoi(COM_Parse(&s));
+        } else if (!strcmp(token, "xv")) {
+            x = scr.hud_width / 2 - 160 + Q_atoi(COM_Parse(&s));
+        } else if (!strcmp(token, "string") || !strcmp(token, "string2")) {
+            lay_add_cols(x, COM_Parse(&s));
+        }
+    }
+}
+
+// Does the line hold a column - a number, or a word ending on one?
+static bool lay_has_cols(int x, const char *s, size_t len)
+{
+    for (size_t i = 0; i < len; ) {
+        if (s[i] == ' ') {
+            i++;
+            continue;
+        }
+        size_t j = i;
+        while (j < len && s[j] != ' ')
+            j++;
+        if (lay_numeric(s + i, j - i) || lay_is_col(x + (int)j * CONCHAR_WIDTH))
+            return true;
+        i = j;
+    }
+    return false;
+}
+
+static void SCR_LayoutWords(int x, int y, int flags, float size, uint32_t color,
+                            const char *s, size_t len)
+{
+    int colors = flags & (UI_XORCOLOR | UI_ALTCOLOR);
+    int space = R_MeasureText(TEXT_SHADOW, size, " ", 1);
+    int pen = 0;            // where the running phrase's text has reached
+    size_t last = 0;        // the cell the last word ended in, 0 for none
+
+    if ((flags & UI_CENTER) == UI_CENTER)
+        x -= (int)len * CONCHAR_WIDTH / 2;
+    else if (flags & UI_RIGHT)
+        x -= (int)len * CONCHAR_WIDTH;
+
+    for (size_t i = 0; i < len; ) {
+        if (s[i] == ' ') {
+            i++;
+            continue;
+        }
+        size_t j = i;
+        while (j < len && s[j] != ' ')
+            j++;
+        int end = x + (int)j * CONCHAR_WIDTH;
+
+        if (lay_numeric(s + i, j - i) || lay_is_col(end)) {
+            SCR_DrawTextCell(end, y, CONCHAR_HEIGHT, colors | UI_RIGHT, TEXT_SHADOW,
+                             size, color, s + i, j - i);
+            last = 0;       // a phrase starts afresh after a column
+        } else {
+            // one space after the last word: the phrase goes on; else a new
+            // one starts in this word's cell
+            int wx = (last && i == last + 1) ? pen + space : x + (int)i * CONCHAR_WIDTH;
+            pen = SCR_DrawTextCell(wx, y, CONCHAR_HEIGHT, colors, TEXT_SHADOW,
+                                   size, color, s + i, j - i);
+            last = j;
+        }
+        i = j;
+    }
+}
+
 static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
                              const char *s)
 {
@@ -2128,14 +2255,20 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
     uint32_t c = color ? color : U32_WHITE;
     bool left = !(flags & UI_RIGHT);    // UI_CENTER includes UI_RIGHT
 
-    // a letter per conchar cell: the conchars layout, exactly, in the font
-    if (scr_layout_font->integer == 1) {
+    // the mod's columns kept (SCR_LayoutWords); a line without columns is
+    // text, and flows on from the string before it as below
+    int x0 = x;     // where the conchars line starts
+    if ((flags & UI_CENTER) == UI_CENTER)
+        x0 -= (int)strlen(s) * CONCHAR_WIDTH / 2;
+    else if (flags & UI_RIGHT)
+        x0 -= (int)strlen(s) * CONCHAR_WIDTH;
+    if (scr_layout_font->integer == 1 &&
+        (strchr(s, '\n') || lay_has_cols(x0, s, strlen(s)))) {
         while (*s) {
             const char *nl = strchr(s, '\n');
             size_t len = nl ? (size_t)(nl - s) : strlen(s);
 
-            SCR_DrawTextCell(x, y, CONCHAR_HEIGHT, flags, TEXT_SHADOW | TEXT_MONO,
-                             size, c, s, len);
+            SCR_LayoutWords(x, y, flags, size, c, s, len);
             if (!nl)
                 break;
             s = nl + 1;
@@ -2186,6 +2319,8 @@ static void SCR_ExecuteLayoutString(const char *s)
     if (!s[0])
         return;
     lay_flow.on = false;
+    if (scr_layout_font->integer == 1 && R_TextAvailable())
+        SCR_ScanLayoutColumns(s);
 
     x = scr.hud_x;
     y = scr.hud_y;
