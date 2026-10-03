@@ -807,10 +807,10 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
         R_SetAlpha(alpha);
         // chat is prose, never a table: its runs of spaces are the
         // players' own, so it is drawn as it comes; so is a coloured
-        // line, that colour throughout
+        // line, the charset's coloured letters keeping their colour
         if (line->color == COLOR_ALT || hit)
             return SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, flags,
-                                    TEXT_SHADOW | (hit ? TEXT_NOTINT : 0),
+                                    TEXT_SHADOW | (hit ? TEXT_OWNTINT : 0),
                                     size, color, s, w);
         return SCR_DrawTextGrid(x, v, CONCHAR_HEIGHT, flags, size, color, NULL, s, w);
     }
@@ -866,11 +866,12 @@ static void Con_DrawNotifyText(int v, int row, float alpha, float size, int lh)
         flags = 0;
     }
 
-    // a coloured line is that colour throughout, its brackets included
+    // a coloured line takes its colour, the charset's coloured letters
+    // (the brackets) keeping theirs
     R_ClearColor();
     R_SetAlpha(alpha);
     SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, flags,
-                     TEXT_SHADOW | (hit ? TEXT_NOTINT : 0), size, color,
+                     TEXT_SHADOW | (hit ? TEXT_OWNTINT : 0), size, color,
                      line->text + line->ts_len, w);
 }
 
