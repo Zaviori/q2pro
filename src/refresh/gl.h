@@ -939,6 +939,14 @@ typedef struct {
 extern tesselator_t tess;
 
 void GL_Flush2D(void);
+void GL_TextQuad(float x, float y, float w, float h,
+                 float s1, float t1, float s2, float t2,
+                 uint32_t color, GLuint texnum);
+
+// text.c
+void Text_Init(void);
+void Text_Shutdown(bool total);
+void Text_DrawTest(void);
 void GL_DrawParticles(void);
 void GL_DrawBeams(void);
 void GL_DrawFlares(void);

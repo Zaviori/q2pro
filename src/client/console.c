@@ -85,6 +85,8 @@ static console_t    con;
 
 static cvar_t   *con_notifytime;
 static cvar_t   *con_notifylines;
+static cvar_t   *con_notify_font;
+static cvar_t   *con_notify_size;
 static cvar_t   *con_clock;
 static cvar_t   *con_height;
 static cvar_t   *con_speed;
@@ -455,6 +457,11 @@ void Con_Init(void)
     con_notifytime->changed = cl_timeout_changed;
     con_notifytime->changed(con_notifytime);
     con_notifylines = Cvar_Get("con_notifylines", "4", 0);
+    // The notify lines - chat, obituaries, server prints over the game - in
+    // the TrueType font (r_font); 0 is conchars. The size is the font's
+    // pixel height in console units, a conchar being 8.
+    con_notify_font = Cvar_Get("con_notify_font", "1", CVAR_ARCHIVE);
+    con_notify_size = Cvar_Get("con_notify_size", "12", CVAR_ARCHIVE);
     con_clock = Cvar_Get("con_clock", "0", 0);
     con_height = Cvar_Get("con_height", "0.5", 0);
     con_speed = Cvar_Get("scr_conspeed", "3", 0);
@@ -724,6 +731,35 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
     return R_DrawString(x, v, flags, w, s, con.charsetImage);
 }
 
+// A notify line in the TrueType font: Con_DrawLine's colours, the line
+// `lh` tall
+static void Con_DrawNotifyText(int v, int row, float alpha, float size, int lh)
+{
+    const consoleLine_t *line = &con.text[row & CON_TOTALLINES_MASK];
+    uint32_t color = U32_WHITE;
+    int flags = 0;
+    int w = con.linewidth - line->ts_len;
+
+    if (w < 1)
+        return;
+
+    switch (line->color) {
+    case COLOR_ALT:
+        flags = UI_ALTCOLOR;
+        break;
+    case COLOR_NONE:
+        break;
+    default:
+        color = colorTable[line->color & 7];
+        break;
+    }
+
+    R_ClearColor();
+    R_SetAlpha(alpha);
+    SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, flags, TEXT_SHADOW, size, color,
+                     line->text + line->ts_len, w);
+}
+
 #define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
 
 /*
@@ -758,6 +794,10 @@ static void Con_DrawNotify(void)
         j = CON_TIMES;
     }
 
+    bool ttf = con_notify_font->integer && R_TextAvailable();
+    float size = Cvar_ClampValue(con_notify_size, 6, 40);
+    int lh = ttf ? R_TextLineHeight(0, size) : CONCHAR_HEIGHT;
+
     v = 0;
     for (i = con.current - j + 1; i <= con.current; i++) {
         if (i < 0)
@@ -773,9 +813,12 @@ static void Con_DrawNotify(void)
             alpha = 1;  // don't fade
         }
 
-        Con_DrawLine(v, i, alpha, true);
+        if (ttf)
+            Con_DrawNotifyText(v, i, alpha, size, lh);
+        else
+            Con_DrawLine(v, i, alpha, true);
 
-        v += CONCHAR_HEIGHT;
+        v += lh;
     }
 
     R_ClearColor();
