@@ -87,6 +87,9 @@ static cvar_t   *con_notifytime;
 static cvar_t   *con_notifylines;
 static cvar_t   *con_notify_font;
 static cvar_t   *con_notify_size;
+static cvar_t   *con_text_font;
+static cvar_t   *con_hitcolors;
+static cvar_t   *con_text_size;
 static cvar_t   *con_clock;
 static cvar_t   *con_height;
 static cvar_t   *con_speed;
@@ -462,6 +465,14 @@ void Con_Init(void)
     // pixel height in console units, a conchar being 8.
     con_notify_font = Cvar_Get("con_notify_font", "1", CVAR_ARCHIVE);
     con_notify_size = Cvar_Get("con_notify_size", "12", CVAR_ARCHIVE);
+    // The console itself in the TrueType font: its lines keep their
+    // conchar rows, so 10 (a conchar's cap height) and the columns of a
+    // table are held by SCR_DrawTextGrid; 0 is conchars
+    con_text_font = Cvar_Get("con_text_font", "1", CVAR_ARCHIVE);
+    con_text_size = Cvar_Get("con_text_size", "10", CVAR_ARCHIVE);
+    // Colour the fight's messages: hits you land blue, damage you take
+    // red, the players' "Enemy Down" reports green; 0 leaves them be
+    con_hitcolors = Cvar_Get("con_hitcolors", "1", CVAR_ARCHIVE);
     con_clock = Cvar_Get("con_clock", "0", 0);
     con_height = Cvar_Get("con_height", "0.5", 0);
     con_speed = Cvar_Get("scr_conspeed", "3", 0);
@@ -695,6 +706,57 @@ DRAWING
 ==============================================================================
 */
 
+/*
+Con_HitColor: the colour con_hitcolors gives a line, or 0. The lines are
+the mod's own (g_combat.c, p_hud.c): "You hit X in the chest" and the
+helmet/vest notices go to the attacker, "Chest damage" and "Kevlar Vest
+absorbed..." to the one hit; "Enemy Down" is the players' team-chat
+report. A hit on a teammate keeps its colour.
+*/
+#define HIT_COLOR_GIVEN     MakeColor( 90, 160, 255, 255)
+#define HIT_COLOR_TAKEN     MakeColor(255,  90,  80, 255)
+#define HIT_COLOR_DOWN      MakeColor( 90, 230,  90, 255)
+
+uint32_t Con_HitColor(const char *s, size_t len)
+{
+    char buf[CON_LINEWIDTH + 1];
+
+    if (!con_hitcolors->integer)
+        return 0;
+
+    // plain ASCII, no trailing newline or blanks, for the matching; `len`
+    // is the room the line has, the text may end before it
+    len = min(Q_strnlen(s, len), sizeof(buf) - 1);
+    for (size_t i = 0; i < len; i++)
+        buf[i] = s[i] & 127;
+    while (len && (buf[len - 1] == ' ' || buf[len - 1] == '\n'))
+        len--;
+    buf[len] = 0;
+
+    if (Q_strcasestr(buf, "enemy down"))
+        return HIT_COLOR_DOWN;
+    if (!strncmp(buf, "You hit ", 8))
+        return strncmp(buf, "You hit your TEAMMATE", 21) ? HIT_COLOR_GIVEN : 0;
+    if (strstr(buf, " - AIM FOR THE "))
+        return HIT_COLOR_GIVEN;
+    if (!strncmp(buf, "Kevlar Vest absorbed ", 21) ||
+        !strncmp(buf, "Kevlar Helmet absorbed ", 23))
+        return HIT_COLOR_TAKEN;
+    if (len < 16 && len > 7 && !strcmp(buf + len - 7, " damage"))
+        return HIT_COLOR_TAKEN;     // Head / Chest / Stomach / Leg damage
+    return 0;
+}
+
+static bool Con_TextTTF(void)
+{
+    return con_text_font->integer && R_TextAvailable();
+}
+
+static float Con_TextSize(void)
+{
+    return Cvar_ClampValue(con_text_size, 6, 20);
+}
+
 static int Con_DrawLine(int v, int row, float alpha, bool notify)
 {
     const consoleLine_t *line = &con.text[row & CON_TOTALLINES_MASK];
@@ -703,17 +765,56 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
     int x = CONCHAR_WIDTH;
     int w = con.linewidth;
 
+    bool ttf = !notify && Con_TextTTF();
+    float size = Con_TextSize();
+
     if (notify) {
         s += line->ts_len;
     } else if (line->ts_len) {
-        R_SetColor(con.ts_color.u32);
-        R_SetAlpha(alpha);
-        x = R_DrawString(x, v, 0, line->ts_len, s, con.charsetImage);
+        if (ttf) {
+            R_ClearColor();
+            R_SetAlpha(alpha);
+            SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, 0, TEXT_SHADOW, size,
+                             con.ts_color.u32 | MakeColor(0, 0, 0, 255), s, line->ts_len);
+            x += line->ts_len * CONCHAR_WIDTH;  // the stamp keeps its columns
+        } else {
+            R_SetColor(con.ts_color.u32);
+            R_SetAlpha(alpha);
+            x = R_DrawString(x, v, 0, line->ts_len, s, con.charsetImage);
+        }
         s += line->ts_len;
         w -= line->ts_len;
     }
     if (w < 1)
         return x;
+
+    uint32_t hit = Con_HitColor(s, w);
+
+    if (ttf) {
+        uint32_t color = U32_WHITE;
+        int flags = 0;
+
+        if (hit)
+            color = hit;
+        else if (line->color == COLOR_ALT)
+            flags = UI_ALTCOLOR;
+        else if (line->color != COLOR_NONE)
+            color = colorTable[line->color & 7];
+        R_ClearColor();
+        R_SetAlpha(alpha);
+        // chat is prose, never a table: its runs of spaces are the
+        // players' own, so it is drawn as it comes
+        if (line->color == COLOR_ALT)
+            return SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, flags, TEXT_SHADOW,
+                                    size, color, s, w);
+        return SCR_DrawTextGrid(x, v, CONCHAR_HEIGHT, flags, size, color, NULL, s, w);
+    }
+
+    if (hit) {
+        R_SetColor(hit);
+        R_SetAlpha(alpha);
+        return R_DrawString(x, v, 0, w, s, con.charsetImage);
+    }
 
     switch (line->color) {
     case COLOR_ALT:
@@ -754,40 +855,51 @@ static void Con_DrawNotifyText(int v, int row, float alpha, float size, int lh)
         break;
     }
 
+    uint32_t hit = Con_HitColor(line->text + line->ts_len, w);
+    if (hit) {
+        color = hit;
+        flags = 0;
+    }
+
     R_ClearColor();
     R_SetAlpha(alpha);
     SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, flags, TEXT_SHADOW, size, color,
                      line->text + line->ts_len, w);
 }
 
-// The chat input under the notify lines in the TrueType font: the prompt,
-// the line scrolled the way IF_Draw scrolls it, and the cursor after the
-// measured text before it - the overstrike block is conchars' own picture
-static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
+// An input line in the TrueType font: the field scrolled the way IF_Draw
+// scrolls it, and the cursor after the measured text before it - the
+// overstrike block is conchars' own picture. Returns where the text ends.
+static int Con_DrawInputText(const inputField_t *f, int x, int v, float size, int lh)
 {
-    const inputField_t *f = &con.chatPrompt.inputLine;
     size_t cursor = f->cursorPos, offset = 0;
 
-    R_ClearColor();
-    R_SetAlpha(1);
-    int x = SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, 0, TEXT_SHADOW, size,
-                             U32_WHITE, prompt, MAX_STRING_CHARS);
-    x += Q_rint(size * 0.4f);
-
     if (!f->maxChars || !f->visibleChars)
-        return;
+        return x;
     if (cursor >= f->visibleChars) {
         cursor = f->visibleChars - 1;
         offset = f->cursorPos - cursor;
     }
 
-    SCR_DrawTextCell(x, v, lh, 0, TEXT_SHADOW, size, U32_WHITE,
-                     f->text + offset, f->visibleChars);
+    int end = SCR_DrawTextCell(x, v, lh, 0, TEXT_SHADOW, size, U32_WHITE,
+                               f->text + offset, f->visibleChars);
     if (com_localTime & BIT(8)) {
         int cx = x + R_MeasureText(TEXT_SHADOW, size, f->text + offset, cursor);
         SCR_DrawTextCell(cx, v, lh, 0, TEXT_SHADOW, size, U32_WHITE,
                          Key_GetOverstrikeMode() ? "\x0b" : "_", 1);
     }
+    return end;
+}
+
+// The chat input under the notify lines, prompt first
+static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
+{
+    R_ClearColor();
+    R_SetAlpha(1);
+    int x = SCR_DrawTextCell(CONCHAR_WIDTH, v, lh, 0, TEXT_SHADOW, size,
+                             U32_WHITE, prompt, MAX_STRING_CHARS);
+    Con_DrawInputText(&con.chatPrompt.inputLine, x + Q_rint(size * 0.4f),
+                      v, size, lh);
 }
 
 #define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
@@ -891,6 +1003,8 @@ static void Con_DrawSolidConsole(void)
     int             vislines;
     float           alpha;
     int             widths[2];
+    bool            ttf = Con_TextTTF();
+    float           size = Con_TextSize();
 
     vislines = con.vidHeight * con.currentHeight;
     if (vislines <= 0)
@@ -919,7 +1033,11 @@ static void Con_DrawSolidConsole(void)
     if (con.display != con.current) {
         R_SetColor(U32_RED);
         for (i = 1; i < con.linewidth / 2; i += 4) {
-            R_DrawChar(i * CONCHAR_WIDTH, y, 0, '^', con.charsetImage);
+            if (ttf)
+                SCR_DrawTextCell(i * CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0,
+                                 TEXT_SHADOW, Con_TextSize(), U32_RED, "^", 1);
+            else
+                R_DrawChar(i * CONCHAR_WIDTH, y, 0, '^', con.charsetImage);
         }
 
         y -= CONCHAR_HEIGHT;
@@ -1020,7 +1138,11 @@ static void Con_DrawSolidConsole(void)
 
             // draw it
             y = vislines - CON_PRESTEP + CONCHAR_HEIGHT * 2;
-            R_DrawString(CONCHAR_WIDTH, y, 0, con.linewidth, buffer, con.charsetImage);
+            if (ttf)
+                SCR_DrawTextCell(CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                                 size, U32_WHITE, buffer, con.linewidth);
+            else
+                R_DrawString(CONCHAR_WIDTH, y, 0, con.linewidth, buffer, con.charsetImage);
         }
     }
 
@@ -1031,13 +1153,22 @@ static void Con_DrawSolidConsole(void)
 
         // draw command prompt
         i = con.mode == CON_REMOTE ? '#' : 17;
-        R_SetColor(U32_YELLOW);
-        R_DrawChar(CONCHAR_WIDTH, y, 0, i, con.charsetImage);
-        R_ClearColor();
+        if (ttf) {
+            char p[2] = { i, 0 };
+            R_ClearColor();
+            SCR_DrawTextCell(CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                             size, U32_YELLOW, p, 1);
+            x = Con_DrawInputText(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
+                                  size, CONCHAR_HEIGHT);
+        } else {
+            R_SetColor(U32_YELLOW);
+            R_DrawChar(CONCHAR_WIDTH, y, 0, i, con.charsetImage);
+            R_ClearColor();
 
-        // draw input line
-        x = IF_Draw(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
-                    UI_DRAWCURSOR, con.charsetImage);
+            // draw input line
+            x = IF_Draw(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
+                        UI_DRAWCURSOR, con.charsetImage);
+        }
     }
 
 #define APP_VERSION APPLICATION " " VERSION
@@ -1057,15 +1188,25 @@ static void Con_DrawSolidConsole(void)
     if (con_clock->integer) {
         x = Com_Time_m(buffer, sizeof(buffer)) * CONCHAR_WIDTH;
         if (widths[row] + x + CONCHAR_WIDTH <= con.vidWidth) {
-            R_DrawString(con.vidWidth - CONCHAR_WIDTH - x, y - CONCHAR_HEIGHT,
-                         UI_RIGHT, MAX_STRING_CHARS, buffer, con.charsetImage);
+            if (ttf)
+                SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y - CONCHAR_HEIGHT,
+                                 CONCHAR_HEIGHT, UI_RIGHT, TEXT_SHADOW, size,
+                                 U32_CYAN, buffer, MAX_STRING_CHARS);
+            else
+                R_DrawString(con.vidWidth - CONCHAR_WIDTH - x, y - CONCHAR_HEIGHT,
+                             UI_RIGHT, MAX_STRING_CHARS, buffer, con.charsetImage);
         }
     }
 
 // draw version
     if (!row || widths[0] + VER_WIDTH <= con.vidWidth) {
-        SCR_DrawStringEx(con.vidWidth - CONCHAR_WIDTH, y, UI_RIGHT,
-                         MAX_STRING_CHARS, APP_VERSION, con.charsetImage);
+        if (ttf)
+            SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y, CONCHAR_HEIGHT,
+                             UI_RIGHT, TEXT_SHADOW, size, U32_CYAN,
+                             APP_VERSION, MAX_STRING_CHARS);
+        else
+            SCR_DrawStringEx(con.vidWidth - CONCHAR_WIDTH, y, UI_RIGHT,
+                             MAX_STRING_CHARS, APP_VERSION, con.charsetImage);
     }
 
     // restore rendering parameters
