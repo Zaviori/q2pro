@@ -929,6 +929,8 @@ void GL_TextQuad(float x, float y, float w, float h,
 void Text_Init(void);
 void Text_Shutdown(bool total);
 void Text_DrawTest(void);
+bool Text_ReplacesConchars(void);
+int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s);
 void GL_DrawParticles(void);
 void GL_DrawBeams(void);
 void GL_DrawFlares(void);
