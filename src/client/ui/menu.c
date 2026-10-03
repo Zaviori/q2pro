@@ -59,11 +59,31 @@ static void Action_Init(menuAction_t *a)
 Action_Draw
 =================
 */
+// A menu whose lines are padded with spaces to one length was laid out to
+// start in one column (AQtion's help menus): the font keeps every line,
+// the unpadded longest too, to its cells' start
+static bool Menu_IsPadded(const menuFrameWork_t *m)
+{
+    if (!m)
+        return false;
+    for (int i = 0; i < m->nitems; i++) {
+        const menuCommon_t *item = m->items[i];
+        const char *s = item->name;
+        size_t len = s ? strlen(s) : 0;
+        if (item->type == MTYPE_ACTION && len > 1 &&
+            (s[len - 1] == ' ' && s[len - 2] == ' '))
+            return true;
+    }
+    return false;
+}
+
 static void Action_Draw(menuAction_t *a)
 {
     int flags;
 
     flags = a->generic.uiFlags;
+    if (Menu_IsPadded(a->generic.parent))
+        flags |= UI_CELLSTART;
     if (a->generic.flags & QMF_HASFOCUS) {
         if ((a->generic.uiFlags & UI_CENTER) != UI_CENTER) {
             if ((uis.realtime >> 8) & 1) {
@@ -1301,10 +1321,14 @@ static void MenuList_DrawString(int x, int y, int flags,
 {
     clipRect_t rc;
 
+    // the whole row, and the text centred in it: a taller font's row
+    // keeps its descenders
+    int row = MLIST_SPACING;
     rc.left = x;
     rc.right = x + column->width - 1;
-    rc.top = y + 1;
-    rc.bottom = y + CONCHAR_HEIGHT + 1;
+    rc.top = y;
+    rc.bottom = y + row;
+    y += (row - CONCHAR_HEIGHT) / 2 - 1;
 
     if ((column->uiFlags & UI_CENTER) == UI_CENTER) {
         x += column->width / 2 - 1;

@@ -80,7 +80,14 @@ typedef enum {
 
 #define GENERIC_SPACING(x)   ((x) + (x) / 4)
 
-#define MENU_SPACING    GENERIC_SPACING(CONCHAR_HEIGHT)
+// A row: the conchars' spacing, or taller for the font's text in the menus
+static inline int UI_RowSpacing(void)
+{
+    int row = R_TextMenuRow();
+    return max(row, GENERIC_SPACING(CONCHAR_HEIGHT));
+}
+
+#define MENU_SPACING    UI_RowSpacing()
 
 #define DOUBLE_CLICK_DELAY    300
 
@@ -169,7 +176,7 @@ typedef struct {
 
 #define MAX_COLUMNS     8
 
-#define MLIST_SPACING           GENERIC_SPACING(CONCHAR_HEIGHT)
+#define MLIST_SPACING           UI_RowSpacing()
 #define MLIST_BORDER_WIDTH      1
 #define MLIST_SCROLLBAR_WIDTH   GENERIC_SPACING(CONCHAR_WIDTH)
 #define MLIST_PRESTEP           3
