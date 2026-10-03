@@ -1707,8 +1707,10 @@ void SCR_Init(void)
     scr_center_font = Cvar_Get("scr_center_font", "1", CVAR_ARCHIVE);
     scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
     // The server's layouts - scoreboard, menus, the "Viewing" line - in
-    // the TrueType font; 10 has a conchar's cap height, so their 8-unit
-    // rows stand
+    // the TrueType font: 1 sets each letter in its conchar cell, so every
+    // column and caption is where the mod put it; 2 is proportional, the
+    // columns guessed from the spacing. 10 has a conchar's cap height,
+    // so their 8-unit rows stand
     scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
     scr_layout_size = Cvar_Get("scr_layout_size", "10", CVAR_ARCHIVE);
     // ...and the game's own HUD elements (ghud) the same way
@@ -2124,6 +2126,22 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
     float size = Cvar_ClampValue(scr_layout_size, 6, 20);
     uint32_t c = color ? color : U32_WHITE;
     bool left = !(flags & UI_RIGHT);    // UI_CENTER includes UI_RIGHT
+
+    // a letter per conchar cell: the conchars layout, exactly, in the font
+    if (scr_layout_font->integer == 1) {
+        while (*s) {
+            const char *nl = strchr(s, '\n');
+            size_t len = nl ? (size_t)(nl - s) : strlen(s);
+
+            SCR_DrawTextCell(x, y, CONCHAR_HEIGHT, flags, TEXT_SHADOW | TEXT_MONO,
+                             size, c, s, len);
+            if (!nl)
+                break;
+            s = nl + 1;
+            y += CONCHAR_HEIGHT;
+        }
+        return;
+    }
 
     if (left && !strchr(s, '\n')) {
         int cx = x, len = (int)strlen(s);
