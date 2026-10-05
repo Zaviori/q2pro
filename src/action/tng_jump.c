@@ -668,7 +668,7 @@ rows live in the client, as the values shown are the player's own.
 #define JMP_MENU_CHOICE	4	// the row of a step's first value
 #define JMP_MENU_JUMPS	10	// the steps of the jumps menu, in the same rows: the list,
 #define JMP_MENU_VIEW	11	// then how to watch the pick
-#define JMP_MENU_TAKE	12	// and, with a take running, what to do with it
+#define JMP_MENU_TAKE	12	// and what to do with a take, running or not yet saved
 #define JMP_REC_COUNTDOWN	3	// seconds before a recording's teleport to its spawnpoint
 
 static const float jmp_delays[] = { 0, 1, 2, 3, 5, 10 };
@@ -755,10 +755,6 @@ static void JmpMenuRecHere(edict_t *ent, pmenu_t *p)
 	Cmd_JumpRec_f(ent);
 }
 
-static void JmpMenuRecBack(edict_t *ent, pmenu_t *p)
-{
-	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
-}
 
 static void JmpMenuPage(edict_t *ent, pmenu_t *p)
 {
@@ -843,8 +839,7 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 	if (client->jmp_menu_top + JMP_MENU_SPOTS < count)
 		JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_MENU_SPOTS, JmpMenuPage, "Next page");
 
-	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0,
-		client->jmp_menu_rec ? JmpMenuRecBack : JmpMenuItems, "Back");
+	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 	if (*cur < 0)
 		*cur = JMP_MENU_FIRST;
 }
@@ -1321,7 +1316,7 @@ way, to try it.
 #define JMP_ASK_DESC		2
 #define JMP_LIST_MAX		64
 #define JMP_LIST_ROWS		8		// jumps on a menu page
-#define JMP_LIST_FIRST		6		// the row of the first one
+#define JMP_LIST_FIRST		3		// the row of the first one
 #define JMP_CAM_DIST		110		// third person: behind the ghost,
 #define JMP_CAM_PITCH		15		// looking down at it,
 #define JMP_CAM_TURN		0.2f	// its turns followed in about this many seconds
@@ -2288,7 +2283,9 @@ void Jmp_ClientDisconnect(edict_t *ent)
 
 /*
 The jumps menu, in the spawnpoint menu's rows: the map's stored jumps a
-page at a time, with the recorder above them; a pick asks how to watch.
+page at a time, to watch; a pick asks how. Recording is its own row of
+the item menu: it asks from where, or first what to do with the take
+there is - one running, or the last one while it is not saved.
 The jump under the cursor has its description in the rows below it, the
 rest of the list making way - the menu is rebuilt as the cursor moves
 (JmpJumpsFrame), since its rows are only text to the client.
@@ -2408,13 +2405,6 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 				min(st->menu_top + JMP_LIST_ROWS, jmp_list_count) - 1);
 
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a jump");
-		if (st->take.count) {
-			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch my last take");
-			if (!st->take.name[0])
-				JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save my last take...");
-		}
-
 		row = JMP_LIST_FIRST;
 		for (i = st->menu_top; i < jmp_list_count && i < st->menu_top + JMP_LIST_ROWS; i++) {
 			t = &jmp_list[i];
@@ -2445,15 +2435,26 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
-			cur = 3;
+			cur = JMP_MENU_ROWS - 1;
 		st->menu_cur = cur;
-	} else if (step == JMP_MENU_TAKE) {
+	} else if (step == JMP_MENU_TAKE && st->recording) {
 		st->rec_mark = st->take.count;
 		JmpSecs(st->take.count ? st->take.samples[st->take.count - 1].ms : 0, secs, sizeof(secs));
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recording, %s seconds", secs);
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpTakeSave, "Save the take...");
 		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard the take");
 		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeKeep, "Keep recording");
+		if (cur < 0)
+			cur = 3;
+	} else if (step == JMP_MENU_TAKE) {
+		// the last take, not saved: that first, before another is recorded over it
+		JmpSecs(st->take.ms, secs, sizeof(secs));
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Your last take, %s seconds", secs);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch it");
+		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save it...");
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard it");
+		JmpMenuRow_Set(ent, 7, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a new one");
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
 			cur = 3;
 	} else {
@@ -2510,6 +2511,18 @@ void Jmp_OpenJumpMenu(edict_t *ent, pmenu_t *p)
 {
 	if (!Jmp_OpenTakeMenu(ent))
 		JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+// "Record a jump..." in the item menu: from where - after the take there
+// is, if one runs or waits to be saved
+void Jmp_OpenRecordMenu(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (st->recording || (st->take.count && !st->take.name[0]))
+		JmpJumpsShow(ent, JMP_MENU_TAKE, -1);
+	else
+		JmpJumpsRec(ent, NULL);
 }
 
 // any jmod menu while a take runs: save it, discard it, or carry on
