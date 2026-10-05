@@ -1171,6 +1171,10 @@ Cmd_PutAway_f
 */
 void Cmd_PutAway_f(edict_t *ent)
 {
+	// nothing up to put away: it is the Escape that ends a jump's playback
+	if (jump->value && ent->client->layout == LAYOUT_NONE && Jmp_PlayEscape(ent))
+		return;
+
 	if (ent->client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
 
