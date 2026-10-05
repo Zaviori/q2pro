@@ -102,6 +102,7 @@ void Con_SkipNotify(bool skip);
 void Con_Print(const char *text);
 void Con_Printf(const char *fmt, ...) q_printf(1, 2);
 void Con_Close(bool force);
+bool Con_SearchCancel(void);
 
 void SCR_BeginLoadingPlaque(void);
 void SCR_EndLoadingPlaque(void);

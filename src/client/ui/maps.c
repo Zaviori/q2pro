@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2003-2008 Andrey Nazarov
+Copyright (C) 2026 the q2pro AQtion contributors
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,15 +18,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "ui.h"
 #include "common/files.h"
+#include "common/fuzzy.h"
 
 /*
 =======================================================================
 
 PRACTICE JUMPS
 
-Every map, and a field that filters them as it is typed: a fuzzy match,
-the letters in order anywhere in the name ("tj" finds teamjungle), the
-best matches first. Enter (or a double click) starts the highlighted map
+Every map, and a field that filters them as it is typed: a fuzzy match
+(common/fuzzy.h), the letters in order anywhere in the name ("tj" finds
+teamjungle), the best matches first. Enter (or a double click) starts the highlighted map
 as a local jump mod game. The field keeps the focus, so typing always
 goes to it; the arrows move the list.
 
@@ -50,48 +51,6 @@ typedef struct {
 
 static m_maps_t     m_maps;
 
-// The letters of q in s in order, or -1. Each match scores, more when it
-// runs on from the last one, starts the name or a word ("_", digit
-// boundaries); a gap costs a little, and so does a longer name - so
-// "dry" puts drydock_b1 before a name that merely holds d..r..y.
-static int FuzzyScore(const char *q, const char *s)
-{
-    int score = 0, run = 0, prev = -1, si = 0;
-    int slen = strlen(s), qlen = strlen(q);
-
-    if (!qlen)
-        return 0;
-
-    for (int qi = 0; qi < qlen; qi++) {
-        int c = Q_tolower(q[qi]);
-
-        while (si < slen && Q_tolower(s[si]) != c)
-            si++;
-        if (si == slen)
-            return -1;
-
-        score += 10;
-        if (si == 0)
-            score += 15;
-        else if (!Q_isalnum(s[si - 1]) ||
-                 (Q_isdigit(s[si]) != Q_isdigit(s[si - 1])))
-            score += 8;
-
-        if (prev >= 0 && si == prev + 1) {
-            run++;
-            score += 6 * run;
-        } else {
-            run = 0;
-            if (prev >= 0)
-                score -= min(si - prev - 1, 6);
-        }
-
-        prev = si++;
-    }
-
-    return score + 30 - min(slen - qlen, 30) / 2;
-}
-
 // best score first, then by name
 static int OrderCompare(const void *p1, const void *p2)
 {
@@ -110,7 +69,7 @@ static void Refilter(void)
     Q_strlcpy(m_maps.last, q, sizeof(m_maps.last));
 
     for (i = 0; i < m_maps.numNames; i++) {
-        m_maps.scores[i] = FuzzyScore(q, m_maps.names[i]);
+        m_maps.scores[i] = Fuzzy_Score(q, m_maps.names[i]);
         if (m_maps.scores[i] >= 0)
             m_maps.order[n++] = i;
     }

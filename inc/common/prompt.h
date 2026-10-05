@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "common/field.h"
 #include "common/cmd.h"
 
-#define HISTORY_SIZE    128
+#define HISTORY_SIZE    1024
 #define HISTORY_MASK    (HISTORY_SIZE - 1)
 
 #define MIN_MATCHES     64
@@ -52,3 +52,10 @@ void Prompt_HistoryDown(commandPrompt_t *prompt);
 void Prompt_Clear(commandPrompt_t *prompt);
 void Prompt_SaveHistory(const commandPrompt_t *prompt, const char *filename, int lines);
 void Prompt_LoadHistory(commandPrompt_t *prompt, const char *filename);
+// the same, in the file system place fsflags names (FS_PATH_GAME ...);
+// the above use the base game's directory
+void Prompt_SaveHistoryTo(const commandPrompt_t *prompt, const char *filename, int lines, unsigned fsflags);
+bool Prompt_LoadHistoryFrom(commandPrompt_t *prompt, const char *filename, unsigned fsflags);
+// the distinct history lines query fuzzy matches (common/fuzzy.h), best
+// first and the newest among equals, up to max of them; their number
+int Prompt_FuzzyHistory(const commandPrompt_t *prompt, const char *query, const char **out, int max);

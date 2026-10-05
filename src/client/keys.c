@@ -699,7 +699,9 @@ void Key_Event(unsigned key, bool down, unsigned time)
         }
 
         if (cls.key_dest & KEY_CONSOLE) {
-            if (cls.state < ca_active && !(cls.key_dest & KEY_MENU)) {
+            if (Con_SearchCancel()) {
+                // a history search ends; the console stays
+            } else if (cls.state < ca_active && !(cls.key_dest & KEY_MENU)) {
                 UI_OpenMenu(UIMENU_MAIN);
             } else {
                 Con_Close(true);

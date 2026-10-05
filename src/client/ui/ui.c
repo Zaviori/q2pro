@@ -527,8 +527,12 @@ void UI_CharEvent(int key)
         return;
     }
 
-    if ((item = Menu_ItemAtCursor(uis.activeMenu)) == NULL ||
-        (sound = Menu_CharEvent(item, key)) == QMS_NOTHANDLED) {
+    item = Menu_ItemAtCursor(uis.activeMenu);
+    sound = item ? Menu_CharEvent(item, key) : QMS_NOTHANDLED;
+    if (sound == QMS_NOTHANDLED && uis.activeMenu->charevent) {
+        sound = uis.activeMenu->charevent(uis.activeMenu, key);
+    }
+    if (sound == QMS_NOTHANDLED) {
         return;
     }
 
