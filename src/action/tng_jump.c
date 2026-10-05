@@ -1,5 +1,10 @@
 #include "g_local.h"
 #include <dirent.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
 #include "common/fuzzy.h"
 
 //cvar_t *jump;
@@ -116,7 +121,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod save [[collection/]name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod play [[collection/]name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours; \"collection/\" the collection itself\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
 		return;
@@ -680,6 +685,8 @@ rows live in the client, as the values shown are the player's own.
 #define JMP_MENU_PACKS	13	// the collections with jumps on this map, before the list
 #define JMP_MENU_SAVETO	14	// which collection a take is saved to
 #define JMP_MENU_DELETE	15	// "are you sure"
+#define JMP_MENU_PACKDEL	16	// the same of a whole collection,
+#define JMP_MENU_PACKDEL2	17	// and again when it has jumps in it
 #define JMP_REC_COUNTDOWN	3	// seconds before a recording's teleport to its spawnpoint
 
 static const float jmp_delays[] = { 0, 1, 2, 3, 5, 10 };
@@ -2163,10 +2170,142 @@ static qboolean JmpDelete(edict_t *ent, const char *pack, const char *name)
 	return true;
 }
 
-// jmod delete <[collection/]name>
+/*
+A collection's jumps, on every map it has any: counted - with the maps,
+and whether any is somebody else's - or deleted, their directories and
+the collection's after them. Returns the jumps there were.
+*/
+static int JmpPackWalk(edict_t *ent, const char *pack, int *maps, qboolean *foreign, qboolean del)
+{
+	char root[MAX_OSPATH], dir[MAX_OSPATH], path[MAX_OSPATH], line[128], author[16], mine[16];
+	struct dirent *e, *e2;
+	DIR *d, *d2;
+	FILE *f;
+	size_t len;
+	int count = 0, here;
+
+	*maps = 0;
+	*foreign = false;
+	JmpAuthor(ent, mine, sizeof(mine));
+	Q_snprintf(root, sizeof(root), "%s/jumps/packs/%s", JmpGameDir(), pack);
+	d = opendir(root);
+	if (!d)
+		return 0;
+
+	while ((e = readdir(d)) != NULL) {
+		if (e->d_name[0] == '.')
+			continue;
+		Q_snprintf(dir, sizeof(dir), "%s/%s", root, e->d_name);
+		d2 = opendir(dir);
+		if (!d2)
+			continue;
+
+		here = 0;
+		while ((e2 = readdir(d2)) != NULL) {
+			len = strlen(e2->d_name);
+			if (len < 5 || strcmp(e2->d_name + len - 4, ".jmp"))
+				continue;
+			Q_snprintf(path, sizeof(path), "%s/%s", dir, e2->d_name);
+			here++;
+			if (del) {
+				remove(path);
+				continue;
+			}
+
+			// whose it is: the author line is among the first few
+			author[0] = 0;
+			f = fopen(path, "r");
+			if (f) {
+				while (fgets(line, sizeof(line), f) && strncmp(line, "samples", 7))
+					if (sscanf(line, "author %15[^\r\n]", author) == 1)
+						break;
+				fclose(f);
+			}
+			if (strcmp(author, mine))
+				*foreign = true;
+		}
+		closedir(d2);
+		if (del)
+			rmdir(dir);
+		if (here)
+			(*maps)++;
+		count += here;
+	}
+	closedir(d);
+	if (del)
+		rmdir(root);
+	return count;
+}
+
+// a collection is deleted by the one whose every jump in it is; in a
+// local game, by the player whose game it is
+static qboolean JmpPackMayDelete(edict_t *ent, const char *pack)
+{
+	qboolean foreign;
+	int maps;
+
+	if (!dedicated->value)
+		return true;
+	JmpPackWalk(ent, pack, &maps, &foreign, false);
+	return !foreign;
+}
+
+static qboolean JmpPackExists(const char *pack)
+{
+	char root[MAX_OSPATH];
+	DIR *d;
+
+	Q_snprintf(root, sizeof(root), "%s/jumps/packs/%s", JmpGameDir(), pack);
+	d = opendir(root);
+	if (d)
+		closedir(d);
+	return d != NULL;
+}
+
+static void JmpPackDelete(edict_t *ent, const char *pack)
+{
+	qboolean foreign;
+	int maps, count;
+
+	if (!JmpPackMayDelete(ent, pack)) {
+		gi.cprintf(ent, PRINT_HIGH, "\"%s\" has other players' jumps in it, and stays\n", pack);
+		return;
+	}
+	count = JmpPackWalk(ent, pack, &maps, &foreign, true);
+	if (JmpPackExists(pack))
+		gi.cprintf(ent, PRINT_HIGH, "Could not delete all of \"%s\"\n", pack);
+	else if (count)
+		gi.cprintf(ent, PRINT_HIGH, "Deleted the collection \"%s\" and its %d jumps\n", pack, count);
+	else
+		gi.cprintf(ent, PRINT_HIGH, "Deleted the collection \"%s\"\n", pack);
+}
+
+// jmod delete <[collection/]name>, or <collection/> [all] for a collection
 static void Cmd_JumpDelete_f(edict_t *ent)
 {
-	char pack[JMP_NAME_MAX], name[JMP_NAME_MAX];
+	char pack[JMP_NAME_MAX], name[JMP_NAME_MAX], arg[JMP_NAME_MAX + 2];
+	qboolean foreign;
+	size_t len;
+	int maps, count;
+
+	Q_strncpyz(arg, gi.argv(2), sizeof(arg));
+	len = strlen(arg);
+	if (gi.argc() >= 3 && len > 1 && arg[len - 1] == '/') {
+		arg[len - 1] = 0;
+		if (!JmpNameClean(arg, pack, sizeof(pack)) || !JmpPackExists(pack)) {
+			gi.cprintf(ent, PRINT_HIGH, "No collection called \"%s\"\n", arg);
+			return;
+		}
+		// its jumps go with it: that has to be said twice
+		count = JmpPackWalk(ent, pack, &maps, &foreign, false);
+		if (count && Q_stricmp(gi.argv(3), "all")) {
+			gi.cprintf(ent, PRINT_HIGH, "\"%s\" has %d jump%s on %d map%s. \"jmod delete %s/ all\" "
+				"deletes them with it\n", pack, count, count == 1 ? "" : "s", maps, maps == 1 ? "" : "s", pack);
+			return;
+		}
+		JmpPackDelete(ent, pack);
+		return;
+	}
 
 	if (gi.argc() < 3 || !JmpSplit(gi.argv(2), pack, name)) {
 		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod delete <[collection/]name>\n");
@@ -2645,26 +2784,66 @@ static void JmpJumpsBack(edict_t *ent, pmenu_t *p)
 	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 }
 
-// up from the list: to the collections where the map has any, else out
+// up from the list: to the collections where there are any, else out
 static void JmpJumpsUp(edict_t *ent, pmenu_t *p)
 {
-	JmpListLoad();
-	if (JmpListPacked())
+	char packs[1][JMP_NAME_MAX];
+
+	if (JmpPacksAll(packs, 1))
 		JmpJumpsShow(ent, JMP_MENU_PACKS, -1);
 	else
 		JmpMenuItems(ent, p);
 }
 
+// a row's argument is the collection's place among them all, from 1; 0 is none
 static void JmpPacksPick(edict_t *ent, pmenu_t *p)
 {
 	jmp_state_t *st = JmpState(ent);
-	int i = (int)(intptr_t)p->arg;
+	char packs[JMP_PACKS_MAX][JMP_NAME_MAX];
+	int i = (int)(intptr_t)p->arg, count = JmpPacksAll(packs, JMP_PACKS_MAX);
 
-	if (i < 0 || i >= jmp_list_count)
+	if (i < 0 || i > count)
 		return;
-	Q_strncpyz(st->menu_pack, jmp_list[i].pack, sizeof(st->menu_pack));
-	st->menu_top = st->menu_pick = i;
+	Q_strncpyz(st->menu_pack, i ? packs[i - 1] : "", sizeof(st->menu_pack));
+	st->menu_top = st->menu_pick = 0;
 	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+static void JmpPackDelAsk(edict_t *ent, pmenu_t *p)
+{
+	JmpJumpsShow(ent, JMP_MENU_PACKDEL, -1);
+}
+
+// out of a collection that is gone, or was not to go
+static void JmpPackDelDone(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (!JmpPackExists(st->menu_pack))
+		st->menu_pack[0] = 0;
+	PMenu_Close(ent);
+	Jmp_OpenJumpMenu(ent, NULL);
+}
+
+// the first yes: enough for an empty one, one with jumps asks again
+static void JmpPackDelYes(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+	qboolean foreign;
+	int maps;
+
+	if (JmpPackWalk(ent, st->menu_pack, &maps, &foreign, false)) {
+		JmpJumpsShow(ent, JMP_MENU_PACKDEL2, -1);
+		return;
+	}
+	JmpPackDelete(ent, st->menu_pack);
+	JmpPackDelDone(ent);
+}
+
+static void JmpPackDelAll(edict_t *ent, pmenu_t *p)
+{
+	JmpPackDelete(ent, JmpState(ent)->menu_pack);
+	JmpPackDelDone(ent);
 }
 
 static void JmpJumpsDeleteAsk(edict_t *ent, pmenu_t *p)
@@ -2747,22 +2926,44 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 	client->jmp_menu_step = step;
 	if (step == JMP_MENU_PACKS) {
-		// a row a collection, those in none first; its first jump is the row's argument
+		// a row a collection with its jumps on this map, those in none first -
+		// the empty ones too, to be looked into and deleted
 		JmpListLoad();
+		j = JmpPacksAll(packs, JMP_PACKS_MAX);
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
 		row = 3;
-		for (i = 0; i < jmp_list_count && row < JMP_MENU_ROWS - 2; i = j, row++) {
-			t = &jmp_list[i];
-			for (j = i; j < jmp_list_count && !strcmp(jmp_list[j].pack, t->pack); j++)
-				;
+		for (i = 0; i <= j && row < JMP_MENU_ROWS - 2; i++, row++) {
+			const char *pack = i ? packs[i - 1] : "";
+
+			JmpListRange(pack, &lo, &hi);
 			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpPacksPick, "%-24.24s %3d",
-				t->pack[0] ? t->pack : "In no collection", j - i);
-			if (cur < 0 && !strcmp(t->pack, st->menu_pack))
+				i ? pack : "In no collection", hi - lo);
+			if (cur < 0 && !strcmp(pack, st->menu_pack))
 				cur = row;
 		}
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
 			cur = 3;
+	} else if (step == JMP_MENU_PACKDEL || step == JMP_MENU_PACKDEL2) {
+		qboolean foreign;
+		int maps, count = JmpPackWalk(ent, st->menu_pack, &maps, &foreign, false);
+
+		if (step == JMP_MENU_PACKDEL) {
+			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete this collection?");
+			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s", st->menu_pack);
+			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
+			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelYes, "Yes, delete it");
+		} else {
+			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*It is not empty!");
+			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s has", st->menu_pack);
+			JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d jump%s on %d map%s",
+				count, count == 1 ? "" : "s", maps, maps == 1 ? "" : "s");
+			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_CENTER, 0, NULL, "They are deleted with it.");
+			JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
+			JmpMenuRow_Set(ent, 7, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
+		}
+		if (cur < 0)
+			cur = step == JMP_MENU_PACKDEL ? 4 : 6;
 	} else if (step == JMP_MENU_SAVETO) {
 		// the collections a page at a time, all of them or those the search finds
 		j = JmpPacksFind(packs, JMP_PACKS_MAX, st->save_find);
@@ -2853,6 +3054,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		if (st->menu_top + JMP_LIST_ROWS < hi)
 			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_LIST_ROWS, JmpJumpsPage, "Next page");
 
+		if (st->menu_pack[0] && JmpPackMayDelete(ent, st->menu_pack))
+			JmpMenuRow_Set(ent, JMP_MENU_ROWS - 3, PMENU_ALIGN_LEFT, 0, JmpPackDelAsk, "Delete this collection...");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsUp, "Back");
 		if (cur < 0)
 			cur = JMP_MENU_ROWS - 1;
@@ -2931,12 +3134,13 @@ static void JmpJumpsFrame(edict_t *ent)
 // from the jmod item menu, and "jmod jumps"
 void Jmp_OpenJumpMenu(edict_t *ent, pmenu_t *p)
 {
+	char packs[1][JMP_NAME_MAX];
+
 	if (Jmp_OpenTakeMenu(ent))
 		return;
 
-	// the collections first, where the map has jumps in any
-	JmpListLoad();
-	if (JmpListPacked()) {
+	// the collections first, where there are any
+	if (JmpPacksAll(packs, 1)) {
 		JmpJumpsShow(ent, JMP_MENU_PACKS, -1);
 	} else {
 		JmpState(ent)->menu_pack[0] = 0;
