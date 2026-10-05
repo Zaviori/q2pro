@@ -3916,6 +3916,8 @@ void ClientDisconnect(edict_t * ent)
 	if (!ent->client)
 		return;
 
+	Jmp_ClientDisconnect(ent);
+
 	/* Only fire the captain-disconnect broadcast for actual captains.
 	 * Previously this ran for every disconnect from an esp+matchmode game,
 	 * including spectators (resp.team == NOTEAM), which would read
@@ -4179,6 +4181,10 @@ void ClientThink(edict_t * ent, usercmd_t * ucmd)
 		client->ps.pmove.pm_type = PM_FREEZE;
 		return;
 	}
+	// watching a recorded jump: the camera is jmod's, the buttons too
+	if (jump->value && Jmp_PlayThink(ent, ucmd))
+		return;
+
 	pm_passent = ent;
 	// FROM 3.20 -FB
 	if (client->chase_mode) {
@@ -4314,6 +4320,9 @@ void ClientThink(edict_t * ent, usercmd_t * ucmd)
 			VectorCopy(pm.viewangles, client->v_angle);
 			VectorCopy(pm.viewangles, client->ps.viewangles);
 		}
+
+		if (jump->value)
+			Jmp_RecordCmd(ent, ucmd);
 
 		if(client->ctf_grapple)
 			CTFGrapplePull(client->ctf_grapple);
