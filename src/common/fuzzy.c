@@ -57,3 +57,22 @@ int Fuzzy_Score(const char *query, const char *text)
 
     return score + 30 - min(tlen - qlen, 30) / 2;
 }
+
+int Fuzzy_Positions(const char *query, const char *text, int *pos, int max)
+{
+    int n = 0, si = 0, tlen = strlen(text);
+
+    for (int qi = 0; query[qi]; qi++) {
+        int c = Q_tolower(query[qi]);
+
+        while (si < tlen && Q_tolower(text[si]) != c)
+            si++;
+        if (si == tlen)
+            return 0;
+        if (n < max)
+            pos[n++] = si;
+        si++;
+    }
+
+    return n;
+}

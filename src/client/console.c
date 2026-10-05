@@ -18,6 +18,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // console.c
 
 #include "client.h"
+#include "common/fuzzy.h"
 
 #define CON_TIMES       16
 #define CON_TIMES_MASK  (CON_TIMES - 1)
@@ -823,6 +824,72 @@ Con_DrawSolidConsole
 Draws the console with the solid background
 ================
 */
+/*
+The history search's candidates over the console's last lines, as fzf
+lists them: the best next to the prompt and the rest going up, the
+current one marked, the query's letters picked out in each, and how many
+match under them all.
+*/
+#define CON_SEARCH_ROWS     10
+
+static void Con_DrawSearchLine(int x, int y, const char *s, bool current)
+{
+    const char *t = (*s == '/' || *s == '\\') ? s + 1 : s;
+    int pos[MAX_FIELD_TEXT], n, k = 0;
+
+    n = Fuzzy_Positions(con.search.query, t, pos, q_countof(pos));
+    for (int i = 0; s[i] && x < con.vidWidth - CONCHAR_WIDTH; i++, x += CONCHAR_WIDTH) {
+        bool hit = k < n && pos[k] == i - (int)(t - s);
+        if (hit)
+            k++;
+        R_SetColor(hit ? U32_GREEN : current ? U32_WHITE : MakeColor(192, 192, 192, 255));
+        R_DrawChar(x, y, 0, s[i], con.charsetImage);
+    }
+    R_ClearColor();
+}
+
+static void Con_DrawSearch(int y, int vislines)
+{
+    int rows = min(con.search.count, CON_SEARCH_ROWS);
+    int room = (vislines - CON_PRESTEP) / CONCHAR_HEIGHT - 3;
+    int first, top;
+
+    rows = min(rows, room);
+    if (rows < 0)
+        rows = 0;
+
+    // the window keeps the current one in it
+    first = max(0, con.search.pos - rows + 1);
+
+    // solid over the console's own transparency: its text must not show
+    // through between the candidates
+    R_SetAlpha(1);
+    top = y - (rows + 1) * CONCHAR_HEIGHT;
+    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CONCHAR_HEIGHT + 2,
+                 MakeColor(0, 0, 0, 240));
+
+    for (int k = 0; k < rows; k++) {
+        int i = first + k;
+        int ry = y - (k + 2) * CONCHAR_HEIGHT;
+
+        if (i == con.search.pos) {
+            R_DrawFill32(0, ry, con.vidWidth, CONCHAR_HEIGHT, MakeColor(64, 64, 64, 224));
+            R_SetColor(U32_YELLOW);
+            R_DrawChar(CONCHAR_WIDTH, ry, 0, '>', con.charsetImage);
+            R_ClearColor();
+        }
+        Con_DrawSearchLine(3 * CONCHAR_WIDTH, ry, con.search.matches[i], i == con.search.pos);
+    }
+
+    // how many match, as fzf counts them
+    char count[32];
+    Q_snprintf(count, sizeof(count), "  %d/%d", con.search.count ? con.search.pos + 1 : 0,
+               con.search.count);
+    R_SetColor(MakeColor(160, 160, 96, 255));
+    R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
+    R_ClearColor();
+}
+
 static void Con_DrawSolidConsole(void)
 {
     int             i, x, y;
@@ -970,6 +1037,9 @@ static void Con_DrawSolidConsole(void)
     x = 0;
     if (cls.key_dest & KEY_CONSOLE) {
         y = vislines - CON_PRESTEP + CONCHAR_HEIGHT;
+
+        if (con.search.active)
+            Con_DrawSearch(y, vislines);
 
         // draw command prompt
         i = con.mode == CON_REMOTE ? '#' : 17;
