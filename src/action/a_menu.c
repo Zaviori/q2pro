@@ -74,7 +74,7 @@ void PMenu_Update (edict_t * ent)
 	int x;
 	pmenuhnd_t *hnd;
 	char *t;
-	qboolean alt = false;
+	qboolean alt = false, note;
 
 	if (ent->client->layout != LAYOUT_MENU)
 		return;
@@ -98,6 +98,12 @@ void PMenu_Update (edict_t * ent)
 			t++;
 		}
 
+		// a note under a row, in its own colour where the client has
+		// layout colours (Q2PRO's); plain text elsewhere
+		note = *t == PMENU_NOTE;
+		if (note)
+			t++;
+
 		if (p->align == PMENU_ALIGN_CENTER)
 			x = 196 / 2 - strlen (t) * 4 + 64;
 		else if (p->align == PMENU_ALIGN_RIGHT)
@@ -112,6 +118,8 @@ void PMenu_Update (edict_t * ent)
 
 		if (hnd->cur == i)
 			Q_snprintf (string + len, sizeof(string)-len, "string2 \"\x0d%s\" ", t);
+		else if (note)
+			Q_snprintf (string + len, sizeof(string)-len, "color #fc6 string \"%s\" color white ", t);
 		else if (alt)
 			Q_snprintf (string + len, sizeof(string)-len, "string2 \"%s\" ", t);
 		else
