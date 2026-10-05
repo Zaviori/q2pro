@@ -71,6 +71,24 @@ void Jmp_SetStats(edict_t *ent)
 		ent->client->ps.stats[STAT_LAYOUTS] |= 2;
 
 	SetIDView (ent);
+
+	/*
+	"jmod markers": the markers are up with no menu. An empty layout is
+	kept up with them - sent again after a menu or the scores have had
+	the client's - for what the client only does under one: Escape sent
+	on as "putaway", which puts the markers away, and shift told of.
+	*/
+	if (ent->client->layout != LAYOUT_NONE) {
+		ent->client->jmp_blank = false;
+	} else if (ent->client->resp.jmp_markers) {
+		if (!ent->client->jmp_blank) {
+			gi.WriteByte(svc_layout);
+			gi.WriteString("");
+			gi.unicast(ent, true);
+			ent->client->jmp_blank = true;
+		}
+		ent->client->ps.stats[STAT_LAYOUTS] |= 1;
+	}
 }
 
 void Jmp_EquipClient(edict_t *ent)
@@ -88,6 +106,7 @@ static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
 static void Cmd_JumpDelete_f(edict_t *ent);
+static void Cmd_JumpMarkers_f(edict_t *ent);
 static void Cmd_JumpStart_f(edict_t *ent);
 static void JmpAnswerText(edict_t *ent, const char *text);
 
@@ -119,6 +138,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod slippers - toggle stealth slippers\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod menu - open the jump menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod spawns - pick a spawnpoint, then its delay and repeat, from a menu\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod markers - the spawnpoint markers without the list, to click on; again or Escape puts them away\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod save [[collection/]name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod play [[collection/]name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
@@ -248,6 +268,11 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "menu") == 0)
 	{
 		OpenPMItemMenu(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "markers") == 0)
+	{
+		Cmd_JumpMarkers_f(ent);
 		return;
 	}
 	else if(Q_stricmp(cmd, "spawns") == 0)
@@ -1165,7 +1190,7 @@ static void JmpTip(edict_t *ent, qboolean on)
 	}
 	if (!on)
 		return;
-	if (client->jmp_menu_rec) {
+	if (client->jmp_menu_rec && client->layout == LAYOUT_MENU) {
 		Ghud_SetText(ent, client->jmp_tip[0], "click: record a jump from here");
 		Ghud_SetText(ent, client->jmp_tip[1], "");
 	} else {
@@ -1175,7 +1200,8 @@ static void JmpTip(edict_t *ent, qboolean on)
 }
 
 /*
-With the spawnpoint list up the markers are buttons: fire on the one
+With the spawnpoint list up - or the markers alone, "jmod markers" -
+the markers are buttons: fire on the one
 aimed at spawns there at once, a second click in time opens its delay
 and repeat instead, and with shift down - or when the list is asking
 where to record from - a take is started with the spawn. Called with
@@ -1186,8 +1212,10 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 	gclient_t *client = ent->client;
 	qboolean fire = (ucmd->buttons & BUTTON_ATTACK) != 0;
 	qboolean pressed = fire && !client->jmp_fire_held;
-	qboolean list = client->layout == LAYOUT_MENU && client->menu.entries == client->jmp_menu
-		&& client->jmp_menu_step == 0;
+	qboolean bare = client->resp.jmp_markers && client->layout != LAYOUT_MENU
+		&& !(ent->svflags & SVF_NOCLIENT);	// not over a jump being watched
+	qboolean list = bare || (client->layout == LAYOUT_MENU && client->menu.entries == client->jmp_menu
+		&& client->jmp_menu_step == 0);
 	int spot = client->jmp_menu_aim;
 
 	client->jmp_fire_held = fire;
@@ -1218,7 +1246,7 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 		return;
 	client->latched_buttons &= ~BUTTON_ATTACK;
 
-	if (client->jmp_menu_rec || ucmd->impulse == IMPULSE_SHIFT) {
+	if ((client->jmp_menu_rec && !bare) || ucmd->impulse == IMPULSE_SHIFT) {
 		client->jmp_menu_pick = spot;
 		PMenu_Close(ent);
 		if (!JmpIsRecording(ent))
@@ -1244,7 +1272,9 @@ static void JmpMarkersUpdate(edict_t *ent)
 	jmp_point_t pts[JMP_POINTS_MAX];
 	pmenu_t *p;
 	char text[64], loc[128];
-	int i, count, map, hl = 0, key, ring;
+	int i, count, map, hl = 0, key, ring, step = client->jmp_menu_step;
+	qboolean bare = client->resp.jmp_markers && client->layout != LAYOUT_MENU
+		&& !(ent->svflags & SVF_NOCLIENT);	// not over a jump being watched
 
 	// a new map has cleared every slot, ours went with them
 	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum) {
@@ -1252,8 +1282,11 @@ static void JmpMarkersUpdate(edict_t *ent)
 		client->jmp_tip_on = false;
 	}
 
-	// the jumps menu shares the rows, and marks nothing
-	if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu
+	// up with the spawnpoint menu - the jumps menu shares its rows, and
+	// marks nothing - or on their own, as the list would have them
+	if (bare) {
+		step = 0;
+	} else if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu
 		|| client->jmp_menu_step >= JMP_MENU_JUMPS) {
 		client->jmp_menu_aim = 0;
 		JmpTip(ent, false);
@@ -1264,14 +1297,16 @@ static void JmpMarkersUpdate(edict_t *ent)
 	count = JmpPoints(ent, pts, &map);
 
 	// the marker aimed at, on the list: lit over the cursor's, and a button
-	client->jmp_menu_aim = client->jmp_menu_step == 0 ? JmpAim(ent, pts, count, map) : 0;
+	client->jmp_menu_aim = step == 0 ? JmpAim(ent, pts, count, map) : 0;
 	JmpTip(ent, client->jmp_menu_aim != 0);
 
 	// which one to light: the cursor's, or the pick - a start's number
 	// is past the spawnpoints'
 	if (client->jmp_menu_aim) {
 		hl = client->jmp_menu_aim;
-	} else if (client->jmp_menu_step == 0) {
+	} else if (bare) {
+		hl = 0;
+	} else if (step == 0) {
 		if (client->menu.cur >= 0) {
 			p = &client->jmp_menu[client->menu.cur];
 			if (p->SelectFunc == JmpMenuPickSpot)
@@ -1306,7 +1341,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 	}
 
 	// redo them when the light or the spot you stand on changes
-	key = (client->jmp_menu_step << 24) | ((hl & 0xff) << 16);
+	key = (step << 24) | ((hl & 0xff) << 16);
 	for (i = 0; i < count; i++)
 		if (JmpNear(ent, pts[i].origin))
 			key |= (i + 1) & 0xffff;
@@ -1364,13 +1399,32 @@ static void JmpMarkersUpdate(edict_t *ent)
 				Ghud_SetColor(ent, el, 255, 255, 255, 255);
 				Ghud_SetColor(ent, el_ring, 120, 255, 120, 255);
 			}
-			if (client->jmp_menu_step)
+			if (step)
 				flags |= GHF_HIDE;
 		}
 		Ghud_SetText(ent, el, text);
 		Ghud_SetFlags(ent, el, flags);
 		Ghud_SetFlags(ent, el_ring, flags);
 	}
+}
+
+// jmod markers - the markers without the list, for a bind
+static void Cmd_JumpMarkers_f(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+
+	client->resp.jmp_markers = !client->resp.jmp_markers;
+	if (client->resp.jmp_markers)
+		gi.cprintf(ent, PRINT_HIGH, "Markers up: fire on one to spawn there. Escape puts them away\n");
+}
+
+// Escape with no menu up: true if it put the markers away
+qboolean Jmp_MarkersEscape(edict_t *ent)
+{
+	if (!ent->client->resp.jmp_markers)
+		return false;
+	ent->client->resp.jmp_markers = false;
+	return true;
 }
 
 // from the jmod item menu, and "jmod spawns"

@@ -2102,6 +2102,7 @@ typedef struct
   float jmp_spawn_last_delay;		// jmod: the delay the last spawn used, for respawn
   jmp_start_t jmp_starts[JMP_STARTS_MAX];	// jmod: stored jumps' starts on the spawnpoint list
   int jmp_starts_count;
+  qboolean jmp_markers;				// jmod: the markers are up without the list ("jmod markers")
   char jmp_starts_packs[JMP_STARTS_PACKS][JMP_NAME_MAX];	// jmod: the collections they are of; "/" is the jumps in none
 
 #ifdef AQTION_EXTENSION
@@ -2181,6 +2182,7 @@ struct gclient_s
 	int			jmp_click_ms;	// and for how long yet
 	int			jmp_tip[2];		// the tooltip under the crosshair while one is aimed at
 	qboolean	jmp_tip_on;
+	qboolean	jmp_blank;		// the empty layout "jmod markers" keeps up has been sent
 	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
 	int			jmp_ghud_count;
 	int			jmp_ghud_key;	// what they show, to redo them only on a change
