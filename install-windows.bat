@@ -6,9 +6,11 @@ rem
 rem   install-windows.bat [source-dir] [aqtion-dir]
 rem
 rem source-dir defaults to the folder this script lives in, aqtion-dir to the
-rem path below. Both destinations keep the names the game expects:
-rem   <aqtion-dir>\action\gamex86_64.dll
-rem   <aqtion-dir>\q2pro_x.exe
+rem path below. Both go in under names of their own, beside the stock client
+rem and its game library, which are left alone - q2prox.exe looks for
+rem gamex86_64x.dll before the stock gamex86_64.dll:
+rem   <aqtion-dir>\action\gamex86_64x.dll
+rem   <aqtion-dir>\q2prox.exe
 rem   <aqtion-dir>\action\fonts\*  (when the build staged a fonts folder)
 rem   <aqtion-dir>\action\pics\*   (likewise pics)
 
@@ -31,46 +33,46 @@ if not exist "%DEST%\action\" (
 
 rem Accept whichever name the build produced.
 set "DLL="
-for %%F in (gamex86_64.dll gamex64.dll) do (
+for %%F in (gamex86_64x.dll gamex86_64.dll gamex64.dll) do (
     if not defined DLL if exist "%SRC%\%%F" set "DLL=%SRC%\%%F"
 )
 if not defined DLL (
     echo ERROR: no game DLL found in %SRC%
-    echo        looked for gamex86_64.dll, gamex64.dll
+    echo        looked for gamex86_64x.dll, gamex86_64.dll, gamex64.dll
     exit /b 1
 )
 
 set "EXE="
-for %%F in (q2pro_x.exe q2pro.exe) do (
+for %%F in (q2prox.exe q2pro_x.exe q2pro.exe) do (
     if not defined EXE if exist "%SRC%\%%F" set "EXE=%SRC%\%%F"
 )
 if not defined EXE (
     echo ERROR: no client executable found in %SRC%
-    echo        looked for q2pro_x.exe, q2pro.exe
+    echo        looked for q2prox.exe, q2pro_x.exe, q2pro.exe
     exit /b 1
 )
 
-tasklist /fi "imagename eq q2pro_x.exe" 2>nul | find /i "q2pro_x.exe" >nul
+tasklist /fi "imagename eq q2prox.exe" 2>nul | find /i "q2prox.exe" >nul
 if not errorlevel 1 (
-    echo ERROR: q2pro_x.exe is running - close the game first.
+    echo ERROR: q2prox.exe is running - close the game first.
     exit /b 1
 )
 
 echo Installing into %DEST%
 
-copy /y "%DLL%" "%DEST%\action\gamex86_64.dll" >nul
+copy /y "%DLL%" "%DEST%\action\gamex86_64x.dll" >nul
 if errorlevel 1 (
     echo ERROR: failed to copy %DLL%
     exit /b 1
 )
-echo   %DLL%  ^-^>  %DEST%\action\gamex86_64.dll
+echo   %DLL%  ^-^>  %DEST%\action\gamex86_64x.dll
 
-copy /y "%EXE%" "%DEST%\q2pro_x.exe" >nul
+copy /y "%EXE%" "%DEST%\q2prox.exe" >nul
 if errorlevel 1 (
     echo ERROR: failed to copy %EXE%
     exit /b 1
 )
-echo   %EXE%  ^-^>  %DEST%\q2pro_x.exe
+echo   %EXE%  ^-^>  %DEST%\q2prox.exe
 
 rem The TrueType text's fonts, if the build staged them
 if exist "%SRC%\fonts\" (

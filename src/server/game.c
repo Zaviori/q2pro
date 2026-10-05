@@ -968,9 +968,25 @@ static void *SV_LoadGameLibraryFrom(const char *path)
     return entry;
 }
 
+/*
+The extras build ships beside a stock install, not over it: its client
+is q2prox and its game library game<cpu>x, which is looked for first -
+the stock one is left where it is, for the stock client, and is what
+this client falls back to.
+*/
+#define GAMELIB_EXTRAS  "game" CPUSTRING "x" LIBSUFFIX
+
 static void *SV_LoadGameLibrary(const char *libdir, const char *gamedir)
 {
     char path[MAX_OSPATH];
+
+    if (Q_concat(path, sizeof(path), libdir,
+                 PATH_SEP_STRING, gamedir, PATH_SEP_STRING,
+                 GAMELIB_EXTRAS) < sizeof(path) && !os_access(path, SOLIB_X_OK)) {
+        void *entry = SV_LoadGameLibraryFrom(path);
+        if (entry)
+            return entry;
+    }
 
     if (Q_concat(path, sizeof(path), libdir,
                  PATH_SEP_STRING, gamedir, PATH_SEP_STRING,

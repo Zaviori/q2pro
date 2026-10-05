@@ -4,7 +4,7 @@
 #   ./build-windows.sh [share-dir]
 #
 # Builds build-windows/ (configuring it first if needed), then copies
-# gamex86_64.dll, q2pro_x.exe, install-windows.bat, fonts/ and pics/ to the share
+# gamex86_64x.dll, q2prox.exe, install-windows.bat, fonts/ and pics/ to the share
 # dir, which is /home/antti/share by default. Run install-windows.bat from
 # there inside Windows to drop the files into the Steam AQtion install.
 #
@@ -48,8 +48,10 @@ fi
 
 # q2pro.exe is renamed on the way out; the Steam install already has a
 # stock q2pro.exe and this build sits next to it.
-cp -f "$BUILDDIR/gamex86_64.dll" "$SHAREDIR/gamex86_64.dll"
-cp -f "$BUILDDIR/q2pro.exe"      "$SHAREDIR/q2pro_x.exe"
+# Both under names of their own - q2prox.exe, which looks for
+# gamex86_64x.dll first - so nothing of the stock install is overwritten.
+cp -f "$BUILDDIR/gamex86_64.dll" "$SHAREDIR/gamex86_64x.dll"
+cp -f "$BUILDDIR/q2pro.exe"      "$SHAREDIR/q2prox.exe"
 cp -f "$SRCDIR/install-windows.bat" "$SHAREDIR/install-windows.bat"
 # The TrueType text reads its fonts from action/fonts; without them every
 # *_font cvar quietly falls back to conchars
@@ -60,5 +62,5 @@ mkdir -p "$SHAREDIR/pics"
 cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SHAREDIR/pics/"
 
 echo "Staged in $SHAREDIR:"
-ls -l "$SHAREDIR/gamex86_64.dll" "$SHAREDIR/q2pro_x.exe" "$SHAREDIR/install-windows.bat" \
+ls -l "$SHAREDIR/gamex86_64x.dll" "$SHAREDIR/q2prox.exe" "$SHAREDIR/install-windows.bat" \
       "$SHAREDIR"/fonts/* "$SHAREDIR"/pics/*
