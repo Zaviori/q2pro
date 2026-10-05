@@ -149,6 +149,8 @@ void Cmd_Jmod_f (edict_t *ent)
 		return;
 	}
 
+	// a new subcommand goes into the client's completion as well:
+	// CL_Jmod_c, src/client/main.c
 	cmd = gi.argv(1);
 
 	if(Q_stricmp(cmd, "store") == 0)

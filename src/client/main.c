@@ -2222,6 +2222,7 @@ static void CL_Say_c(genctx_t *ctx, int argnum)
 }
 
 // the jump mod's subcommands, as the game's "jmod" takes them
+// (Cmd_Jmod_f, src/action/tng_jump.c): one added there is added here
 static void CL_Jmod_c(genctx_t *ctx, int argnum)
 {
     static const char *const subcmds[] = {
