@@ -2039,6 +2039,25 @@ static void JmpStartsToggle(edict_t *ent, const char *pack)
 		gi.cprintf(ent, PRINT_HIGH, "The list takes %d starts: some are left out\n", JMP_STARTS_MAX);
 }
 
+// a jump saved or deleted: everybody's listed starts are read again, so
+// none is marked that is gone and a new one is there
+static void JmpStartsRefresh(void)
+{
+	edict_t *ent;
+	int i, j;
+
+	for (i = 0, ent = g_edicts + 1; i < game.maxclients; i++, ent++) {
+		if (!ent->inuse || !ent->client)
+			continue;
+		for (j = 0; j < JMP_STARTS_PACKS; j++) {
+			if (ent->client->resp.jmp_starts_packs[j][0]) {
+				JmpStartsLoad(ent);
+				break;
+			}
+		}
+	}
+}
+
 //
 // recording
 //
@@ -2276,6 +2295,7 @@ static void JmpSaveWrite(edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, "Could not write the jump\n");
 		return;
 	}
+	JmpStartsRefresh();
 	JmpPath(path, sizeof(path), t->pack, t->name);
 	gi.centerprintf(ent, "Saved %s\n", t->name);
 	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\"%s%s: %s\n", t->name,
@@ -2468,6 +2488,7 @@ static qboolean JmpDelete(edict_t *ent, const char *pack, const char *name)
 		gi.cprintf(ent, PRINT_HIGH, "Could not delete %s\n", path);
 		return false;
 	}
+	JmpStartsRefresh();
 	gi.cprintf(ent, PRINT_HIGH, "Deleted \"%s\"\n", name);
 	return true;
 }
@@ -2556,6 +2577,7 @@ static void JmpPackDelete(edict_t *ent, const char *pack)
 		return;
 	}
 	count = JmpPackWalk(ent, pack, &foreign, true);
+	JmpStartsRefresh();
 	if (JmpPackExists(pack))
 		gi.cprintf(ent, PRINT_HIGH, "Could not delete all of \"%s\"\n", pack);
 	else if (count)
