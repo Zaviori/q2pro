@@ -81,6 +81,7 @@ static qboolean Jmp_Stop(edict_t *ent);
 static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
+static void Cmd_JumpDelete_f(edict_t *ent);
 static void JmpAnswerText(edict_t *ent, const char *text);
 
 void Cmd_Jmod_f (edict_t *ent)
@@ -112,8 +113,9 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod menu - open the jump menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod spawns - pick a spawnpoint, then its delay and repeat, from a menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod save [name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod play [name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod save [[collection/]name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod play [[collection/]name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
 		return;
@@ -191,6 +193,11 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "play") == 0)
 	{
 		Cmd_JumpPlay_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "delete") == 0)
+	{
+		Cmd_JumpDelete_f(ent);
 		return;
 	}
 	else if(Q_stricmp(cmd, "answer") == 0)
@@ -669,6 +676,9 @@ rows live in the client, as the values shown are the player's own.
 #define JMP_MENU_JUMPS	10	// the steps of the jumps menu, in the same rows: the list,
 #define JMP_MENU_VIEW	11	// then how to watch the pick
 #define JMP_MENU_TAKE	12	// and what to do with a take, running or not yet saved
+#define JMP_MENU_PACKS	13	// the collections with jumps on this map, before the list
+#define JMP_MENU_SAVETO	14	// which collection a take is saved to
+#define JMP_MENU_DELETE	15	// "are you sure"
 #define JMP_REC_COUNTDOWN	3	// seconds before a recording's teleport to its spawnpoint
 
 static const float jmp_delays[] = { 0, 1, 2, 3, 5, 10 };
@@ -1293,7 +1303,10 @@ where he is, where he looks, his animation frame, the movement keys held
 and his speed - and "jmod save" writes the take, under a name and with
 a line describing it, to <game>/jumps/<map>/<name>.jmp, a text file:
 everybody on the server gets it in the jumps menu, and the file itself
-can be passed on to another install. The frame rate in it is the
+can be passed on to another install. A jump can be saved into a
+collection - a player's own pack, say - which is a directory,
+<game>/jumps/packs/<collection>/<map>/, to pass on whole; anybody may
+add to one. The frame rate in it is the
 player's cl_maxfps, which his client keeps the game told of (cvarsync);
 a client without that gets the rate its commands came at instead, which
 is not quite the same number (66 sends 15 ms commands, 66.7 a second).
@@ -1314,7 +1327,9 @@ way, to try it.
 #define JMP_ASK_SECS		60		// a question waits this long for its answer
 #define JMP_ASK_NAME		1
 #define JMP_ASK_DESC		2
-#define JMP_LIST_MAX		64
+#define JMP_ASK_PACK		3		// the name of a new collection
+#define JMP_PACKS_MAX		12		// collections offered when saving
+#define JMP_LIST_MAX		128
 #define JMP_LIST_ROWS		8		// jumps on a menu page
 #define JMP_LIST_FIRST		3		// the row of the first one
 #define JMP_CAM_DIST		110		// third person: behind the ghost,
@@ -1356,6 +1371,7 @@ typedef struct {
 
 typedef struct {
 	char	name[JMP_NAME_MAX];
+	char	pack[JMP_NAME_MAX];	// its collection, "" none
 	char	author[16];
 	char	desc[JMP_DESC_MAX];
 	int		fps;
@@ -1376,6 +1392,7 @@ typedef struct {
 	int		ask;			// the question out to the player: JMP_ASK_*, 0 none
 	int		ask_frame;		// level.framenum it lapses at
 	char	ask_name[JMP_NAME_MAX];
+	char	ask_pack[JMP_NAME_MAX];
 
 	qboolean	playing, pov;
 	qboolean	play_started;
@@ -1389,6 +1406,7 @@ typedef struct {
 	int		hud_keys;
 
 	int		menu_top, menu_pick;
+	char	menu_pack[JMP_NAME_MAX];	// the collection the list shows
 	int		menu_sel;		// the jump under the list's cursor, its description shown; -1 none
 	int		menu_cur;		// the cursor's row as the list was built
 	qboolean	menu_keep;	// the list is rebuilt for the cursor: not read again
@@ -1444,9 +1462,49 @@ static qboolean JmpNameClean(const char *in, char *out, size_t size)
 	return n > 0;
 }
 
-static void JmpPath(char *path, size_t size, const char *name)
+// "collection/name" or "name" into its two clean halves
+static qboolean JmpSplit(const char *arg, char *pack, char *name)
 {
-	Q_snprintf(path, size, "%s/jumps/%s/%s.jmp", JmpGameDir(), level.mapname, name);
+	char buf[JMP_NAME_MAX * 2 + 2], *slash;
+
+	pack[0] = 0;
+	if (strlen(arg) >= sizeof(buf))
+		return false;
+	strcpy(buf, arg);
+	slash = strchr(buf, '/');
+	if (!slash)
+		return JmpNameClean(buf, name, JMP_NAME_MAX);
+	*slash = 0;
+	return JmpNameClean(buf, pack, JMP_NAME_MAX) && JmpNameClean(slash + 1, name, JMP_NAME_MAX);
+}
+
+// where a collection's jumps of this map are, or those in none
+static void JmpDir(char *path, size_t size, const char *pack)
+{
+	if (pack[0])
+		Q_snprintf(path, size, "%s/jumps/packs/%s/%s", JmpGameDir(), pack, level.mapname);
+	else
+		Q_snprintf(path, size, "%s/jumps/%s", JmpGameDir(), level.mapname);
+}
+
+static void JmpPath(char *path, size_t size, const char *pack, const char *name)
+{
+	char dir[MAX_OSPATH];
+
+	JmpDir(dir, sizeof(dir), pack);
+	Q_snprintf(path, size, "%s/%s.jmp", dir, name);
+}
+
+// the player's name as a file holds it
+static void JmpAuthor(edict_t *ent, char *author, size_t size)
+{
+	size_t n = 0;
+	char *c;
+
+	for (c = ent->client->pers.netname; *c && n + 1 < size; c++)
+		if (*c >= 32 && *c < 127)
+			author[n++] = *c;
+	author[n] = 0;
 }
 
 static void JmpSecs(int ms, char *buf, size_t size)
@@ -1474,10 +1532,16 @@ static qboolean JmpWrite(jmp_take_t *t)
 
 	Q_snprintf(path, sizeof(path), "%s/jumps", JmpGameDir());
 	os_mkdir(path);
-	Q_snprintf(path, sizeof(path), "%s/jumps/%s", JmpGameDir(), level.mapname);
+	if (t->pack[0]) {
+		Q_snprintf(path, sizeof(path), "%s/jumps/packs", JmpGameDir());
+		os_mkdir(path);
+		Q_snprintf(path, sizeof(path), "%s/jumps/packs/%s", JmpGameDir(), t->pack);
+		os_mkdir(path);
+	}
+	JmpDir(path, sizeof(path), t->pack);
 	os_mkdir(path);
 
-	JmpPath(path, sizeof(path), t->name);
+	JmpPath(path, sizeof(path), t->pack, t->name);
 	f = fopen(path, "w");
 	if (!f)
 		return false;
@@ -1495,19 +1559,20 @@ static qboolean JmpWrite(jmp_take_t *t)
 }
 
 // the header alone into the list, or the samples with it to play
-static qboolean JmpRead(const char *name, jmp_take_t *t, qboolean samples)
+static qboolean JmpRead(const char *pack, const char *name, jmp_take_t *t, qboolean samples)
 {
 	char path[MAX_OSPATH], line[256], key[16], value[64];
 	FILE *f;
 	int i, version = 0, count = 0;
 
 	memset(t, 0, sizeof(*t));
-	JmpPath(path, sizeof(path), name);
+	JmpPath(path, sizeof(path), pack, name);
 	f = fopen(path, "r");
 	if (!f)
 		return false;
 
 	Q_strncpyz(t->name, name, sizeof(t->name));
+	Q_strncpyz(t->pack, pack, sizeof(t->pack));
 	while (fgets(line, sizeof(line), f)) {
 		value[0] = 0;
 		if (sscanf(line, "%15s %63[^\r\n]", key, value) < 1)
@@ -1564,20 +1629,23 @@ static qboolean JmpRead(const char *name, jmp_take_t *t, qboolean samples)
 	return true;
 }
 
+// by collection, those in none first, then by name
 static int JmpListCmp(const void *a, const void *b)
 {
-	return strcmp(((const jmp_take_t *)a)->name, ((const jmp_take_t *)b)->name);
+	const jmp_take_t *ta = a, *tb = b;
+	int c = strcmp(ta->pack, tb->pack);
+
+	return c ? c : strcmp(ta->name, tb->name);
 }
 
-static void JmpListLoad(void)
+static void JmpListScan(const char *pack)
 {
 	char path[MAX_OSPATH], name[JMP_NAME_MAX];
 	struct dirent *e;
 	DIR *dir;
 	size_t len;
 
-	jmp_list_count = 0;
-	Q_snprintf(path, sizeof(path), "%s/jumps/%s", JmpGameDir(), level.mapname);
+	JmpDir(path, sizeof(path), pack);
 	dir = opendir(path);
 	if (!dir)
 		return;
@@ -1588,12 +1656,68 @@ static void JmpListLoad(void)
 			continue;
 		memcpy(name, e->d_name, len - 4);
 		name[len - 4] = 0;
-		if (JmpRead(name, &jmp_list[jmp_list_count], false))
+		if (JmpRead(pack, name, &jmp_list[jmp_list_count], false))
 			jmp_list_count++;
 	}
 	closedir(dir);
+}
+
+static int JmpPackCmp(const void *a, const void *b)
+{
+	return strcmp(a, b);
+}
+
+// every collection there is, whatever its maps
+static int JmpPacksAll(char packs[][JMP_NAME_MAX], int max)
+{
+	char path[MAX_OSPATH];
+	struct dirent *e;
+	DIR *dir;
+	int count = 0;
+
+	Q_snprintf(path, sizeof(path), "%s/jumps/packs", JmpGameDir());
+	dir = opendir(path);
+	if (!dir)
+		return 0;
+
+	while (count < max && (e = readdir(dir)) != NULL) {
+		if (JmpNameClean(e->d_name, packs[count], JMP_NAME_MAX) && !strcmp(packs[count], e->d_name))
+			count++;
+	}
+	closedir(dir);
+
+	qsort(packs, count, JMP_NAME_MAX, JmpPackCmp);
+	return count;
+}
+
+// the map's jumps: those in no collection and each collection's
+static void JmpListLoad(void)
+{
+	char packs[64][JMP_NAME_MAX];
+	int i, count;
+
+	jmp_list_count = 0;
+	JmpListScan("");
+	count = JmpPacksAll(packs, 64);
+	for (i = 0; i < count; i++)
+		JmpListScan(packs[i]);
 
 	qsort(jmp_list, jmp_list_count, sizeof(jmp_list[0]), JmpListCmp);
+}
+
+// the map has jumps in a collection: sorted, so the last one tells
+static qboolean JmpListPacked(void)
+{
+	return jmp_list_count && jmp_list[jmp_list_count - 1].pack[0];
+}
+
+// a collection's stretch of the list
+static void JmpListRange(const char *pack, int *lo, int *hi)
+{
+	for (*lo = 0; *lo < jmp_list_count && strcmp(jmp_list[*lo].pack, pack); (*lo)++)
+		;
+	for (*hi = *lo; *hi < jmp_list_count && !strcmp(jmp_list[*hi].pack, pack); (*hi)++)
+		;
 }
 
 //
@@ -1619,9 +1743,8 @@ static void JmpRecStop(edict_t *ent)
 	jmp_state_t *st = JmpState(ent);
 	jmp_take_t *t = &st->take;
 	jmp_sample_t *s = t->samples;
-	char secs[16], *c;
+	char secs[16];
 	int i, first, start, fps;
-	size_t n = 0;
 
 	st->recording = false;
 
@@ -1651,11 +1774,9 @@ static void JmpRecStop(edict_t *ent)
 	fps = atoi(ent->client->cl_cvar[clcvar_cl_maxfps]);
 	t->fps = fps > 0 ? fps : st->rec_cmds * 1000 / max(st->rec_ms, 1);
 	t->name[0] = 0;
+	t->pack[0] = 0;
 	t->desc[0] = 0;
-	for (c = ent->client->pers.netname; *c && n + 1 < sizeof(t->author); c++)
-		if (*c >= 32 && *c < 127)
-			t->author[n++] = *c;
-	t->author[n] = 0;
+	JmpAuthor(ent, t->author, sizeof(t->author));
 
 	JmpSecs(t->ms, secs, sizeof(secs));
 	gi.cprintf(ent, PRINT_HIGH, "Recorded %s seconds at %d fps: \"jmod play\" to watch it, "
@@ -1736,13 +1857,16 @@ static void Cmd_JumpRec_f(edict_t *ent)
 }
 
 /*
-Saving asks for what the command did not give - a name, then a line
-describing the jump - with the client's messageprompt, a box with the
+Saving asks for what the command did not give - a name, the collection,
+then a line describing the jump. The collection is picked from a menu;
+the texts are asked with the client's messageprompt, a box with the
 question over the line typed, answered as "jmod answer <text>". A client
 without the command sends it on as an unknown one: that one is asked in
 its chat prompt instead, and what it says next is the answer and goes to
 nobody.
 */
+static void JmpSaveToShow(edict_t *ent);
+
 static void JmpAsk(edict_t *ent, int ask)
 {
 	jmp_state_t *st = JmpState(ent);
@@ -1753,60 +1877,71 @@ static void JmpAsk(edict_t *ent, int ask)
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
 
-	if (ask == JMP_ASK_NAME)
+	if (ask == JMP_ASK_NAME) {
 		gi.cprintf(ent, PRINT_HIGH, "Name the jump: letters, digits, - and _, %d at most. "
 			"Type it and press Enter\n", JMP_NAME_MAX - 1);
-	else
+		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
+	} else if (ask == JMP_ASK_PACK) {
+		gi.cprintf(ent, PRINT_HIGH, "Name the new collection: letters, digits, - and _, %d at most. "
+			"Type it and press Enter\n", JMP_NAME_MAX - 1);
+		stuffcmd(ent, "messageprompt \"Name the new collection - letters, digits, - and _\" jmod answer\n");
+	} else {
 		gi.cprintf(ent, PRINT_HIGH, "Describe \"%s\" in a line: where it goes, what the trick is. "
 			"Type it and press Enter\n", st->ask_name);
-	if (ask == JMP_ASK_NAME)
-		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
-	else
 		stuffcmd(ent, va("messageprompt \"Describe %s - where it goes, the trick\" jmod answer\n",
 			st->ask_name));
+	}
 }
 
-// the name as a file's, free or the player's own to overwrite
-static qboolean JmpSaveName(edict_t *ent, const char *arg, char *name, size_t size)
+// the name is free in its collection, or the player's own to overwrite
+static qboolean JmpSaveFree(edict_t *ent)
 {
+	jmp_state_t *st = JmpState(ent);
 	jmp_take_t old;
 
-	if (!JmpNameClean(arg, name, size)) {
-		gi.cprintf(ent, PRINT_HIGH, "A jump's name is letters, digits, - and _, %d at most\n",
-			JMP_NAME_MAX - 1);
-		return false;
-	}
-	if (JmpRead(name, &old, false) && strcmp(old.author, JmpState(ent)->take.author)) {
-		gi.cprintf(ent, PRINT_HIGH, "%s has a jump called \"%s\" here already\n", old.author, name);
+	if (JmpRead(st->ask_pack, st->ask_name, &old, false) && strcmp(old.author, st->take.author)) {
+		gi.cprintf(ent, PRINT_HIGH, "%s has a jump called \"%s\" there already\n",
+			old.author, st->ask_name);
 		return false;
 	}
 	return true;
 }
 
-static void JmpSaveWrite(edict_t *ent, const char *name, const char *desc)
+// the name and the collection are known: on to the description, or back
+// for another name
+static void JmpSaveTo(edict_t *ent)
 {
-	jmp_take_t *t = &JmpState(ent)->take;
+	JmpAsk(ent, JmpSaveFree(ent) ? JMP_ASK_DESC : JMP_ASK_NAME);
+}
+
+static void JmpSaveWrite(edict_t *ent, const char *desc)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t *t = &st->take;
+	char path[MAX_OSPATH];
 	size_t n = 0;
 
 	for (; *desc && n + 1 < sizeof(t->desc); desc++)
-		if (*desc >= 32 && *desc < 127 && (n || *desc != ' '))
+		if (*desc >= 32 && *desc < 127 && *desc != '"' && (n || *desc != ' '))
 			t->desc[n++] = *desc;
 	while (n && t->desc[n - 1] == ' ')
 		n--;
 	t->desc[n] = 0;
 
-	Q_strncpyz(t->name, name, sizeof(t->name));
+	Q_strncpyz(t->name, st->ask_name, sizeof(t->name));
+	Q_strncpyz(t->pack, st->ask_pack, sizeof(t->pack));
 	if (!JmpWrite(t)) {
 		t->name[0] = 0;	// a take with a name is a saved one
 		gi.cprintf(ent, PRINT_HIGH, "Could not write the jump\n");
 		return;
 	}
-	gi.centerprintf(ent, "Saved %s\n", name);
-	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\" for %s: %s/jumps/%s/%s.jmp\n", name, level.mapname,
-		JmpGameDir(), level.mapname, name);
+	JmpPath(path, sizeof(path), t->pack, t->name);
+	gi.centerprintf(ent, "Saved %s\n", t->name);
+	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\"%s%s: %s\n", t->name,
+		t->pack[0] ? " in " : "", t->pack, path);
 }
 
-// jmod save [name] [description]
+// jmod save [[collection/]name] [description]
 static void Cmd_JumpSave_f(edict_t *ent)
 {
 	jmp_state_t *st = JmpState(ent);
@@ -1826,12 +1961,21 @@ static void Cmd_JumpSave_f(edict_t *ent)
 		JmpAsk(ent, JMP_ASK_NAME);
 		return;
 	}
-	if (!JmpSaveName(ent, gi.argv(2), st->ask_name, sizeof(st->ask_name)))
-		return;
-	if (gi.argc() < 4) {
-		JmpAsk(ent, JMP_ASK_DESC);
+	if (!JmpSplit(gi.argv(2), st->ask_pack, st->ask_name)) {
+		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod save [[collection/]name] [description] - "
+			"names are letters, digits, - and _, %d at most\n", JMP_NAME_MAX - 1);
 		return;
 	}
+	if (gi.argc() < 4) {
+		// a bare name still has its collection to be asked
+		if (st->ask_pack[0])
+			JmpSaveTo(ent);
+		else
+			JmpSaveToShow(ent);
+		return;
+	}
+	if (!JmpSaveFree(ent))
+		return;
 
 	desc[0] = 0;
 	for (i = 3; i < gi.argc(); i++) {
@@ -1839,7 +1983,7 @@ static void Cmd_JumpSave_f(edict_t *ent)
 			Q_strlcat(desc, " ", sizeof(desc));
 		Q_strlcat(desc, gi.argv(i), sizeof(desc));
 	}
-	JmpSaveWrite(ent, st->ask_name, desc);
+	JmpSaveWrite(ent, desc);
 }
 
 // the answer to the question that is out; NULL turns it down
@@ -1864,12 +2008,29 @@ static void JmpAnswerText(edict_t *ent, const char *text)
 	for (len = strlen(p); len && p[len - 1] == ' '; len--)
 		p[len - 1] = 0;
 
-	if (ask == JMP_ASK_NAME)
-		JmpAsk(ent, JmpSaveName(ent, p, st->ask_name, sizeof(st->ask_name)) ? JMP_ASK_DESC : JMP_ASK_NAME);
-	else if (!*p)
+	if (ask == JMP_ASK_NAME) {
+		if (!JmpSplit(p, st->ask_pack, st->ask_name)) {
+			gi.cprintf(ent, PRINT_HIGH, "A name is letters, digits, - and _, %d at most\n",
+				JMP_NAME_MAX - 1);
+			JmpAsk(ent, JMP_ASK_NAME);
+		} else if (st->ask_pack[0]) {
+			JmpSaveTo(ent);
+		} else {
+			JmpSaveToShow(ent);
+		}
+	} else if (ask == JMP_ASK_PACK) {
+		if (!JmpNameClean(p, st->ask_pack, sizeof(st->ask_pack))) {
+			gi.cprintf(ent, PRINT_HIGH, "A name is letters, digits, - and _, %d at most\n",
+				JMP_NAME_MAX - 1);
+			JmpAsk(ent, JMP_ASK_PACK);
+		} else {
+			JmpSaveTo(ent);
+		}
+	} else if (!*p) {
 		JmpAsk(ent, JMP_ASK_DESC);
-	else
-		JmpSaveWrite(ent, st->ask_name, p);
+	} else {
+		JmpSaveWrite(ent, p);
+	}
 }
 
 // a client's commands while a question is out: true if this one was to do with it
@@ -1884,7 +2045,8 @@ qboolean Jmp_Answer(edict_t *ent)
 
 	// no messageprompt in this client: its chat prompt will do
 	if (!Q_stricmp(gi.argv(0), "messageprompt")) {
-		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n" : "Describe the jump\n");
+		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n"
+			: st->ask == JMP_ASK_PACK ? "Name the new collection\n" : "Describe the jump\n");
 		stuffcmd(ent, "messagemode\n");
 		return true;
 	}
@@ -1905,6 +2067,51 @@ qboolean Jmp_Answer(edict_t *ent)
 	}
 	JmpAnswerText(ent, p);
 	return true;
+}
+
+// a jump is its author's to delete; in a local game, the player's whose game it is
+static qboolean JmpMayDelete(edict_t *ent, jmp_take_t *t)
+{
+	char author[sizeof(t->author)];
+
+	if (!dedicated->value)
+		return true;
+	JmpAuthor(ent, author, sizeof(author));
+	return !strcmp(author, t->author);
+}
+
+static qboolean JmpDelete(edict_t *ent, const char *pack, const char *name)
+{
+	char path[MAX_OSPATH];
+	jmp_take_t t;
+
+	if (!JmpRead(pack, name, &t, false)) {
+		gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\" there on %s\n", name, level.mapname);
+		return false;
+	}
+	if (!JmpMayDelete(ent, &t)) {
+		gi.cprintf(ent, PRINT_HIGH, "\"%s\" is %s's to delete\n", name, t.author);
+		return false;
+	}
+	JmpPath(path, sizeof(path), pack, name);
+	if (remove(path)) {
+		gi.cprintf(ent, PRINT_HIGH, "Could not delete %s\n", path);
+		return false;
+	}
+	gi.cprintf(ent, PRINT_HIGH, "Deleted \"%s\"\n", name);
+	return true;
+}
+
+// jmod delete <[collection/]name>
+static void Cmd_JumpDelete_f(edict_t *ent)
+{
+	char pack[JMP_NAME_MAX], name[JMP_NAME_MAX];
+
+	if (gi.argc() < 3 || !JmpSplit(gi.argv(2), pack, name)) {
+		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod delete <[collection/]name>\n");
+		return;
+	}
+	JmpDelete(ent, pack, name);
 }
 
 //
@@ -1952,8 +2159,8 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 	}
 
 	JmpSecs(t->ms, secs, sizeof(secs));
-	Q_snprintf(text, sizeof(text), "%s%s%.15s - %d fps - %s s", t->name,
-		t->name[0] ? " by " : "", t->author, t->fps, secs);
+	Q_snprintf(text, sizeof(text), "%s%s%s%s%.15s - %d fps - %s s", t->pack, t->pack[0] ? "/" : "",
+		t->name, t->name[0] ? " by " : "", t->author, t->fps, secs);
 	Ghud_SetText(ent, st->hud[JMP_HUD_INFO], text);
 	Ghud_SetText(ent, st->hud[JMP_HUD_DESC], t->desc);
 	JmpHudHint(ent, st);
@@ -2218,8 +2425,8 @@ static qboolean Jmp_Stop(edict_t *ent)
 	return false;
 }
 
-// a stored jump by name, or the last take with none
-static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
+// a stored jump by collection and name, or the last take with no name
+static void JmpPlay(edict_t *ent, const char *pack, const char *name, qboolean pov)
 {
 	jmp_state_t *st = JmpState(ent);
 	jmp_take_t *t = &st->take;
@@ -2233,14 +2440,14 @@ static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
 	JmpPlayStop(ent, false);
 
 	if (name) {
-		if (!JmpRead(name, &st->play, true)) {
-			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\" on %s: jmod jumps lists them\n",
+		if (!JmpRead(pack, name, &st->play, true)) {
+			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\" there on %s: jmod jumps lists them\n",
 				name, level.mapname);
 			return;
 		}
 	} else {
 		if (!t->count) {
-			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod play <name> [3rd], or record a take first\n");
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod play <[collection/]name> [3rd], or record a take first\n");
 			return;
 		}
 		// a copy: the next recording takes the buffer back
@@ -2251,23 +2458,23 @@ static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
 	JmpPlayStart(ent, pov);
 }
 
-// jmod play [name] [3rd]
+// jmod play [[collection/]name] [3rd]
 static void Cmd_JumpPlay_f(edict_t *ent)
 {
-	char name[JMP_NAME_MAX];
+	char pack[JMP_NAME_MAX], name[JMP_NAME_MAX];
 	int arg = 2;
 	qboolean named = false;
 
 	// "jmod play 3rd" is the last take in third person, unless a jump is called that
 	if (gi.argc() > arg && (gi.argc() > arg + 1 || Q_stricmp(gi.argv(arg), "3rd"))) {
-		if (!JmpNameClean(gi.argv(arg), name, sizeof(name))) {
+		if (!JmpSplit(gi.argv(arg), pack, name)) {
 			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\"\n", gi.argv(arg));
 			return;
 		}
 		named = true;
 		arg++;
 	}
-	JmpPlay(ent, named ? name : NULL, !(gi.argc() > arg && !Q_stricmp(gi.argv(arg), "3rd")));
+	JmpPlay(ent, pack, named ? name : NULL, !(gi.argc() > arg && !Q_stricmp(gi.argv(arg), "3rd")));
 }
 
 void Jmp_ClientDisconnect(edict_t *ent)
@@ -2339,7 +2546,7 @@ static void JmpTakeKeep(edict_t *ent, pmenu_t *p)
 
 static void JmpJumpsLast(edict_t *ent, pmenu_t *p)
 {
-	JmpPlay(ent, NULL, true);
+	JmpPlay(ent, "", NULL, true);
 }
 
 static void JmpJumpsSave(edict_t *ent, pmenu_t *p)
@@ -2364,12 +2571,12 @@ static void JmpJumpsPage(edict_t *ent, pmenu_t *p)
 static void JmpJumpsWatch(edict_t *ent, pmenu_t *p)
 {
 	jmp_state_t *st = JmpState(ent);
-	char name[JMP_NAME_MAX];
+	jmp_take_t t;
 
 	if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count)
 		return;
-	Q_strncpyz(name, jmp_list[st->menu_pick].name, sizeof(name));
-	JmpPlay(ent, name, p->arg != NULL);
+	t = jmp_list[st->menu_pick];
+	JmpPlay(ent, t.pack, t.name, p->arg != NULL);
 }
 
 static void JmpJumpsBack(edict_t *ent, pmenu_t *p)
@@ -2377,36 +2584,144 @@ static void JmpJumpsBack(edict_t *ent, pmenu_t *p)
 	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 }
 
+// up from the list: to the collections where the map has any, else out
+static void JmpJumpsUp(edict_t *ent, pmenu_t *p)
+{
+	JmpListLoad();
+	if (JmpListPacked())
+		JmpJumpsShow(ent, JMP_MENU_PACKS, -1);
+	else
+		JmpMenuItems(ent, p);
+}
+
+static void JmpPacksPick(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+	int i = (int)(intptr_t)p->arg;
+
+	if (i < 0 || i >= jmp_list_count)
+		return;
+	Q_strncpyz(st->menu_pack, jmp_list[i].pack, sizeof(st->menu_pack));
+	st->menu_top = st->menu_pick = i;
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+static void JmpJumpsDeleteAsk(edict_t *ent, pmenu_t *p)
+{
+	JmpJumpsShow(ent, JMP_MENU_DELETE, -1);
+}
+
+static void JmpJumpsDeleteYes(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t t;
+
+	if (st->menu_pick >= 0 && st->menu_pick < jmp_list_count) {
+		t = jmp_list[st->menu_pick];
+		JmpDelete(ent, t.pack, t.name);
+	}
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);	// read again, without it
+}
+
+// saving: the collection picked - a row's text is its name
+static void JmpSaveToPick(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	Q_strncpyz(st->ask_pack, p->arg ? p->text : "", sizeof(st->ask_pack));
+	JmpSaveTo(ent);
+}
+
+static void JmpSaveToNew(edict_t *ent, pmenu_t *p)
+{
+	JmpAsk(ent, JMP_ASK_PACK);
+}
+
+static void JmpSaveToCancel(edict_t *ent, pmenu_t *p)
+{
+	PMenu_Close(ent);
+	gi.cprintf(ent, PRINT_HIGH, "Not saved. \"jmod save\" asks again\n");
+}
+
+static void JmpSaveToShow(edict_t *ent)
+{
+	JmpJumpsShow(ent, JMP_MENU_SAVETO, -1);
+}
+
 static void JmpJumpsShow(edict_t *ent, int step, int cur)
 {
 	jmp_state_t *st = JmpState(ent);
 	gclient_t *client = ent->client;
 	jmp_take_t *t;
-	char secs[16];
-	int i, row;
+	char secs[16], packs[JMP_PACKS_MAX][JMP_NAME_MAX];
+	int i, j, row, lo, hi;
 
 	for (i = 0; i < JMP_MENU_ROWS; i++)
 		JmpMenuRow_Set(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
 	JmpMenuRow_Set(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
 
 	client->jmp_menu_step = step;
-	if (step == JMP_MENU_JUMPS) {
+	if (step == JMP_MENU_PACKS) {
+		// a row a collection, those in none first; its first jump is the row's argument
+		JmpListLoad();
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
+		row = 3;
+		for (i = 0; i < jmp_list_count && row < JMP_MENU_ROWS - 2; i = j, row++) {
+			t = &jmp_list[i];
+			for (j = i; j < jmp_list_count && !strcmp(jmp_list[j].pack, t->pack); j++)
+				;
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpPacksPick, "%-24.24s %3d",
+				t->pack[0] ? t->pack : "In no collection", j - i);
+			if (cur < 0 && !strcmp(t->pack, st->menu_pack))
+				cur = row;
+		}
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+		if (cur < 0)
+			cur = 3;
+	} else if (step == JMP_MENU_SAVETO) {
+		j = JmpPacksAll(packs, JMP_PACKS_MAX);
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Save %s to", st->ask_name);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpSaveToPick, "No collection");
+		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpSaveToNew, "A new collection...");
+		for (i = 0; i < j; i++)
+			JmpMenuRow_Set(ent, 6 + i, PMENU_ALIGN_LEFT, 1, JmpSaveToPick, "%s", packs[i]);
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpSaveToCancel, "Cancel");
+		if (cur < 0)
+			cur = 3;
+	} else if (step == JMP_MENU_DELETE) {
+		if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count) {
+			JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+			return;
+		}
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete %s?", jmp_list[st->menu_pick].name);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
+		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteYes, "Yes, delete it");
+		if (cur < 0)
+			cur = 3;
+	} else if (step == JMP_MENU_JUMPS) {
 		// read again each time it is opened: somebody may have saved one since
 		if (!st->menu_keep)
 			JmpListLoad();
 		st->menu_keep = false;
-		if (st->menu_top >= jmp_list_count)
-			st->menu_top = max(jmp_list_count - 1, 0) / JMP_LIST_ROWS * JMP_LIST_ROWS;
+
+		// the collection's stretch of the list, a page of it
+		JmpListRange(st->menu_pack, &lo, &hi);
+		if (st->menu_top >= hi)
+			st->menu_top = lo + max(hi - lo - 1, 0) / JMP_LIST_ROWS * JMP_LIST_ROWS;
+		if (st->menu_top < lo)
+			st->menu_top = lo;
 
 		// the cursor goes to the jump last under it, or the page's first
 		st->menu_sel = -1;
-		if (cur < 0 && jmp_list_count)
+		if (cur < 0 && hi > lo)
 			st->menu_sel = st->menu_pick = Q_clip(st->menu_pick, st->menu_top,
-				min(st->menu_top + JMP_LIST_ROWS, jmp_list_count) - 1);
+				min(st->menu_top + JMP_LIST_ROWS, hi) - 1);
 
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s (%d)", st->menu_pack[0] ? st->menu_pack
+			: JmpListPacked() ? "In no collection" : "Recorded jumps", hi - lo);
+
 		row = JMP_LIST_FIRST;
-		for (i = st->menu_top; i < jmp_list_count && i < st->menu_top + JMP_LIST_ROWS; i++) {
+		for (i = st->menu_top; i < hi && i < st->menu_top + JMP_LIST_ROWS; i++) {
 			t = &jmp_list[i];
 			JmpSecs(t->ms, secs, sizeof(secs));
 			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpJumpsPick, "%-15.15s %3d fps %5.5ss",
@@ -2423,17 +2738,17 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 						JMP_DESC_ROW, t->desc + len + (t->desc[len] == ' '));
 			}
 		}
-		if (!jmp_list_count)
+		if (hi == lo)
 			JmpMenuRow_Set(ent, JMP_LIST_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "None on this map yet");
 
 		// under the list and the two rows a description may take
 		row = JMP_LIST_FIRST + JMP_LIST_ROWS + 2;
-		if (st->menu_top > 0)
+		if (st->menu_top > lo)
 			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_LIST_ROWS, JmpJumpsPage, "Previous page");
-		if (st->menu_top + JMP_LIST_ROWS < jmp_list_count)
+		if (st->menu_top + JMP_LIST_ROWS < hi)
 			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_LIST_ROWS, JmpJumpsPage, "Next page");
 
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsUp, "Back");
 		if (cur < 0)
 			cur = JMP_MENU_ROWS - 1;
 		st->menu_cur = cur;
@@ -2469,6 +2784,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
 		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		if (JmpMayDelete(ent, t))
+			JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteAsk, "Delete it...");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
 			cur = 5;
@@ -2509,8 +2826,17 @@ static void JmpJumpsFrame(edict_t *ent)
 // from the jmod item menu, and "jmod jumps"
 void Jmp_OpenJumpMenu(edict_t *ent, pmenu_t *p)
 {
-	if (!Jmp_OpenTakeMenu(ent))
+	if (Jmp_OpenTakeMenu(ent))
+		return;
+
+	// the collections first, where the map has jumps in any
+	JmpListLoad();
+	if (JmpListPacked()) {
+		JmpJumpsShow(ent, JMP_MENU_PACKS, -1);
+	} else {
+		JmpState(ent)->menu_pack[0] = 0;
 		JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+	}
 }
 
 // "Record a jump..." in the item menu: from where - after the take there
