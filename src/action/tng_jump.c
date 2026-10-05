@@ -1,5 +1,6 @@
 #include "g_local.h"
 #include <dirent.h>
+#include "common/fuzzy.h"
 
 //cvar_t *jump;
 
@@ -1328,7 +1329,10 @@ way, to try it.
 #define JMP_ASK_NAME		1
 #define JMP_ASK_DESC		2
 #define JMP_ASK_PACK		3		// the name of a new collection
-#define JMP_PACKS_MAX		12		// collections offered when saving
+#define JMP_ASK_FIND		4		// what to search the collections for
+#define JMP_PACKS_MAX		64		// collections there may be
+#define JMP_PACKS_ROWS		8		// collections on a page of the save menu
+#define JMP_PACKS_FIRST		7		// the row of the first one
 #define JMP_LIST_MAX		128
 #define JMP_LIST_ROWS		8		// jumps on a menu page
 #define JMP_LIST_FIRST		3		// the row of the first one
@@ -1393,6 +1397,8 @@ typedef struct {
 	int		ask_frame;		// level.framenum it lapses at
 	char	ask_name[JMP_NAME_MAX];
 	char	ask_pack[JMP_NAME_MAX];
+	char	save_find[JMP_NAME_MAX];	// the save menu's search, "" all the collections
+	int		save_top;		// its first collection on the page
 
 	qboolean	playing, pov;
 	qboolean	play_started;
@@ -1690,15 +1696,43 @@ static int JmpPacksAll(char packs[][JMP_NAME_MAX], int max)
 	return count;
 }
 
+// the collections a search finds, the closest first: fuzzy, the letters
+// in order anywhere in the name
+static int JmpPacksFind(char packs[][JMP_NAME_MAX], int max, const char *find)
+{
+	int score[JMP_PACKS_MAX], count = JmpPacksAll(packs, min(max, JMP_PACKS_MAX));
+	char name[JMP_NAME_MAX];
+	int i, j, n = 0, sc;
+
+	if (!find[0])
+		return count;
+
+	// an insertion sort as they pass: it keeps the names' order among equals
+	for (i = 0; i < count; i++) {
+		sc = Fuzzy_Score(find, packs[i]);
+		if (sc < 0)
+			continue;
+		Q_strncpyz(name, packs[i], sizeof(name));
+		for (j = n; j > 0 && score[j - 1] < sc; j--) {
+			score[j] = score[j - 1];
+			memcpy(packs[j], packs[j - 1], JMP_NAME_MAX);
+		}
+		score[j] = sc;
+		memcpy(packs[j], name, JMP_NAME_MAX);
+		n++;
+	}
+	return n;
+}
+
 // the map's jumps: those in no collection and each collection's
 static void JmpListLoad(void)
 {
-	char packs[64][JMP_NAME_MAX];
+	char packs[JMP_PACKS_MAX][JMP_NAME_MAX];
 	int i, count;
 
 	jmp_list_count = 0;
 	JmpListScan("");
-	count = JmpPacksAll(packs, 64);
+	count = JmpPacksAll(packs, JMP_PACKS_MAX);
 	for (i = 0; i < count; i++)
 		JmpListScan(packs[i]);
 
@@ -1866,6 +1900,7 @@ its chat prompt instead, and what it says next is the answer and goes to
 nobody.
 */
 static void JmpSaveToShow(edict_t *ent);
+static void JmpSaveToOpen(edict_t *ent);
 
 static void JmpAsk(edict_t *ent, int ask)
 {
@@ -1881,6 +1916,8 @@ static void JmpAsk(edict_t *ent, int ask)
 		gi.cprintf(ent, PRINT_HIGH, "Name the jump: letters, digits, - and _, %d at most. "
 			"Type it and press Enter\n", JMP_NAME_MAX - 1);
 		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
+	} else if (ask == JMP_ASK_FIND) {
+		stuffcmd(ent, "messageprompt \"Search the collections - a few letters of the name\" jmod answer\n");
 	} else if (ask == JMP_ASK_PACK) {
 		gi.cprintf(ent, PRINT_HIGH, "Name the new collection: letters, digits, - and _, %d at most. "
 			"Type it and press Enter\n", JMP_NAME_MAX - 1);
@@ -1971,7 +2008,7 @@ static void Cmd_JumpSave_f(edict_t *ent)
 		if (st->ask_pack[0])
 			JmpSaveTo(ent);
 		else
-			JmpSaveToShow(ent);
+			JmpSaveToOpen(ent);
 		return;
 	}
 	if (!JmpSaveFree(ent))
@@ -1997,6 +2034,17 @@ static void JmpAnswerText(edict_t *ent, const char *text)
 	st->ask = 0;
 	if (!ask || level.framenum > st->ask_frame || !st->take.count)
 		return;
+
+	// the save menu's search: back to the menu with it, or without on Escape
+	if (ask == JMP_ASK_FIND) {
+		for (len = 0; text && *text && len + 1 < sizeof(st->save_find); text++)
+			if (*text > 32 && *text < 127 && *text != '"')
+				st->save_find[len++] = *text;
+		st->save_find[len] = 0;
+		st->save_top = 0;
+		JmpSaveToShow(ent);
+		return;
+	}
 	if (!text) {
 		gi.cprintf(ent, PRINT_HIGH, "Not saved. \"jmod save\" asks again\n");
 		return;
@@ -2016,7 +2064,7 @@ static void JmpAnswerText(edict_t *ent, const char *text)
 		} else if (st->ask_pack[0]) {
 			JmpSaveTo(ent);
 		} else {
-			JmpSaveToShow(ent);
+			JmpSaveToOpen(ent);
 		}
 	} else if (ask == JMP_ASK_PACK) {
 		if (!JmpNameClean(p, st->ask_pack, sizeof(st->ask_pack))) {
@@ -2046,7 +2094,8 @@ qboolean Jmp_Answer(edict_t *ent)
 	// no messageprompt in this client: its chat prompt will do
 	if (!Q_stricmp(gi.argv(0), "messageprompt")) {
 		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n"
-			: st->ask == JMP_ASK_PACK ? "Name the new collection\n" : "Describe the jump\n");
+			: st->ask == JMP_ASK_PACK ? "Name the new collection\n"
+			: st->ask == JMP_ASK_FIND ? "Search the collections\n" : "Describe the jump\n");
 		stuffcmd(ent, "messagemode\n");
 		return true;
 	}
@@ -2637,6 +2686,19 @@ static void JmpSaveToNew(edict_t *ent, pmenu_t *p)
 	JmpAsk(ent, JMP_ASK_PACK);
 }
 
+static void JmpSaveToFind(edict_t *ent, pmenu_t *p)
+{
+	JmpAsk(ent, JMP_ASK_FIND);
+}
+
+static void JmpSaveToPage(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	st->save_top = max(st->save_top + (int)(intptr_t)p->arg, 0);
+	JmpJumpsShow(ent, JMP_MENU_SAVETO, p - ent->client->jmp_menu);
+}
+
 static void JmpSaveToCancel(edict_t *ent, pmenu_t *p)
 {
 	PMenu_Close(ent);
@@ -2646,6 +2708,16 @@ static void JmpSaveToCancel(edict_t *ent, pmenu_t *p)
 static void JmpSaveToShow(edict_t *ent)
 {
 	JmpJumpsShow(ent, JMP_MENU_SAVETO, -1);
+}
+
+// a name just given: the menu from its top, the search cleared
+static void JmpSaveToOpen(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	st->save_find[0] = 0;
+	st->save_top = 0;
+	JmpSaveToShow(ent);
 }
 
 static void JmpJumpsShow(edict_t *ent, int step, int cur)
@@ -2679,15 +2751,35 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		if (cur < 0)
 			cur = 3;
 	} else if (step == JMP_MENU_SAVETO) {
-		j = JmpPacksAll(packs, JMP_PACKS_MAX);
+		// the collections a page at a time, all of them or those the search finds
+		j = JmpPacksFind(packs, JMP_PACKS_MAX, st->save_find);
+		if (st->save_top >= j)
+			st->save_top = max(j - 1, 0) / JMP_PACKS_ROWS * JMP_PACKS_ROWS;
+
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Save %s to", st->ask_name);
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpSaveToPick, "No collection");
 		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpSaveToNew, "A new collection...");
-		for (i = 0; i < j; i++)
-			JmpMenuRow_Set(ent, 6 + i, PMENU_ALIGN_LEFT, 1, JmpSaveToPick, "%s", packs[i]);
+		if (st->save_find[0])
+			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search: %s (%d)", st->save_find, j);
+		else
+			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search the %d collections...", j);
+
+		row = JMP_PACKS_FIRST;
+		for (i = st->save_top; i < j && row < JMP_PACKS_FIRST + JMP_PACKS_ROWS; i++, row++)
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, 1, JmpSaveToPick, "%s", packs[i]);
+		if (!j && st->save_find[0])
+			JmpMenuRow_Set(ent, JMP_PACKS_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "No collection like that");
+
+		row = JMP_PACKS_FIRST + JMP_PACKS_ROWS;
+		if (st->save_top > 0)
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_ROWS, JmpSaveToPage, "Previous page");
+		if (st->save_top + JMP_PACKS_ROWS < j)
+			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_ROWS, JmpSaveToPage, "Next page");
+
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpSaveToCancel, "Cancel");
+		// after a search the cursor is on what it found
 		if (cur < 0)
-			cur = 3;
+			cur = st->save_find[0] && j ? JMP_PACKS_FIRST : 3;
 	} else if (step == JMP_MENU_DELETE) {
 		if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count) {
 			JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
