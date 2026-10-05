@@ -813,6 +813,7 @@ static const char ui_menu_ttf[] =
     "range \"console size\" con_text_size 8 16 1\n"
     "toggle \"game hud\" scr_ghud_font\n"
     "range \"game hud size\" scr_ghud_size 8 24 1\n"
+    "range \"world labels size\" scr_ghud_label_size 8 40 1\n"
     "blank\n"
     "toggle \"hit colours\" con_hitcolors\n"
     "toggle \"font sample\" r_font_test\n"
