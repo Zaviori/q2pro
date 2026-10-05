@@ -77,6 +77,9 @@ int G_customizeentityforclient(edict_t *clent, edict_t *ent, entity_state_t *sta
 		return true;
 	}
 
+	if (Jmp_GhostHidden(clent, ent))
+		return false;
+
 	// first check visibility masks
 	if (!(max(1, ent->dimension_visible) & max(1, clent->client->dimension_observe)))
 		return false;

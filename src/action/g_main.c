@@ -894,6 +894,8 @@ void ClientEndServerFrames (void)
 
 		if (ent->client->chase_target)
 			UpdateChaseCam(ent);
+		if (jump->value)
+			Jmp_PlayFrame(ent);
 	}
 
 	if (timedmsgs->value)

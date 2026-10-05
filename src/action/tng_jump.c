@@ -1,4 +1,5 @@
 #include "g_local.h"
+#include <dirent.h>
 
 //cvar_t *jump;
 
@@ -76,6 +77,11 @@ void Jmp_EquipClient(edict_t *ent)
 	AddToTransparentList(ent);
 }
 
+static qboolean Jmp_Stop(edict_t *ent);
+static void Cmd_JumpRec_f(edict_t *ent);
+static void Cmd_JumpSave_f(edict_t *ent);
+static void Cmd_JumpPlay_f(edict_t *ent);
+
 void Cmd_Jmod_f (edict_t *ent)
 {
 	char *cmd = NULL;
@@ -104,6 +110,10 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod slippers - toggle stealth slippers\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod menu - open the jump menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod spawns - pick a spawnpoint, then its delay and repeat, from a menu\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod save <name> - keep the last take for everybody on this map\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod play [name] [pov] - watch a stored jump, or your last take\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
 		return;
 	}
@@ -162,7 +172,29 @@ void Cmd_Jmod_f (edict_t *ent)
 	}
 	else if(Q_stricmp(cmd, "cancel") == 0 || Q_stricmp(cmd, "stop") == 0)
 	{
-		Cmd_SpawnCancel_f(ent);
+		// a playback or a recording first, then the pending spawn
+		if (!Jmp_Stop(ent))
+			Cmd_SpawnCancel_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "rec") == 0 || Q_stricmp(cmd, "record") == 0)
+	{
+		Cmd_JumpRec_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "save") == 0)
+	{
+		Cmd_JumpSave_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "play") == 0)
+	{
+		Cmd_JumpPlay_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "jumps") == 0)
+	{
+		Jmp_OpenJumpMenu(ent, NULL);
 		return;
 	}
 	else if(Q_stricmp(cmd, "lca") == 0)
@@ -304,6 +336,8 @@ void jmodTeleport (edict_t *ent, edict_t *spot)
 	teleport_goto[2] += 9;
 	VectorCopy (spot->s.angles, angles);
 
+	Jmp_RecordRestart(ent);
+
 	ent->client->jumping = 0;
 	ent->movetype = MOVETYPE_NOCLIP;
 	gi.unlinkentity (ent);
@@ -362,6 +396,7 @@ void Cmd_Goto_f (edict_t *ent)
 			}
 			teleport_goto[2] -= ent->viewheight;
 
+			Jmp_RecordRestart(ent);
 			ent->client->jumping = 0;
 			ent->movetype = MOVETYPE_NOCLIP;
 			gi.unlinkentity (ent);
@@ -622,6 +657,8 @@ rows live in the client, as the values shown are the player's own.
 #define JMP_MENU_SPOTS	8	// spawnpoints on a page
 #define JMP_MENU_FIRST	8	// the row of the first one
 #define JMP_MENU_CHOICE	4	// the row of a step's first value
+#define JMP_MENU_JUMPS	10	// the steps of the jumps menu, in the same rows: the list,
+#define JMP_MENU_VIEW	11	// then how to watch the pick
 
 static const float jmp_delays[] = { 0, 1, 2, 3, 5, 10 };
 static const float jmp_repeats[] = { 0, 3, 5, 8, 10, 15, 20, 30 };
@@ -892,7 +929,9 @@ static void JmpMarkersUpdate(edict_t *ent)
 	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum)
 		client->jmp_ghud_count = 0;
 
-	if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu) {
+	// the jumps menu shares the rows, and marks nothing
+	if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu
+		|| client->jmp_menu_step >= JMP_MENU_JUMPS) {
 		JmpMarkersClear(ent);
 		return;
 	}
@@ -1043,6 +1082,7 @@ void Cmd_Recall_f (edict_t *ent)
 		return;
 	}
 
+	Jmp_RecordRestart(ent);
 	ent->client->jumping = 0;
 
 	ent->movetype = MOVETYPE_NOCLIP;
@@ -1209,4 +1249,968 @@ void Cmd_Toggle_f(edict_t *ent, char *toggle)
 	return;
 spec:
 	gi.cprintf(ent,PRINT_HIGH,"This command cannot be used by spectators\n");
+}
+
+/*
+Recorded jumps. "jmod rec" samples the player as his commands arrive -
+where he is, where he looks, his animation frame, the movement keys held
+and his speed - and "jmod save <name>" writes the take to
+<game>/jumps/<map>/<name>.jmp, a text file: everybody on the server gets
+it in the jumps menu, and the file itself can be passed on to another
+install. The frame rate in it is the rate of the commands (cl_maxfps is
+what sets it), counted here rather than asked from the client, so any
+client records.
+
+Played back, a translucent ghost in the watcher's skin runs the take in
+the map, and the watcher's view rides behind it or in its eyes - fire
+switches, jump ends it - with the keys and the frame rate on the HUD.
+The watcher is put on the take's first step afterwards, facing the same
+way, to try it.
+*/
+#define JMP_REC_MAX_MS		60000
+#define JMP_REC_STEP_MS		16		// a sample at most this often
+#define JMP_REC_MAX			(JMP_REC_MAX_MS / JMP_REC_STEP_MS + 2)
+#define JMP_REC_LEAD_MS		500		// kept of the standing still before the first move
+#define JMP_PLAY_TAIL_MS	1000	// held on the last sample
+#define JMP_NAME_MAX		24
+#define JMP_LIST_MAX		64
+#define JMP_LIST_ROWS		8		// jumps on a menu page
+#define JMP_LIST_FIRST		6		// the row of the first one
+#define JMP_CAM_DIST		110		// third person: behind the ghost,
+#define JMP_CAM_PITCH		15		// looking down at it,
+#define JMP_CAM_TURN		0.2f	// its turns followed in about this many seconds
+#define JMP_FILE_VERSION	1
+
+#define JMP_KEY_FWD		1
+#define JMP_KEY_BACK	2
+#define JMP_KEY_LEFT	4
+#define JMP_KEY_RIGHT	8
+#define JMP_KEY_JUMP	16
+#define JMP_KEY_DUCK	32
+#define JMP_KEYS		6
+
+// the HUD: an element per key, in bit order, then two lines of text
+#define JMP_HUD_INFO	JMP_KEYS
+#define JMP_HUD_HINT	(JMP_KEYS + 1)
+#define JMP_HUD_COUNT	(JMP_KEYS + 2)
+
+static const struct {
+	char *label;
+	int x, y;
+} jmp_hud_keys[JMP_KEYS] = {
+	{ "W", 0, -78 }, { "S", 0, -66 }, { "A", -14, -66 }, { "D", 14, -66 },
+	{ "JUMP", 56, -66 }, { "DUCK", 56, -78 }
+};
+
+typedef struct {
+	int		ms;			// since the take began, on the player's own clock
+	vec3_t	origin;
+	float	pitch, yaw;	// the view's
+	short	frame;		// the model's animation frame
+	short	speed;
+	byte	keys;		// held at any time since the sample before
+	signed char	viewheight;
+} jmp_sample_t;
+
+typedef struct {
+	char	name[JMP_NAME_MAX];
+	char	author[16];
+	int		fps;
+	int		ms;			// its length
+	int		count;
+	jmp_sample_t	*samples;
+} jmp_take_t;
+
+typedef struct {
+	int		seen;			// level.framenum it was last used at; a map change resets it
+
+	qboolean	recording;
+	jmp_take_t	take;		// being recorded, or the last one
+	int		rec_ms, rec_cmds;
+	int		rec_keys;
+
+	qboolean	playing, pov;
+	qboolean	play_started;
+	jmp_take_t	play;
+	float	play_ms;
+	int		play_i;			// the sample at or before play_ms
+	float	cam_yaw;
+	int		held;			// fire and jump as last seen, to act on a press only
+	edict_t	*ghost;
+	int		hud[JMP_HUD_COUNT];
+	int		hud_keys;
+
+	int		menu_top, menu_pick;
+} jmp_state_t;
+
+static jmp_state_t jmp_states[MAX_CLIENTS];
+static jmp_take_t jmp_list[JMP_LIST_MAX];	// the map's stored jumps, without their samples
+static int jmp_list_count;
+
+static void JmpTakeFree(jmp_take_t *t)
+{
+	if (t->samples)
+		gi.TagFree(t->samples);
+	memset(t, 0, sizeof(*t));
+}
+
+static jmp_state_t *JmpState(edict_t *ent)
+{
+	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
+
+	// a new map: the ghost and the HUD went with the old one
+	if (st->seen > level.framenum) {
+		JmpTakeFree(&st->take);
+		JmpTakeFree(&st->play);
+		memset(st, 0, sizeof(*st));
+	}
+	st->seen = level.framenum;
+	return st;
+}
+
+static const char *JmpGameDir(void)
+{
+	cvar_t *game_cvar = gi.cvar("game", "action", 0);
+
+	return *game_cvar->string ? game_cvar->string : GAMEVERSION;
+}
+
+// a jump's name is its file's: lower case letters, digits, - and _
+static qboolean JmpNameClean(const char *in, char *out, size_t size)
+{
+	size_t n = 0;
+
+	for (; *in; in++) {
+		int c = Q_tolower(*in);
+
+		if (!Q_isalnum(c) && c != '-' && c != '_')
+			return false;
+		if (n + 1 >= size)
+			return false;
+		out[n++] = c;
+	}
+	out[n] = 0;
+	return n > 0;
+}
+
+static void JmpPath(char *path, size_t size, const char *name)
+{
+	Q_snprintf(path, size, "%s/jumps/%s/%s.jmp", JmpGameDir(), level.mapname, name);
+}
+
+static void JmpSecs(int ms, char *buf, size_t size)
+{
+	Q_snprintf(buf, size, "%d.%d", ms / 1000, ms % 1000 / 100);
+}
+
+/*
+The file: a line per header field, then a line per sample -
+
+	jmodjump 1
+	map urban2
+	author zaviori
+	fps 125
+	ms 6410
+	samples 388
+	<ms> <x> <y> <z> <pitch> <yaw> <frame> <keys> <viewheight> <speed>
+*/
+static qboolean JmpWrite(jmp_take_t *t)
+{
+	char path[MAX_OSPATH];
+	FILE *f;
+	int i;
+
+	Q_snprintf(path, sizeof(path), "%s/jumps", JmpGameDir());
+	os_mkdir(path);
+	Q_snprintf(path, sizeof(path), "%s/jumps/%s", JmpGameDir(), level.mapname);
+	os_mkdir(path);
+
+	JmpPath(path, sizeof(path), t->name);
+	f = fopen(path, "w");
+	if (!f)
+		return false;
+
+	fprintf(f, "jmodjump %d\nmap %s\nauthor %s\nfps %d\nms %d\nsamples %d\n",
+		JMP_FILE_VERSION, level.mapname, t->author, t->fps, t->ms, t->count);
+	for (i = 0; i < t->count; i++) {
+		jmp_sample_t *s = &t->samples[i];
+
+		fprintf(f, "%d %.3f %.3f %.3f %.2f %.2f %d %d %d %d\n", s->ms,
+			s->origin[0], s->origin[1], s->origin[2], s->pitch, s->yaw,
+			s->frame, s->keys, s->viewheight, s->speed);
+	}
+	return fclose(f) == 0;
+}
+
+// the header alone into the list, or the samples with it to play
+static qboolean JmpRead(const char *name, jmp_take_t *t, qboolean samples)
+{
+	char path[MAX_OSPATH], line[256], key[16], value[64];
+	FILE *f;
+	int i, version = 0, count = 0;
+
+	memset(t, 0, sizeof(*t));
+	JmpPath(path, sizeof(path), name);
+	f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	Q_strncpyz(t->name, name, sizeof(t->name));
+	while (fgets(line, sizeof(line), f)) {
+		value[0] = 0;
+		if (sscanf(line, "%15s %63[^\r\n]", key, value) < 1)
+			break;
+		if (!strcmp(key, "jmodjump"))
+			version = atoi(value);
+		else if (!strcmp(key, "author"))
+			Q_strncpyz(t->author, value, sizeof(t->author));
+		else if (!strcmp(key, "fps"))
+			t->fps = atoi(value);
+		else if (!strcmp(key, "ms"))
+			t->ms = atoi(value);
+		else if (!strcmp(key, "samples")) {
+			count = atoi(value);
+			break;
+		}
+	}
+
+	if (version != JMP_FILE_VERSION || count < 2 || count > JMP_REC_MAX || t->ms <= 0) {
+		fclose(f);
+		return false;
+	}
+	if (!samples) {
+		fclose(f);
+		return true;
+	}
+
+	t->samples = gi.TagMalloc(count * sizeof(jmp_sample_t), TAG_GAME);
+	for (i = 0; i < count && fgets(line, sizeof(line), f); i++) {
+		jmp_sample_t *s = &t->samples[i];
+		int frame, keys, viewheight, speed;
+
+		if (sscanf(line, "%d %f %f %f %f %f %d %d %d %d", &s->ms,
+			&s->origin[0], &s->origin[1], &s->origin[2], &s->pitch, &s->yaw,
+			&frame, &keys, &viewheight, &speed) != 10)
+			break;
+		if (s->ms < (i ? s[-1].ms : 0))
+			break;
+		s->frame = frame;
+		s->keys = keys;
+		s->viewheight = viewheight;
+		s->speed = speed;
+	}
+	fclose(f);
+
+	if (i < count) {
+		JmpTakeFree(t);
+		return false;
+	}
+	t->count = count;
+	t->ms = t->samples[count - 1].ms;
+	return true;
+}
+
+static int JmpListCmp(const void *a, const void *b)
+{
+	return strcmp(((const jmp_take_t *)a)->name, ((const jmp_take_t *)b)->name);
+}
+
+static void JmpListLoad(void)
+{
+	char path[MAX_OSPATH], name[JMP_NAME_MAX];
+	struct dirent *e;
+	DIR *dir;
+	size_t len;
+
+	jmp_list_count = 0;
+	Q_snprintf(path, sizeof(path), "%s/jumps/%s", JmpGameDir(), level.mapname);
+	dir = opendir(path);
+	if (!dir)
+		return;
+
+	while (jmp_list_count < JMP_LIST_MAX && (e = readdir(dir)) != NULL) {
+		len = strlen(e->d_name);
+		if (len < 5 || len - 4 >= sizeof(name) || strcmp(e->d_name + len - 4, ".jmp"))
+			continue;
+		memcpy(name, e->d_name, len - 4);
+		name[len - 4] = 0;
+		if (JmpRead(name, &jmp_list[jmp_list_count], false))
+			jmp_list_count++;
+	}
+	closedir(dir);
+
+	qsort(jmp_list, jmp_list_count, sizeof(jmp_list[0]), JmpListCmp);
+}
+
+//
+// recording
+//
+static void JmpRecReset(jmp_state_t *st)
+{
+	st->take.count = 0;
+	st->rec_ms = st->rec_cmds = st->rec_keys = 0;
+}
+
+// a teleport while recording: the take begins again from there
+void Jmp_RecordRestart(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (st->recording)
+		JmpRecReset(st);
+}
+
+static void JmpRecStop(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t *t = &st->take;
+	jmp_sample_t *s = t->samples;
+	char secs[16], *c;
+	int i, first, start;
+	size_t n = 0;
+
+	st->recording = false;
+
+	// from half a second before the first key or step on
+	for (i = 1; i < t->count; i++) {
+		if (s[i].keys || fabsf(s[i].origin[0] - s[0].origin[0]) > 1
+			|| fabsf(s[i].origin[1] - s[0].origin[1]) > 1)
+			break;
+	}
+	if (i >= t->count) {
+		t->count = 0;
+		gi.cprintf(ent, PRINT_HIGH, "Recording stopped, nothing moved\n");
+		return;
+	}
+	start = s[i].ms - JMP_REC_LEAD_MS;
+	for (first = 0; s[first].ms < start; first++)
+		;
+	if (first) {
+		t->count -= first;
+		memmove(s, s + first, t->count * sizeof(*s));
+	}
+	start = s[0].ms;
+	for (i = 0; i < t->count; i++)
+		s[i].ms -= start;
+
+	t->ms = s[t->count - 1].ms;
+	t->fps = (st->rec_cmds * 1000 + st->rec_ms / 2) / max(st->rec_ms, 1);
+	t->name[0] = 0;
+	for (c = ent->client->pers.netname; *c && n + 1 < sizeof(t->author); c++)
+		if (*c >= 32 && *c < 127)
+			t->author[n++] = *c;
+	t->author[n] = 0;
+
+	JmpSecs(t->ms, secs, sizeof(secs));
+	gi.cprintf(ent, PRINT_HIGH, "Recorded %s seconds at %d fps: \"jmod play\" to watch it, "
+		"\"jmod save <name>\" to keep it\n", secs, t->fps);
+}
+
+// called with every command the player moves by
+void Jmp_RecordCmd(edict_t *ent, usercmd_t *ucmd)
+{
+	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
+	gclient_t *client = ent->client;
+	jmp_take_t *t = &st->take;
+	jmp_sample_t *s;
+
+	if (!st->recording)
+		return;
+
+	if (ucmd->forwardmove > 0)
+		st->rec_keys |= JMP_KEY_FWD;
+	else if (ucmd->forwardmove < 0)
+		st->rec_keys |= JMP_KEY_BACK;
+	if (ucmd->sidemove < 0)
+		st->rec_keys |= JMP_KEY_LEFT;
+	else if (ucmd->sidemove > 0)
+		st->rec_keys |= JMP_KEY_RIGHT;
+	if (ucmd->upmove > 0)
+		st->rec_keys |= JMP_KEY_JUMP;
+	else if (ucmd->upmove < 0)
+		st->rec_keys |= JMP_KEY_DUCK;
+
+	st->rec_ms += ucmd->msec;
+	st->rec_cmds++;
+	if (t->count && st->rec_ms - t->samples[t->count - 1].ms < JMP_REC_STEP_MS)
+		return;
+
+	if (st->rec_ms > JMP_REC_MAX_MS || t->count >= JMP_REC_MAX) {
+		gi.cprintf(ent, PRINT_HIGH, "A take is %d seconds at most\n", JMP_REC_MAX_MS / 1000);
+		JmpRecStop(ent);
+		return;
+	}
+
+	s = &t->samples[t->count++];
+	s->ms = st->rec_ms;
+	VectorCopy(ent->s.origin, s->origin);
+	s->pitch = client->v_angle[PITCH];
+	s->yaw = client->v_angle[YAW];
+	s->frame = ent->s.frame;
+	s->speed = min(VectorLength(ent->velocity), 32000);
+	s->keys = st->rec_keys;
+	s->viewheight = ent->viewheight;
+	st->rec_keys = 0;
+}
+
+// jmod rec - start a take, or end the one running
+static void Cmd_JumpRec_f(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (st->recording) {
+		JmpRecStop(ent);
+		return;
+	}
+	if (ent->deadflag || ent->client->pers.spectator) {
+		gi.cprintf(ent, PRINT_HIGH, "This command cannot be used by spectators\n");
+		return;
+	}
+	if (st->playing) {
+		gi.cprintf(ent, PRINT_HIGH, "Stop the playback first: jmod stop\n");
+		return;
+	}
+
+	if (!st->take.samples)
+		st->take.samples = gi.TagMalloc(JMP_REC_MAX * sizeof(jmp_sample_t), TAG_GAME);
+	JmpRecReset(st);
+	st->recording = true;
+	gi.cprintf(ent, PRINT_HIGH, "Recording. A teleport (recall, spawnp) starts the take again, "
+		"\"jmod rec\" ends it\n");
+}
+
+// jmod save <name>
+static void Cmd_JumpSave_f(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t *t = &st->take, old;
+	char name[JMP_NAME_MAX];
+
+	if (st->recording)
+		JmpRecStop(ent);
+	if (!t->count) {
+		gi.cprintf(ent, PRINT_HIGH, "Record a jump first: jmod rec\n");
+		return;
+	}
+	if (gi.argc() < 3 || !JmpNameClean(gi.argv(2), name, sizeof(name))) {
+		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod save <name> - letters, digits, - and _, "
+			"%d at most\n", JMP_NAME_MAX - 1);
+		return;
+	}
+
+	// somebody else's jump is not overwritten
+	if (JmpRead(name, &old, false) && strcmp(old.author, t->author)) {
+		gi.cprintf(ent, PRINT_HIGH, "%s has a jump called \"%s\" here already\n", old.author, name);
+		return;
+	}
+
+	Q_strncpyz(t->name, name, sizeof(t->name));
+	if (!JmpWrite(t)) {
+		gi.cprintf(ent, PRINT_HIGH, "Could not write the jump\n");
+		return;
+	}
+	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\" for %s: %s/jumps/%s/%s.jmp\n", name, level.mapname,
+		JmpGameDir(), level.mapname, name);
+}
+
+//
+// playback
+//
+static void JmpHudHint(edict_t *ent, jmp_state_t *st)
+{
+	Ghud_SetText(ent, st->hud[JMP_HUD_HINT], st->pov
+		? "player's view - fire: third person, jump: stop"
+		: "third person - fire: player's view, jump: stop");
+}
+
+static void JmpHudKeys(edict_t *ent, jmp_state_t *st, int keys, qboolean all)
+{
+	int i;
+
+	for (i = 0; i < JMP_KEYS; i++) {
+		if (!all && !((keys ^ st->hud_keys) & (1 << i)))
+			continue;
+		if (keys & (1 << i))
+			Ghud_SetColor(ent, st->hud[i], 255, 220, 0, 255);
+		else
+			Ghud_SetColor(ent, st->hud[i], 255, 255, 255, 70);
+	}
+	st->hud_keys = keys;
+}
+
+static void JmpHudMake(edict_t *ent, jmp_state_t *st)
+{
+	jmp_take_t *t = &st->play;
+	char text[64], secs[16];
+	int i, el;
+
+	for (i = 0; i < JMP_HUD_COUNT; i++) {
+		el = st->hud[i] = Ghud_NewElement(ent, GHT_TEXT);
+		Ghud_SetAnchor(ent, el, 0.5f, 1);
+		Ghud_SetTextFlags(ent, el, UI_CENTER);
+		if (i < JMP_KEYS) {
+			Ghud_SetPosition(ent, el, jmp_hud_keys[i].x, jmp_hud_keys[i].y);
+			Ghud_SetText(ent, el, jmp_hud_keys[i].label);
+		} else {
+			Ghud_SetPosition(ent, el, 0, i == JMP_HUD_INFO ? -50 : -40);
+			Ghud_SetColor(ent, el, 255, 255, 255, i == JMP_HUD_INFO ? 255 : 140);
+		}
+	}
+
+	JmpSecs(t->ms, secs, sizeof(secs));
+	Q_snprintf(text, sizeof(text), "%s%s%.15s - %d fps - %s s", t->name,
+		t->name[0] ? " by " : "", t->author, t->fps, secs);
+	Ghud_SetText(ent, st->hud[JMP_HUD_INFO], text);
+	JmpHudHint(ent, st);
+	JmpHudKeys(ent, st, 0, true);
+}
+
+// on a spot, looking a way, standing still - as recall does it
+static void JmpPlace(edict_t *ent, const vec3_t origin, float pitch, float yaw)
+{
+	gclient_t *client = ent->client;
+	int i;
+
+	client->jumping = 0;
+	gi.unlinkentity(ent);
+
+	VectorCopy(origin, ent->s.origin);
+	VectorCopy(origin, ent->s.old_origin);
+	VectorClear(ent->velocity);
+	client->ps.pmove.pm_time = 160 >> 3;
+	ent->s.event = EV_PLAYER_TELEPORT;
+
+	VectorSet(client->v_angle, pitch, yaw, 0);
+	VectorCopy(client->v_angle, client->ps.viewangles);
+	VectorSet(ent->s.angles, 0, yaw, 0);
+	VectorClear(client->ps.kick_angles);
+	VectorClear(client->kick_angles);
+	for (i = 0; i < 3; i++)
+		client->ps.pmove.delta_angles[i] = ANGLE2SHORT(client->v_angle[i] - client->resp.cmd_angles[i]);
+	client->fall_time = 0;
+	client->fall_value = 0;
+
+	gi.linkentity(ent);
+}
+
+// end the playback; place puts the watcher on the take's first step
+static void JmpPlayStop(edict_t *ent, qboolean place)
+{
+	jmp_state_t *st = JmpState(ent);
+	gclient_t *client = ent->client;
+	int i;
+
+	if (!st->playing)
+		return;
+	st->playing = false;
+
+	if (st->ghost)
+		G_FreeEdict(st->ghost);
+	st->ghost = NULL;
+	for (i = 0; i < JMP_HUD_COUNT; i++)
+		Ghud_RemoveElement(ent, st->hud[i]);
+
+	ent->svflags &= ~SVF_NOCLIENT;
+	ent->movetype = MOVETYPE_WALK;
+	ent->viewheight = 22;
+	client->ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
+	client->ps.pmove.pm_type = PM_NORMAL;
+	if (place)
+		JmpPlace(ent, st->play.samples[0].origin, st->play.samples[0].pitch, st->play.samples[0].yaw);
+
+	JmpTakeFree(&st->play);
+}
+
+// st->play is loaded: take the watcher's view and send the ghost off
+static void JmpPlayStart(edict_t *ent, qboolean pov)
+{
+	jmp_state_t *st = JmpState(ent);
+	gclient_t *client = ent->client;
+	edict_t *ghost;
+
+	// no drill teleports him out of it
+	client->resp.jmp_spawn_frame = 0;
+	client->resp.jmp_spawn_repeat = 0;
+	if (client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+
+	st->playing = true;
+	st->play_started = false;
+	st->pov = pov;
+	st->play_ms = 0;
+	st->play_i = 0;
+	st->cam_yaw = st->play.samples[0].yaw;
+	st->held = BUTTON_ATTACK | BUTTON_USE;	// a key still down from before is not a press
+
+	// the player model in the watcher's skin, without a weapon
+	ghost = st->ghost = G_Spawn();
+	ghost->classname = "jmp_ghost";
+	ghost->owner = ent;
+	ghost->movetype = MOVETYPE_NONE;
+	ghost->solid = SOLID_NOT;
+	ghost->s.modelindex = 255;
+	ghost->s.skinnum = ent - g_edicts - 1;
+	ghost->s.renderfx = RF_TRANSLUCENT;
+	VectorCopy(st->play.samples[0].origin, ghost->s.origin);
+	VectorCopy(ghost->s.origin, ghost->s.old_origin);
+	gi.linkentity(ghost);
+
+	ent->svflags |= SVF_NOCLIENT;
+	ent->movetype = MOVETYPE_NOCLIP;
+	VectorClear(ent->velocity);
+
+	JmpHudMake(ent, st);
+}
+
+// the ghost is not drawn for the one looking out of its eyes
+qboolean Jmp_GhostHidden(edict_t *clent, edict_t *ent)
+{
+	jmp_state_t *st;
+
+	if (!jump->value || ent->owner != clent || !clent->client)
+		return false;
+
+	st = &jmp_states[clent - g_edicts - 1];
+	return st->playing && st->pov && ent == st->ghost;
+}
+
+// the watcher's commands: nothing moves him, fire and jump are the controls
+qboolean Jmp_PlayThink(edict_t *ent, usercmd_t *ucmd)
+{
+	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
+	gclient_t *client = ent->client;
+	int held, pressed;
+
+	if (!st->playing)
+		return false;
+
+	client->resp.cmd_angles[0] = SHORT2ANGLE(ucmd->angles[0]);
+	client->resp.cmd_angles[1] = SHORT2ANGLE(ucmd->angles[1]);
+	client->resp.cmd_angles[2] = SHORT2ANGLE(ucmd->angles[2]);
+	client->ps.pmove.pm_type = PM_FREEZE;
+
+	client->oldbuttons = client->buttons;
+	client->buttons = ucmd->buttons;
+	client->latched_buttons = 0;
+
+	// jump stands in the use button's bit here
+	held = (ucmd->buttons & BUTTON_ATTACK) | (ucmd->upmove >= 10 ? BUTTON_USE : 0);
+	pressed = held & ~st->held;
+	st->held = held;
+
+	if (pressed & BUTTON_USE) {
+		JmpPlayStop(ent, true);
+	} else if (pressed & BUTTON_ATTACK) {
+		st->pov = !st->pov;
+		JmpHudHint(ent, st);
+	}
+	return true;
+}
+
+// once a server frame, after the views are built: move the ghost along
+// the take and put the watcher's view on it
+void Jmp_PlayFrame(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+	gclient_t *client = ent->client;
+	jmp_take_t *t = &st->play;
+	jmp_sample_t *a, *b;
+	edict_t *ghost = st->ghost;
+	vec3_t origin, angles, eye, forward, goal, o;
+	trace_t trace;
+	float ms, frac, pitch, yaw;
+	int i, keys = 0;
+
+	if (!st->playing)
+		return;
+
+	if (st->play_started)
+		st->play_ms += 1000.0f / HZ;
+	st->play_started = true;
+	if (st->play_ms > t->ms + JMP_PLAY_TAIL_MS) {
+		JmpPlayStop(ent, true);
+		return;
+	}
+
+	// the two samples around now, and every key held since the last frame
+	ms = min(st->play_ms, t->ms);
+	i = st->play_i;
+	while (st->play_i < t->count - 2 && t->samples[st->play_i + 1].ms <= ms)
+		st->play_i++;
+	a = &t->samples[st->play_i];
+	b = a + 1;
+	frac = b->ms > a->ms ? Q_clipf((ms - a->ms) / (b->ms - a->ms), 0, 1) : 1;
+	if (st->play_ms <= t->ms)
+		for (i++; i <= st->play_i + 1; i++)
+			keys |= t->samples[i].keys;
+
+	LerpVector(a->origin, b->origin, frac, origin);
+	pitch = LerpAngle(a->pitch, b->pitch, frac);
+	yaw = LerpAngle(a->yaw, b->yaw, frac);
+
+	VectorCopy(origin, ghost->s.origin);
+	VectorSet(ghost->s.angles, pitch / 3, yaw, 0);
+	ghost->s.frame = a->frame;
+	gi.linkentity(ghost);
+
+	if (st->pov) {
+		VectorSet(angles, pitch, yaw, 0);
+		VectorCopy(origin, goal);
+		VectorSet(client->ps.viewoffset, 0, 0, a->viewheight);
+		st->cam_yaw = yaw;
+	} else {
+		// behind where it looks, the turns smoothed: a strafe jump's
+		// mouse swings would throw the camera about
+		st->cam_yaw = LerpAngle(st->cam_yaw, yaw, 1 - expf(-1.0f / (HZ * JMP_CAM_TURN)));
+		VectorSet(angles, JMP_CAM_PITCH, st->cam_yaw, 0);
+		VectorCopy(origin, eye);
+		eye[2] += a->viewheight;
+		AngleVectors(angles, forward, NULL, NULL);
+		VectorMA(eye, -JMP_CAM_DIST, forward, o);
+		trace = gi.trace(eye, vec3_origin, vec3_origin, o, ghost, MASK_SOLID);
+		VectorMA(trace.endpos, 2, forward, goal);
+
+		// pad for floors and ceilings
+		VectorCopy(goal, o);
+		o[2] += 6;
+		trace = gi.trace(goal, vec3_origin, vec3_origin, o, ghost, MASK_SOLID);
+		if (trace.fraction < 1) {
+			VectorCopy(trace.endpos, goal);
+			goal[2] -= 6;
+		}
+		VectorCopy(goal, o);
+		o[2] -= 6;
+		trace = gi.trace(goal, vec3_origin, vec3_origin, o, ghost, MASK_SOLID);
+		if (trace.fraction < 1) {
+			VectorCopy(trace.endpos, goal);
+			goal[2] += 6;
+		}
+		VectorClear(client->ps.viewoffset);
+	}
+
+	VectorCopy(goal, ent->s.origin);
+	VectorScale(goal, 8, client->ps.pmove.origin);
+	VectorClear(ent->velocity);
+	VectorClear(client->ps.pmove.velocity);
+	for (i = 0; i < 3; i++)
+		client->ps.pmove.delta_angles[i] = ANGLE2SHORT(angles[i] - client->resp.cmd_angles[i]);
+	VectorCopy(angles, client->ps.viewangles);
+	VectorCopy(angles, client->v_angle);
+	VectorClear(client->ps.kick_angles);
+	client->ps.gunindex = client->ps.gunframe = 0;
+	client->ps.pmove.pm_type = PM_FREEZE;
+	client->ps.pmove.pm_flags |= PMF_NO_PREDICTION;
+	client->ps.stats[STAT_SPEEDX] = a->speed + frac * (b->speed - a->speed);
+	ent->viewheight = 0;
+	gi.linkentity(ent);
+
+	JmpHudKeys(ent, st, keys, false);
+}
+
+// "jmod stop": true if there was a playback or a recording to end
+static qboolean Jmp_Stop(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (st->playing) {
+		JmpPlayStop(ent, true);
+		return true;
+	}
+	if (st->recording) {
+		JmpRecStop(ent);
+		return true;
+	}
+	return false;
+}
+
+// a stored jump by name, or the last take with none
+static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t *t = &st->take;
+
+	if (ent->deadflag || ent->client->pers.spectator) {
+		gi.cprintf(ent, PRINT_HIGH, "This command cannot be used by spectators\n");
+		return;
+	}
+	if (st->recording)
+		JmpRecStop(ent);
+	JmpPlayStop(ent, false);
+
+	if (name) {
+		if (!JmpRead(name, &st->play, true)) {
+			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\" on %s: jmod jumps lists them\n",
+				name, level.mapname);
+			return;
+		}
+	} else {
+		if (!t->count) {
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod play <name> [pov], or record a take first\n");
+			return;
+		}
+		// a copy: the next recording takes the buffer back
+		st->play = *t;
+		st->play.samples = gi.TagMalloc(t->count * sizeof(jmp_sample_t), TAG_GAME);
+		memcpy(st->play.samples, t->samples, t->count * sizeof(jmp_sample_t));
+	}
+	JmpPlayStart(ent, pov);
+}
+
+// jmod play [name] [pov]
+static void Cmd_JumpPlay_f(edict_t *ent)
+{
+	char name[JMP_NAME_MAX];
+	int arg = 2;
+	qboolean named = false;
+
+	// "jmod play pov" is the last take in the player's view, unless a jump is called that
+	if (gi.argc() > arg && (gi.argc() > arg + 1 || Q_stricmp(gi.argv(arg), "pov"))) {
+		if (!JmpNameClean(gi.argv(arg), name, sizeof(name))) {
+			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\"\n", gi.argv(arg));
+			return;
+		}
+		named = true;
+		arg++;
+	}
+	JmpPlay(ent, named ? name : NULL, gi.argc() > arg && !Q_stricmp(gi.argv(arg), "pov"));
+}
+
+void Jmp_ClientDisconnect(edict_t *ent)
+{
+	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
+
+	if (st->playing && st->seen <= level.framenum && st->ghost)
+		G_FreeEdict(st->ghost);
+	JmpTakeFree(&st->take);
+	JmpTakeFree(&st->play);
+	memset(st, 0, sizeof(*st));
+}
+
+/*
+The jumps menu, in the spawnpoint menu's rows: the map's stored jumps a
+page at a time, with the recorder above them; a pick asks how to watch.
+*/
+static void JmpJumpsShow(edict_t *ent, int step, int cur);
+
+static void JmpJumpsRec(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	// recording is done with the menu out of the way, ending it comes back
+	if (!st->recording) {
+		PMenu_Close(ent);
+		Cmd_JumpRec_f(ent);
+		return;
+	}
+	JmpRecStop(ent);
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+static void JmpJumpsLast(edict_t *ent, pmenu_t *p)
+{
+	JmpPlay(ent, NULL, false);
+}
+
+static void JmpJumpsPick(edict_t *ent, pmenu_t *p)
+{
+	JmpState(ent)->menu_pick = (int)(intptr_t)p->arg;
+	JmpJumpsShow(ent, JMP_MENU_VIEW, -1);
+}
+
+static void JmpJumpsPage(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	st->menu_top = max(st->menu_top + (int)(intptr_t)p->arg, 0);
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, p - ent->client->jmp_menu);
+}
+
+static void JmpJumpsWatch(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+	char name[JMP_NAME_MAX];
+
+	if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count)
+		return;
+	Q_strncpyz(name, jmp_list[st->menu_pick].name, sizeof(name));
+	JmpPlay(ent, name, p->arg != NULL);
+}
+
+static void JmpJumpsBack(edict_t *ent, pmenu_t *p)
+{
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+static void JmpJumpsShow(edict_t *ent, int step, int cur)
+{
+	jmp_state_t *st = JmpState(ent);
+	gclient_t *client = ent->client;
+	jmp_take_t *t;
+	char secs[16];
+	int i, row;
+
+	for (i = 0; i < JMP_MENU_ROWS; i++)
+		JmpMenuRow_Set(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
+	JmpMenuRow_Set(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+
+	client->jmp_menu_step = step;
+	if (step == JMP_MENU_JUMPS) {
+		// read again each time: somebody may have saved one since
+		JmpListLoad();
+		if (st->menu_top >= jmp_list_count)
+			st->menu_top = max(jmp_list_count - 1, 0) / JMP_LIST_ROWS * JMP_LIST_ROWS;
+
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsRec,
+			st->recording ? "Stop recording" : "Record a jump");
+		if (st->take.count && !st->recording)
+			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch my last take");
+
+		row = JMP_LIST_FIRST;
+		for (i = st->menu_top; i < jmp_list_count && row < JMP_LIST_FIRST + JMP_LIST_ROWS; i++, row++) {
+			t = &jmp_list[i];
+			JmpSecs(t->ms, secs, sizeof(secs));
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpJumpsPick, "%-15.15s %3d fps %5.5ss",
+				t->name, t->fps, secs);
+			if (cur < 0 && i == st->menu_pick)
+				cur = row;
+		}
+		if (!jmp_list_count)
+			JmpMenuRow_Set(ent, JMP_LIST_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "None on this map yet");
+
+		row = JMP_LIST_FIRST + JMP_LIST_ROWS;
+		if (st->menu_top > 0)
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_LIST_ROWS, JmpJumpsPage, "Previous page");
+		if (st->menu_top + JMP_LIST_ROWS < jmp_list_count)
+			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_LIST_ROWS, JmpJumpsPage, "Next page");
+
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+		if (cur < 0)
+			cur = jmp_list_count ? JMP_LIST_FIRST : 3;
+	} else {
+		if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count) {
+			JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+			return;
+		}
+		t = &jmp_list[st->menu_pick];
+		JmpSecs(t->ms, secs, sizeof(secs));
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
+		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s", t->author);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
+		if (cur < 0)
+			cur = 5;
+	}
+
+	if (client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+}
+
+// from the jmod item menu, and "jmod jumps"
+void Jmp_OpenJumpMenu(edict_t *ent, pmenu_t *p)
+{
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 }
