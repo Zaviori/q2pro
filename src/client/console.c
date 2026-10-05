@@ -974,26 +974,56 @@ static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
 #define CON_PROMPT_CHARS    44  // the line typed, at least
 
 // messageprompt's box: the question, the line being typed, the hint and
-// the keys - as wide as the longest of them
+// the keys - as wide as the longest of them. In the font where the
+// notify lines are, at their size, as the chat input is.
 static void Con_DrawPromptBox(void)
 {
+    bool ttf = con_notify_font->integer && R_TextAvailable();
+    float size = Cvar_ClampValue(con_notify_size, 6, 40);
     int chars = max(strlen(con.promptLabel), strlen(con.promptHint));
-    int w, h = CONCHAR_HEIGHT * 15 / 2, x, y = con.vidHeight / 3;
+    int lh = CONCHAR_HEIGHT, pad = CONCHAR_WIDTH;
+    int w, h, x, y = con.vidHeight / 3;
 
     chars = min(max(chars, CON_PROMPT_CHARS), con.linewidth - 2);
-    w = (chars + 2) * CONCHAR_WIDTH;
+    w = chars * CONCHAR_WIDTH;
+    if (ttf) {
+        lh = R_TextLineHeight(0, size);
+        pad = lh * 3 / 4;
+        w = max(R_MeasureText(TEXT_BOLD, size, con.promptLabel, MAX_STRING_CHARS),
+                R_MeasureText(0, size, con.promptHint, MAX_STRING_CHARS));
+        w = max(w, Q_rint(size * 0.55f * CON_PROMPT_CHARS));
+        w = min(w, con.vidWidth - 4 * pad);
+    }
+    h = lh * 6 + pad;
+    w += 2 * pad;
     x = (con.vidWidth - w) / 2;
 
+    R_ClearColor();
     R_DrawFill32(x, y, w, h, MakeColor(0, 0, 0, 210));
     R_DrawFill32(x, y, w, 1, MakeColor(255, 220, 0, 255));
-    x += CONCHAR_WIDTH;
-    R_DrawString(x, y + CONCHAR_HEIGHT, 0, chars, con.promptLabel, con.charsetImage);
+    x += pad;
+    y += pad;
     con.chatPrompt.inputLine.visibleChars = chars;
-    IF_Draw(&con.chatPrompt.inputLine, x, y + CONCHAR_HEIGHT * 5 / 2,
+
+    if (ttf) {
+        SCR_DrawTextCell(x, y, lh, 0, TEXT_SHADOW | TEXT_BOLD, size, U32_WHITE,
+                         con.promptLabel, MAX_STRING_CHARS);
+        Con_DrawInputText(&con.chatPrompt.inputLine, x, y + lh * 3 / 2, size, lh);
+        R_SetAlpha(0.55f);
+        SCR_DrawTextCell(x, y + lh * 7 / 2, lh, 0, TEXT_SHADOW, size, U32_WHITE,
+                         con.promptHint, MAX_STRING_CHARS);
+        SCR_DrawTextCell(x, y + lh * 9 / 2, lh, 0, TEXT_SHADOW, size, U32_WHITE,
+                         CON_PROMPT_KEYS, MAX_STRING_CHARS);
+        R_ClearColor();
+        return;
+    }
+
+    R_DrawString(x, y, 0, chars, con.promptLabel, con.charsetImage);
+    IF_Draw(&con.chatPrompt.inputLine, x, y + lh * 3 / 2,
             UI_DRAWCURSOR, con.charsetImage);
     R_SetAlpha(0.5f);
-    R_DrawString(x, y + CONCHAR_HEIGHT * 9 / 2, 0, chars, con.promptHint, con.charsetImage);
-    R_DrawString(x, y + CONCHAR_HEIGHT * 11 / 2, 0, chars, CON_PROMPT_KEYS, con.charsetImage);
+    R_DrawString(x, y + lh * 7 / 2, 0, chars, con.promptHint, con.charsetImage);
+    R_DrawString(x, y + lh * 9 / 2, 0, chars, CON_PROMPT_KEYS, con.charsetImage);
     R_ClearColor();
 }
 
