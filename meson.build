@@ -211,6 +211,7 @@ action_src = [
   'src/action/tng_ini.c',
   'src/action/tng_irc.c',
   'src/action/tng_jump.c',
+  'src/common/fuzzy.c',
   'src/action/tng_stats.c',
   'src/shared/shared.c'
 ]
