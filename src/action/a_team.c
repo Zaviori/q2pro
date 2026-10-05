@@ -1144,6 +1144,9 @@ pmenu_t pmitemmenu[] = {
 
 void OpenPMItemMenu(edict_t *ent)
 {
+	// a take running: what to do with it comes first
+	if (jump->value && Jmp_OpenTakeMenu(ent))
+		return;
 	PMenu_Open(ent, pmitemmenu, 2, sizeof(pmitemmenu) / sizeof(pmenu_t));
 }
 

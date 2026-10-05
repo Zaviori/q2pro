@@ -81,6 +81,7 @@ static qboolean Jmp_Stop(edict_t *ent);
 static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
+static void JmpAnswerText(edict_t *ent, const char *text);
 
 void Cmd_Jmod_f (edict_t *ent)
 {
@@ -190,6 +191,12 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "play") == 0)
 	{
 		Cmd_JumpPlay_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "answer") == 0)
+	{
+		// from the client's messageprompt, not for typing
+		JmpAnswerText(ent, gi.argc() >= 3 ? gi.argv(2) : NULL);
 		return;
 	}
 	else if(Q_stricmp(cmd, "jumps") == 0)
@@ -534,6 +541,7 @@ static void JmpSpawn(edict_t *ent, int number, float delay, float repeat)
 }
 
 static void JmpMarkersUpdate(edict_t *ent);
+static void JmpJumpsFrame(edict_t *ent);
 
 // called every frame for each client: counts a pending spawn down, and
 // keeps the spawnpoint labels
@@ -543,6 +551,7 @@ void Jmp_RunSpawn(edict_t *ent)
 	int left;
 
 	JmpMarkersUpdate(ent);
+	JmpJumpsFrame(ent);
 
 	if (!client->resp.jmp_spawn_frame)
 		return;
@@ -659,6 +668,8 @@ rows live in the client, as the values shown are the player's own.
 #define JMP_MENU_CHOICE	4	// the row of a step's first value
 #define JMP_MENU_JUMPS	10	// the steps of the jumps menu, in the same rows: the list,
 #define JMP_MENU_VIEW	11	// then how to watch the pick
+#define JMP_MENU_TAKE	12	// and, with a take running, what to do with it
+#define JMP_REC_COUNTDOWN	3	// seconds before a recording's teleport to its spawnpoint
 
 static const float jmp_delays[] = { 0, 1, 2, 3, 5, 10 };
 static const float jmp_repeats[] = { 0, 3, 5, 8, 10, 15, 20, 30 };
@@ -727,11 +738,11 @@ static void JmpMenuPickSpot(edict_t *ent, pmenu_t *p)
 
 	client->jmp_menu_pick = (int)(intptr_t)p->arg;
 
-	// recording from it: there with the usual delay, the take starting on arrival
+	// recording from it: there after a countdown, the take starting on arrival
 	if (client->jmp_menu_rec) {
 		PMenu_Close(ent);
 		Cmd_JumpRec_f(ent);
-		JmpSpawn(ent, client->jmp_menu_pick, client->resp.jmp_spawn_delay, 0);
+		JmpSpawn(ent, client->jmp_menu_pick, JMP_REC_COUNTDOWN, 0);
 		return;
 	}
 	JmpMenuShow(ent, 1, -1);
@@ -1365,6 +1376,7 @@ typedef struct {
 	jmp_take_t	take;		// being recorded, or the last one
 	int		rec_ms, rec_cmds;
 	int		rec_keys;
+	int		rec_mark;		// the samples there were when the take menu came up
 
 	int		ask;			// the question out to the player: JMP_ASK_*, 0 none
 	int		ask_frame;		// level.framenum it lapses at
@@ -1382,6 +1394,9 @@ typedef struct {
 	int		hud_keys;
 
 	int		menu_top, menu_pick;
+	int		menu_sel;		// the jump under the list's cursor, its description shown; -1 none
+	int		menu_cur;		// the cursor's row as the list was built
+	qboolean	menu_keep;	// the list is rebuilt for the cursor: not read again
 } jmp_state_t;
 
 static jmp_state_t jmp_states[MAX_CLIENTS];
@@ -1727,8 +1742,11 @@ static void Cmd_JumpRec_f(edict_t *ent)
 
 /*
 Saving asks for what the command did not give - a name, then a line
-describing the jump - by opening the player's chat prompt: what he says
-next is the answer, and goes to nobody.
+describing the jump - with the client's messageprompt, a box with the
+question over the line typed, answered as "jmod answer <text>". A client
+without the command sends it on as an unknown one: that one is asked in
+its chat prompt instead, and what it says next is the answer and goes to
+nobody.
 */
 static void JmpAsk(edict_t *ent, int ask)
 {
@@ -1746,8 +1764,11 @@ static void JmpAsk(edict_t *ent, int ask)
 	else
 		gi.cprintf(ent, PRINT_HIGH, "Describe \"%s\" in a line: where it goes, what the trick is. "
 			"Type it and press Enter\n", st->ask_name);
-	gi.centerprintf(ent, ask == JMP_ASK_NAME ? "Name the jump\n" : "Describe the jump\n");
-	stuffcmd(ent, "messagemode\n");
+	if (ask == JMP_ASK_NAME)
+		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
+	else
+		stuffcmd(ent, va("messageprompt \"Describe %s - where it goes, the trick\" jmod answer\n",
+			st->ask_name));
 }
 
 // the name as a file's, free or the player's own to overwrite
@@ -1825,22 +1846,58 @@ static void Cmd_JumpSave_f(edict_t *ent)
 	JmpSaveWrite(ent, st->ask_name, desc);
 }
 
-// a say while a question is out is its answer: true if it was taken
+// the answer to the question that is out; NULL turns it down
+static void JmpAnswerText(edict_t *ent, const char *text)
+{
+	jmp_state_t *st = JmpState(ent);
+	char buf[256], *p;
+	size_t len;
+	int ask = st->ask;
+
+	st->ask = 0;
+	if (!ask || level.framenum > st->ask_frame || !st->take.count)
+		return;
+	if (!text) {
+		gi.cprintf(ent, PRINT_HIGH, "Not saved. \"jmod save\" asks again\n");
+		return;
+	}
+
+	Q_strncpyz(buf, text, sizeof(buf));
+	for (p = buf; *p == ' '; p++)
+		;
+	for (len = strlen(p); len && p[len - 1] == ' '; len--)
+		p[len - 1] = 0;
+
+	if (ask == JMP_ASK_NAME)
+		JmpAsk(ent, JmpSaveName(ent, p, st->ask_name, sizeof(st->ask_name)) ? JMP_ASK_DESC : JMP_ASK_NAME);
+	else if (!*p)
+		JmpAsk(ent, JMP_ASK_DESC);
+	else
+		JmpSaveWrite(ent, st->ask_name, p);
+}
+
+// a client's commands while a question is out: true if this one was to do with it
 qboolean Jmp_Answer(edict_t *ent)
 {
 	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
 	char text[256], *p;
 	size_t len;
-	int ask = st->ask;
 
-	if (!ask || (Q_stricmp(gi.argv(0), "say") && Q_stricmp(gi.argv(0), "say_team")))
+	if (!st->ask)
 		return false;
-	st = JmpState(ent);
-	st->ask = 0;
-	if (ask != JMP_ASK_NAME && ask != JMP_ASK_DESC)
+
+	// no messageprompt in this client: its chat prompt will do
+	if (!Q_stricmp(gi.argv(0), "messageprompt")) {
+		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n" : "Describe the jump\n");
+		stuffcmd(ent, "messagemode\n");
+		return true;
+	}
+	if (Q_stricmp(gi.argv(0), "say") && Q_stricmp(gi.argv(0), "say_team"))
 		return false;
-	if (level.framenum > st->ask_frame || !st->take.count)
+	if (level.framenum > JmpState(ent)->ask_frame) {
+		st->ask = 0;
 		return false;
+	}
 
 	// the prompt sends it quoted
 	Q_strncpyz(text, gi.args(), sizeof(text));
@@ -1850,24 +1907,7 @@ qboolean Jmp_Answer(edict_t *ent)
 		p[len - 1] = 0;
 		p++;
 	}
-	while (*p == ' ')
-		p++;
-	for (len = strlen(p); len && p[len - 1] == ' '; len--)
-		p[len - 1] = 0;
-
-	if (ask == JMP_ASK_NAME) {
-		if (!JmpSaveName(ent, p, st->ask_name, sizeof(st->ask_name)))
-			JmpAsk(ent, JMP_ASK_NAME);
-		else
-			JmpAsk(ent, JMP_ASK_DESC);
-		return true;
-	}
-
-	if (!*p) {
-		JmpAsk(ent, JMP_ASK_DESC);
-		return true;
-	}
-	JmpSaveWrite(ent, st->ask_name, p);
+	JmpAnswerText(ent, p);
 	return true;
 }
 
@@ -2248,19 +2288,55 @@ void Jmp_ClientDisconnect(edict_t *ent)
 /*
 The jumps menu, in the spawnpoint menu's rows: the map's stored jumps a
 page at a time, with the recorder above them; a pick asks how to watch.
+The jump under the cursor has its description in the rows below it, the
+rest of the list making way - the menu is rebuilt as the cursor moves
+(JmpJumpsFrame), since its rows are only text to the client.
 */
+#define JMP_DESC_ROW	30	// characters of a description on a menu row
+
+// how much of a description goes on its first row
+static int JmpDescBreak(const char *desc)
+{
+	int i = strlen(desc);
+
+	if (i <= JMP_DESC_ROW)
+		return i;
+	for (i = JMP_DESC_ROW; i > 0 && desc[i] != ' '; i--)
+		;
+	return i ? i : JMP_DESC_ROW;
+}
+// from where: here, or a spawnpoint off the spawnpoint list, markers and all
 static void JmpJumpsRec(edict_t *ent, pmenu_t *p)
+{
+	ent->client->jmp_menu_rec = true;
+	JmpMenuShow(ent, 0, -1);
+}
+
+// the take ends where the menu came up, not where its row was picked
+static void JmpTakeSave(edict_t *ent, pmenu_t *p)
 {
 	jmp_state_t *st = JmpState(ent);
 
-	// from where: here, or a spawnpoint off the spawnpoint list, markers and all
-	if (!st->recording) {
-		ent->client->jmp_menu_rec = true;
-		JmpMenuShow(ent, 0, -1);
-		return;
+	if (st->recording && st->rec_mark >= 2 && st->rec_mark < st->take.count) {
+		st->take.count = st->rec_mark;
+		st->rec_ms = st->take.samples[st->rec_mark - 1].ms;
 	}
-	JmpRecStop(ent);
-	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+	Cmd_JumpSave_f(ent);
+}
+
+static void JmpTakeDiscard(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	st->recording = false;
+	st->take.count = 0;
+	PMenu_Close(ent);
+	gi.cprintf(ent, PRINT_HIGH, "Take discarded\n");
+}
+
+static void JmpTakeKeep(edict_t *ent, pmenu_t *p)
+{
+	PMenu_Close(ent);
 }
 
 static void JmpJumpsLast(edict_t *ent, pmenu_t *p)
@@ -2317,32 +2393,49 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 	client->jmp_menu_step = step;
 	if (step == JMP_MENU_JUMPS) {
-		// read again each time: somebody may have saved one since
-		JmpListLoad();
+		// read again each time it is opened: somebody may have saved one since
+		if (!st->menu_keep)
+			JmpListLoad();
+		st->menu_keep = false;
 		if (st->menu_top >= jmp_list_count)
 			st->menu_top = max(jmp_list_count - 1, 0) / JMP_LIST_ROWS * JMP_LIST_ROWS;
 
+		// the cursor goes to the jump last under it, or the page's first
+		st->menu_sel = -1;
+		if (cur < 0 && jmp_list_count)
+			st->menu_sel = st->menu_pick = Q_clip(st->menu_pick, st->menu_top,
+				min(st->menu_top + JMP_LIST_ROWS, jmp_list_count) - 1);
+
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsRec,
-			st->recording ? "Stop recording" : "Record a jump");
-		if (st->take.count && !st->recording)
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a jump");
+		if (st->take.count) {
 			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch my last take");
-		if (st->take.count && !st->recording)
 			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save my last take...");
+		}
 
 		row = JMP_LIST_FIRST;
-		for (i = st->menu_top; i < jmp_list_count && row < JMP_LIST_FIRST + JMP_LIST_ROWS; i++, row++) {
+		for (i = st->menu_top; i < jmp_list_count && i < st->menu_top + JMP_LIST_ROWS; i++) {
 			t = &jmp_list[i];
 			JmpSecs(t->ms, secs, sizeof(secs));
 			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpJumpsPick, "%-15.15s %3d fps %5.5ss",
 				t->name, t->fps, secs);
-			if (cur < 0 && i == st->menu_pick)
+			if (i == st->menu_sel)
 				cur = row;
+			row++;
+			if (i == st->menu_sel && t->desc[0]) {
+				int len = JmpDescBreak(t->desc);
+
+				JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "*%.*s", len, t->desc);
+				if (t->desc[len])
+					JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "*%.*s", JMP_DESC_ROW,
+						t->desc + len + (t->desc[len] == ' '));
+			}
 		}
 		if (!jmp_list_count)
 			JmpMenuRow_Set(ent, JMP_LIST_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "None on this map yet");
 
-		row = JMP_LIST_FIRST + JMP_LIST_ROWS;
+		// under the list and the two rows a description may take
+		row = JMP_LIST_FIRST + JMP_LIST_ROWS + 2;
 		if (st->menu_top > 0)
 			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_LIST_ROWS, JmpJumpsPage, "Previous page");
 		if (st->menu_top + JMP_LIST_ROWS < jmp_list_count)
@@ -2350,7 +2443,17 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
-			cur = jmp_list_count ? JMP_LIST_FIRST : 3;
+			cur = 3;
+		st->menu_cur = cur;
+	} else if (step == JMP_MENU_TAKE) {
+		st->rec_mark = st->take.count;
+		JmpSecs(st->take.count ? st->take.samples[st->take.count - 1].ms : 0, secs, sizeof(secs));
+		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recording, %s seconds", secs);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpTakeSave, "Save the take...");
+		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard the take");
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeKeep, "Keep recording");
+		if (cur < 0)
+			cur = 3;
 	} else {
 		if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count) {
 			JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
@@ -2361,30 +2464,57 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
 		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s", t->author);
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
-		// the description, over two rows at a space if it is long
-		i = strlen(t->desc);
-		if (i > 31)
-			for (i = 31; i > 0 && t->desc[i] != ' '; i--)
-				;
-		if (!i)
-			i = 31;
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_CENTER, 0, NULL, "%.*s", i, t->desc);
-		if (t->desc[i])
-			JmpMenuRow_Set(ent, 6, PMENU_ALIGN_CENTER, 0, NULL, "%.31s", t->desc + i + (t->desc[i] == ' '));
-		JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
-		JmpMenuRow_Set(ent, 9, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
-			cur = 8;
+			cur = 5;
 	}
 
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
 	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+	st->menu_cur = client->menu.cur;	// where the menu really put it
+}
+
+// each frame: the list follows its cursor with the description
+static void JmpJumpsFrame(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+	jmp_state_t *st = JmpState(ent);
+	int cur = client->menu.cur;
+	pmenu_t *p;
+
+	if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu
+		|| client->jmp_menu_step != JMP_MENU_JUMPS || cur == st->menu_cur)
+		return;
+
+	p = cur >= 0 && cur < JMP_MENU_ROWS ? &client->jmp_menu[cur] : NULL;
+	st->menu_keep = true;
+	if (p && p->SelectFunc == JmpJumpsPick) {
+		st->menu_pick = (int)(intptr_t)p->arg;
+		JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+	} else if (st->menu_sel >= 0) {
+		// off the list: the description goes, the rows under it are where they were
+		JmpJumpsShow(ent, JMP_MENU_JUMPS, max(cur, 0));
+	} else {
+		st->menu_keep = false;
+		st->menu_cur = cur;
+	}
 }
 
 // from the jmod item menu, and "jmod jumps"
 void Jmp_OpenJumpMenu(edict_t *ent, pmenu_t *p)
 {
-	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+	if (!Jmp_OpenTakeMenu(ent))
+		JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
+}
+
+// any jmod menu while a take runs: save it, discard it, or carry on
+qboolean Jmp_OpenTakeMenu(edict_t *ent)
+{
+	if (!JmpState(ent)->recording)
+		return false;
+	JmpJumpsShow(ent, JMP_MENU_TAKE, -1);
+	return true;
 }
