@@ -1709,7 +1709,7 @@ void SCR_Init(void)
     scr_center_size = Cvar_Get("scr_center_size", "16", CVAR_ARCHIVE);
     // The server's layouts - scoreboard, menus, the "Viewing" line - in
     // the TrueType font with the mod's columns kept (SCR_LayoutWords); 0
-    // is the conchars, even under r_ttf 2. 10 has a conchar's cap height,
+    // is the conchars, even under r_ttf_menus. 10 has a conchar's cap height,
     // so their 8-unit rows stand
     scr_layout_font = Cvar_Get("scr_layout_font", "1", CVAR_ARCHIVE);
     scr_layout_size = Cvar_Get("scr_layout_size", "10", CVAR_ARCHIVE);
@@ -2280,7 +2280,7 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
                              const char *s)
 {
     if (!scr_layout_font->integer || !R_TextAvailable()) {
-        // off: the real conchars, even where r_ttf 2 replaces the rest
+        // off: the real conchars, even where r_ttf_menus replaces the rest
         R_TextConchars(true);
         if ((flags & UI_CENTER) == UI_CENTER)
             SCR_DrawStringMulti(x, y, flags, MAX_STRING_CHARS, s, scr.font_pic);

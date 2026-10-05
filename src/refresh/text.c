@@ -96,6 +96,7 @@ static cvar_t   *r_font_bold;
 static font_t       fonts[2];
 static uint32_t     text_tints[256];    // the charset's colour per cell, 0 = none
 static cvar_t       *r_ttf;
+static cvar_t       *r_ttf_menus;
 static cvar_t       *r_ttf_size;
 static cvar_t       *r_ttf_cells;
 static cvar_t       *r_ttf_menu_size;
@@ -487,7 +488,7 @@ bool R_TextAvailable(void)
 }
 
 /*
-r_ttf 2: every string still drawn in conchars - menus, the server browser,
+r_ttf_menus: every string still drawn in conchars - menus, the server browser,
 inventory, debug text, anything without a font of its own - is drawn in
 the font instead, inside the span conchars would take so layouts made
 for conchars stand (or a letter per cell, r_ttf_cells). R_DrawString and R_DrawChar come here. The colours
@@ -499,24 +500,24 @@ void R_TextMenu(bool on)
     text_menu = on;
 }
 
-// A place whose own switch is off keeps the conchars under r_ttf 2
+// A place whose own switch is off keeps the conchars, r_ttf_menus or not
 void R_TextConchars(bool on)
 {
     text_bypass = on;
 }
 
-// The height a menu or list row needs for r_ttf 2's text at the menu size,
+// The height a menu or list row needs for r_ttf_menus' text at the menu size,
 // in virtual units; 0 when conchars draw the menus
 int R_TextMenuRow(void)
 {
-    if (r_ttf->integer < 2 || !text_font(0))
+    if (!r_ttf->integer || !r_ttf_menus->integer || !text_font(0))
         return 0;
     return Q_rint(Cvar_ClampValue(r_ttf_menu_size, 6, 24) * 1.2f);
 }
 
 bool Text_ReplacesConchars(void)
 {
-    return r_ttf->integer >= 2 && !text_bypass && text_font(0) != NULL;
+    return r_ttf->integer && r_ttf_menus->integer && !text_bypass && text_font(0) != NULL;
 }
 
 int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
@@ -829,9 +830,13 @@ void Text_Init(void)
     r_font->changed = r_font_changed;
     r_font_bold->changed = r_font_changed;
     r_font_test = Cvar_Get("r_font_test", "0", 0);
-    // 0 conchars everywhere; 1 the font where a place has its own switch
-    // (each *_font cvar); 2 also every other string, in conchar cells
-    r_ttf = Cvar_Get("r_ttf", "2", CVAR_ARCHIVE);
+    // The master switch: 0 conchars everywhere, anything else the font
+    // everywhere - 1 used to be "only where a place has its own switch"
+    // and 2 everywhere, which read as on and more on; a saved 2 is on.
+    // Every place has its switch (each *_font cvar), and the rest - menus,
+    // browser, inventory, in conchar cells - has r_ttf_menus for one.
+    r_ttf = Cvar_Get("r_ttf", "1", CVAR_ARCHIVE);
+    r_ttf_menus = Cvar_Get("r_ttf_menus", "1", CVAR_ARCHIVE);
     r_ttf_size = Cvar_Get("r_ttf_size", "10", CVAR_ARCHIVE);
     // ...set at its own width (0), or a letter per conchar cell (1)
     r_ttf_cells = Cvar_Get("r_ttf_cells", "0", CVAR_ARCHIVE);

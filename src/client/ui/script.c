@@ -796,7 +796,8 @@ typedef struct {
 static const char ui_menu_ttf[] =
     "begin ttf\n"
     "title \"TrueType Text\"\n"
-    "pairs \"truetype text\" r_ttf off 0 \"own places\" 1 everywhere 2\n"
+    "toggle \"truetype text\" r_ttf\n"
+    "toggle \"menus & other text\" r_ttf_menus\n"
     "range \"text size\" r_ttf_size 8 14 1\n"
     "range \"menu text size\" r_ttf_menu_size 8 20 1\n"
     "pairs \"letter spacing\" r_ttf_cells natural 0 \"fixed cells\" 1\n"
