@@ -10,6 +10,7 @@ rem path below. Both destinations keep the names the game expects:
 rem   <aqtion-dir>\action\gamex86_64.dll
 rem   <aqtion-dir>\q2pro_x.exe
 rem   <aqtion-dir>\action\fonts\*  (when the build staged a fonts folder)
+rem   <aqtion-dir>\action\pics\*   (likewise pics)
 
 set "SRC=%~1"
 if "%SRC%"=="" set "SRC=%~dp0"
@@ -80,6 +81,17 @@ if exist "%SRC%\fonts\" (
         exit /b 1
     )
     echo   %SRC%\fonts\*  ^-^>  %DEST%\action\fonts\
+)
+
+rem jmod's spawnpoint marker, if the build staged it
+if exist "%SRC%\pics\" (
+    if not exist "%DEST%\action\pics\" mkdir "%DEST%\action\pics"
+    copy /y "%SRC%\pics\*" "%DEST%\action\pics\" >nul
+    if errorlevel 1 (
+        echo ERROR: failed to copy the pics
+        exit /b 1
+    )
+    echo   %SRC%\pics\*  ^-^>  %DEST%\action\pics\
 )
 
 echo Done.

@@ -4,7 +4,7 @@
 #   ./build-windows.sh [share-dir]
 #
 # Builds build-windows/ (configuring it first if needed), then copies
-# gamex86_64.dll, q2pro_x.exe, install-windows.bat and fonts/ to the share
+# gamex86_64.dll, q2pro_x.exe, install-windows.bat, fonts/ and pics/ to the share
 # dir, which is /home/antti/share by default. Run install-windows.bat from
 # there inside Windows to drop the files into the Steam AQtion install.
 #
@@ -55,7 +55,10 @@ cp -f "$SRCDIR/install-windows.bat" "$SHAREDIR/install-windows.bat"
 # *_font cvar quietly falls back to conchars
 mkdir -p "$SHAREDIR/fonts"
 cp -f "$SRCDIR"/action/fonts/*.ttf "$SRCDIR/action/fonts/OFL.txt" "$SHAREDIR/fonts/"
+# jmod's spawnpoint marker; the game falls back to a crosshair ring without it
+mkdir -p "$SHAREDIR/pics"
+cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SHAREDIR/pics/"
 
 echo "Staged in $SHAREDIR:"
 ls -l "$SHAREDIR/gamex86_64.dll" "$SHAREDIR/q2pro_x.exe" "$SHAREDIR/install-windows.bat" \
-      "$SHAREDIR"/fonts/*
+      "$SHAREDIR"/fonts/* "$SHAREDIR"/pics/*
