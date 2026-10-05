@@ -1,8 +1,8 @@
 #define JMP_MENU_ROWS	20
 #define JMP_SPOTS_MAX	40				// spawnpoints jmod lists
 #define JMP_GHUD_MAX	(JMP_SPOTS_MAX * 2)	// a marker and a label each
-#define JMP_MARKER_PX	64				// its size on screen
-#define JMP_MARKER_HL	96				// the highlighted one's
+#define JMP_MARKER_PX	40				// its size on screen
+#define JMP_MARKER_HL	56				// the highlighted one's
 #define STAT_SPEEDX					1
 #define STAT_HIGHSPEED					2
 #define STAT_FALLDMGLAST				3
