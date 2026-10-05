@@ -4184,6 +4184,8 @@ void ClientThink(edict_t * ent, usercmd_t * ucmd)
 	// watching a recorded jump: the camera is jmod's, the buttons too
 	if (jump->value && Jmp_PlayThink(ent, ucmd))
 		return;
+	if (jump->value)
+		Jmp_MenuFire(ent, ucmd);
 
 	pm_passent = ent;
 	// FROM 3.20 -FB

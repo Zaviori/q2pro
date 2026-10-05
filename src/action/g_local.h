@@ -2175,6 +2175,12 @@ struct gclient_s
 	int			jmp_menu_step;	// its step: 0 the spawnpoint, 1 the delay, 2 the repeat
 	int			jmp_menu_pick;	// the spawnpoint picked, as spawnp takes it (-1 closest)
 	qboolean	jmp_menu_rec;	// the spawnpoint list is asking where to record a jump from
+	int			jmp_menu_aim;	// the marker aimed at, as a spawn's number; 0 none
+	qboolean	jmp_fire_held;	// fire as last seen, to act on a press
+	int			jmp_click_spot;	// a click on a marker waiting to see if it is a double one,
+	int			jmp_click_ms;	// and for how long yet
+	int			jmp_tip[2];		// the tooltip under the crosshair while one is aimed at
+	qboolean	jmp_tip_on;
 	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
 	int			jmp_ghud_count;
 	int			jmp_ghud_key;	// what they show, to redo them only on a change

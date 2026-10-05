@@ -1146,6 +1146,10 @@ typedef struct {
 #define BUTTON_USE      BIT(1)
 #define BUTTON_ANY      BIT(7)  // any key whatsoever
 
+// usercmd_t->impulse while a shift key is down with a layout up: the
+// buttons have no bit to spare, and a game's menu may want a shifted click
+#define IMPULSE_SHIFT   200
+
 // usercmd_t is sent to the server each client frame
 typedef struct {
     byte    msec;
