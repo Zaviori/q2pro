@@ -866,7 +866,7 @@ static void Con_DrawSearch(int y, int vislines)
     R_SetAlpha(1);
     top = y - (rows + 1) * CONCHAR_HEIGHT;
     R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CONCHAR_HEIGHT + 2,
-                 MakeColor(0, 0, 0, 240));
+                 MakeColor(0, 0, 0, 255));
 
     for (int k = 0; k < rows; k++) {
         int i = first + k;
