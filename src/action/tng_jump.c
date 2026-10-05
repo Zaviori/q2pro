@@ -849,6 +849,27 @@ static void JmpMarkersClear(edict_t *ent)
 	client->jmp_ghud_count = 0;
 }
 
+/*
+The marker: jmod's own pic (action/pics/jmod_spawn.png, white, the ghud
+tints it) where the server has it - a local game's client then has it
+too, and a remote one can download it - else a crosshair ring from the
+pak, which every install has.
+*/
+const char *Jmp_MarkerPic(void)
+{
+	cvar_t *game_cvar = gi.cvar("game", "action", 0);
+	char path[MAX_QPATH];
+	FILE *f;
+
+	Q_snprintf(path, sizeof(path), "%s/pics/jmod_spawn.png",
+		*game_cvar->string ? game_cvar->string : GAMEVERSION);
+	f = fopen(path, "rb");
+	if (!f)
+		return "ch14";
+	fclose(f);
+	return "jmod_spawn";
+}
+
 #define JMP_MARKER_NEAR	64	// no marker on a spot this close
 
 static qboolean JmpNear(edict_t *ent, edict_t *spot)
@@ -919,7 +940,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 	memset(client->jmp_ghud_size, 0, sizeof(client->jmp_ghud_size));	// resize on the next frame
 
 	if (!client->jmp_ghud_count) {
-		ring = gi.imageindex(JMP_MARKER_PIC);
+		ring = gi.imageindex((char *)Jmp_MarkerPic());
 		client->jmp_ghud_made = level.framenum;
 		for (i = 0; i < count; i++) {
 			vec_t *o = spots[i]->s.origin;

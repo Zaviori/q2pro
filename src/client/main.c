@@ -420,15 +420,14 @@ void CL_CheckForResend(void)
     if (cls.state < ca_connecting && sv_running->integer > ss_loading) {
         strcpy(cls.servername, "localhost");
         cls.serverAddress.type = NA_LOOPBACK;
-        cls.serverProtocol = cl_protocol->integer;
-        if (cls.serverProtocol < PROTOCOL_VERSION_DEFAULT ||
-            cls.serverProtocol > PROTOCOL_VERSION_AQTION) {
-			#ifdef AQTION_EXTENSION
-            cls.serverProtocol = PROTOCOL_VERSION_AQTION;
-			#else
-			cls.serverProtocol = PROTOCOL_VERSION_Q2PRO;
-			#endif
-        }
+        // the newest protocol, whatever cl_protocol says: it is for remote
+        // servers, and an older one only takes the game's extensions
+        // (the ghud) away from a local game
+#ifdef AQTION_EXTENSION
+        cls.serverProtocol = PROTOCOL_VERSION_AQTION;
+#else
+        cls.serverProtocol = PROTOCOL_VERSION_Q2PRO;
+#endif
 
         // we don't need a challenge on the localhost
         cls.state = ca_connecting;
