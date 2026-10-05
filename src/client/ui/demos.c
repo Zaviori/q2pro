@@ -19,6 +19,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "ui.h"
 #include "common/files.h"
 #include "common/mdfour.h"
+#include "common/fuzzy.h"
 
 /*
 =======================================================================
@@ -56,7 +57,12 @@ typedef struct {
 typedef struct {
     menuFrameWork_t menu;
     menuList_t      list;
-    int             numDirs;
+    int             numDirs;        // in the list as shown
+    void            **all;          // every entry of the directory, the list
+    int             numAll;         // shows those the filter lets through
+    int             allDirs;
+    char            filter[MAX_QPATH];  // typed in the browser: fuzzy, by name
+    int             *scores;
     uint8_t         hash[16];
     char            browse[MAX_OSPATH];
     int             selection;
@@ -270,6 +276,53 @@ static menuSound_t Change(menuCommon_t *self)
     return QMS_SILENT;
 }
 
+static int scorecmp(const void *p1, const void *p2)
+{
+    const demoEntry_t *e1 = *(const demoEntry_t **)p1;
+    const demoEntry_t *e2 = *(const demoEntry_t **)p2;
+    int s1 = Fuzzy_Score(m_demos.filter, e1->name);
+    int s2 = Fuzzy_Score(m_demos.filter, e2->name);
+
+    if (s1 != s2)
+        return s2 - s1;
+    return Q_stricmp(e1->name, e2->name);
+}
+
+// The list from all: everything, sorted as the columns say; or, with a
+// filter, ".." and the directories and demos it matches, best first
+static void ApplyFilter(void)
+{
+    demoEntry_t *e;
+    int i, n = 0, dirs;
+
+    for (i = 0; i < m_demos.numAll; i++) {
+        e = m_demos.all[i];
+        if (!*m_demos.filter || e->type == ENTRY_UP ||
+            Fuzzy_Score(m_demos.filter, e->name) >= 0)
+            m_demos.list.items[n++] = e;
+        if (i + 1 == m_demos.allDirs)
+            m_demos.numDirs = n;
+    }
+    if (!m_demos.allDirs)
+        m_demos.numDirs = 0;
+    m_demos.list.numItems = n;
+    m_demos.list.curvalue = 0;
+    m_demos.list.prestep = 0;
+
+    if (*m_demos.filter) {
+        dirs = m_demos.numDirs;
+        i = (dirs && ((demoEntry_t *)m_demos.list.items[0])->type == ENTRY_UP);
+        qsort(m_demos.list.items + i, dirs - i, sizeof(void *), scorecmp);
+        qsort(m_demos.list.items + dirs, n - dirs, sizeof(void *), scorecmp);
+        // the best demo under the cursor, past ".."
+        MenuList_SetValue(&m_demos.list, n > dirs ? dirs : i < n ? i : 0);
+    } else if (m_demos.list.sortdir) {
+        m_demos.list.sort(&m_demos.list);
+    }
+
+    Change(&m_demos.list.generic);
+}
+
 static void BuildList(void)
 {
     int numDirs, numDemos;
@@ -342,11 +395,14 @@ static void BuildList(void)
         FS_FreeList(demolist);
     }
 
-    // update status line and sort
-    Change(&m_demos.list.generic);
-    if (m_demos.list.sortdir) {
-        m_demos.list.sort(&m_demos.list);
-    }
+    // the entries are all's; the list shows what the filter lets through
+    m_demos.all = m_demos.list.items;
+    m_demos.numAll = m_demos.list.numItems;
+    m_demos.allDirs = m_demos.numDirs;
+    m_demos.list.items = UI_Malloc(sizeof(demoEntry_t *) * (m_demos.numAll + 1));
+    m_demos.scores = UI_Malloc(sizeof(int) * (m_demos.numAll + 1));
+    m_demos.filter[0] = 0;
+    ApplyFilter();
 
     // resize columns
     m_demos.menu.size(&m_demos.menu);
@@ -365,13 +421,16 @@ static void FreeList(void)
 {
     int i;
 
-    if (m_demos.list.items) {
-        for (i = 0; i < m_demos.list.numItems; i++) {
-            Z_Free(m_demos.list.items[i]);
+    if (m_demos.all) {
+        for (i = 0; i < m_demos.numAll; i++) {
+            Z_Free(m_demos.all[i]);
         }
-        Z_Freep(&m_demos.list.items);
-        m_demos.list.numItems = 0;
+        Z_Freep(&m_demos.all);
+        m_demos.numAll = 0;
     }
+    Z_Freep(&m_demos.list.items);
+    Z_Freep(&m_demos.scores);
+    m_demos.list.numItems = 0;
 }
 
 static menuSound_t LeaveDirectory(void)
@@ -567,12 +626,43 @@ static void Size(menuFrameWork_t *self)
 
 static menuSound_t Keydown(menuFrameWork_t *self, int key)
 {
+    size_t len = strlen(m_demos.filter);
+
     if (key == K_BACKSPACE) {
+        if (len) {
+            m_demos.filter[len - 1] = 0;
+            ApplyFilter();
+            return QMS_SILENT;
+        }
         LeaveDirectory();
         return QMS_OUT;
     }
 
+    if (key == K_ESCAPE && len) {
+        m_demos.filter[0] = 0;
+        ApplyFilter();
+        return QMS_SILENT;
+    }
+
+    // letters are for the filter (they come as characters), not the
+    // list's h/j/k/l; Alt+digit still picks a column
+    if (key >= 32 && key < 127 && !Key_IsDown(K_ALT) && !Key_IsDown(K_CTRL))
+        return QMS_SILENT;
+
     return QMS_NOTHANDLED;
+}
+
+static menuSound_t CharEvent(menuFrameWork_t *self, int key)
+{
+    size_t len = strlen(m_demos.filter);
+
+    if (!Q_isprint(key) || len >= sizeof(m_demos.filter) - 1)
+        return QMS_NOTHANDLED;
+
+    m_demos.filter[len] = key;
+    m_demos.filter[len + 1] = 0;
+    ApplyFilter();
+    return QMS_SILENT;
 }
 
 static void Draw(menuFrameWork_t *self)
@@ -581,6 +671,12 @@ static void Draw(menuFrameWork_t *self)
     if (uis.width >= 640) {
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT,
                       UI_RIGHT, m_demos.status);
+    }
+    if (*m_demos.filter) {
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
+                      va("filter: %s (%d of %d)", m_demos.filter,
+                         m_demos.list.numItems - m_demos.numDirs,
+                         m_demos.numAll - m_demos.allDirs));
     }
 }
 
@@ -659,6 +755,7 @@ void M_Menu_Demos(void)
     m_demos.menu.pop        = Pop;
     m_demos.menu.size       = Size;
     m_demos.menu.keydown    = Keydown;
+    m_demos.menu.charevent  = CharEvent;
     m_demos.menu.free       = Free;
     m_demos.menu.image      = uis.backgroundHandle;
     m_demos.menu.color.u32  = uis.color.background.u32;
