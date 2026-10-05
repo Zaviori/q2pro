@@ -81,6 +81,7 @@ static qboolean Jmp_Stop(edict_t *ent);
 static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
+static void Jmp_RecordFps(edict_t *ent, int fps);
 
 void Cmd_Jmod_f (edict_t *ent)
 {
@@ -111,7 +112,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod menu - open the jump menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod spawns - pick a spawnpoint, then its delay and repeat, from a menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod save <name> - keep the last take for everybody on this map\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod save [name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod play [name] [pov] - watch a stored jump, or your last take\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
@@ -190,6 +191,12 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "play") == 0)
 	{
 		Cmd_JumpPlay_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "fps") == 0)
+	{
+		// the client's answer to the recorder's question, not for typing
+		Jmp_RecordFps(ent, atoi(gi.argv(2)));
 		return;
 	}
 	else if(Q_stricmp(cmd, "jumps") == 0)
@@ -668,6 +675,7 @@ static const float jmp_repeats[] = { 0, 3, 5, 8, 10, 15, 20, 30 };
 static const char jmp_menu_line[] = "\x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F";
 
 static void JmpMenuShow(edict_t *ent, int step, int cur);
+static void JmpJumpsShow(edict_t *ent, int step, int cur);
 
 static void JmpMenuRow_Set(edict_t *ent, int row, int align, intptr_t arg,
 	void (*func)(edict_t *, pmenu_t *), const char *fmt, ...)
@@ -722,8 +730,30 @@ static void JmpSecsName(float secs, char *buf, size_t size)
 // step 0: a spawnpoint
 static void JmpMenuPickSpot(edict_t *ent, pmenu_t *p)
 {
-	ent->client->jmp_menu_pick = (int)(intptr_t)p->arg;
+	gclient_t *client = ent->client;
+
+	client->jmp_menu_pick = (int)(intptr_t)p->arg;
+
+	// recording from it: there with the usual delay, the take starting on arrival
+	if (client->jmp_menu_rec) {
+		PMenu_Close(ent);
+		Cmd_JumpRec_f(ent);
+		JmpSpawn(ent, client->jmp_menu_pick, client->resp.jmp_spawn_delay, 0);
+		return;
+	}
 	JmpMenuShow(ent, 1, -1);
+}
+
+// recording from where he stands
+static void JmpMenuRecHere(edict_t *ent, pmenu_t *p)
+{
+	PMenu_Close(ent);
+	Cmd_JumpRec_f(ent);
+}
+
+static void JmpMenuRecBack(edict_t *ent, pmenu_t *p)
+{
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 }
 
 static void JmpMenuPage(edict_t *ent, pmenu_t *p)
@@ -778,8 +808,13 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 	if (client->jmp_menu_top >= count)
 		client->jmp_menu_top = max(count - 1, 0) / JMP_MENU_SPOTS * JMP_MENU_SPOTS;
 
-	JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Pick a spawnpoint (%d)", count);
-	if (client->resp.jmp_spawn_frame)
+	JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL,
+		client->jmp_menu_rec ? "*Record a jump from" : "*Pick a spawnpoint (%d)", count);
+	if (client->jmp_menu_rec) {
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuRecHere, "Start here");
+		if (*cur < 0)
+			*cur = 3;
+	} else if (client->resp.jmp_spawn_frame)
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuStop,
 			client->resp.jmp_spawn_repeat > 0 ? "Stop repeating" : "Stop the pending spawn");
 	JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, -1, JmpMenuPickSpot, "Closest spawnpoint");
@@ -804,7 +839,8 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 	if (client->jmp_menu_top + JMP_MENU_SPOTS < count)
 		JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_MENU_SPOTS, JmpMenuPage, "Next page");
 
-	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0,
+		client->jmp_menu_rec ? JmpMenuRecBack : JmpMenuItems, "Back");
 	if (*cur < 0)
 		*cur = JMP_MENU_FIRST;
 }
@@ -1030,6 +1066,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 // from the jmod item menu, and "jmod spawns"
 void Jmp_OpenSpawnMenu(edict_t *ent, pmenu_t *p)
 {
+	ent->client->jmp_menu_rec = false;
 	JmpMenuShow(ent, 0, -1);
 }
 
@@ -1254,12 +1291,13 @@ spec:
 /*
 Recorded jumps. "jmod rec" samples the player as his commands arrive -
 where he is, where he looks, his animation frame, the movement keys held
-and his speed - and "jmod save <name>" writes the take to
-<game>/jumps/<map>/<name>.jmp, a text file: everybody on the server gets
-it in the jumps menu, and the file itself can be passed on to another
-install. The frame rate in it is the rate of the commands (cl_maxfps is
-what sets it), counted here rather than asked from the client, so any
-client records.
+and his speed - and "jmod save" writes the take, under a name and with
+a line describing it, to <game>/jumps/<map>/<name>.jmp, a text file:
+everybody on the server gets it in the jumps menu, and the file itself
+can be passed on to another install. The frame rate in it is the
+player's cl_maxfps, asked from his client as the take starts; a client
+that does not answer gets the rate its commands came at instead, which
+is not quite the same number (66 sends 15 ms commands, 66.7 a second).
 
 Played back, a translucent ghost in the watcher's skin runs the take in
 the map, and the watcher's view rides behind it or in its eyes - fire
@@ -1273,6 +1311,10 @@ way, to try it.
 #define JMP_REC_LEAD_MS		500		// kept of the standing still before the first move
 #define JMP_PLAY_TAIL_MS	1000	// held on the last sample
 #define JMP_NAME_MAX		24
+#define JMP_DESC_MAX		61		// two menu rows
+#define JMP_ASK_SECS		60		// a question waits this long for its answer
+#define JMP_ASK_NAME		1
+#define JMP_ASK_DESC		2
 #define JMP_LIST_MAX		64
 #define JMP_LIST_ROWS		8		// jumps on a menu page
 #define JMP_LIST_FIRST		6		// the row of the first one
@@ -1289,17 +1331,18 @@ way, to try it.
 #define JMP_KEY_DUCK	32
 #define JMP_KEYS		6
 
-// the HUD: an element per key, in bit order, then two lines of text
+// the HUD: an element per key, in bit order, then three lines of text
 #define JMP_HUD_INFO	JMP_KEYS
-#define JMP_HUD_HINT	(JMP_KEYS + 1)
-#define JMP_HUD_COUNT	(JMP_KEYS + 2)
+#define JMP_HUD_DESC	(JMP_KEYS + 1)
+#define JMP_HUD_HINT	(JMP_KEYS + 2)
+#define JMP_HUD_COUNT	(JMP_KEYS + 3)
 
 static const struct {
 	char *label;
 	int x, y;
 } jmp_hud_keys[JMP_KEYS] = {
-	{ "W", 0, -78 }, { "S", 0, -66 }, { "A", -14, -66 }, { "D", 14, -66 },
-	{ "JUMP", 56, -66 }, { "DUCK", 56, -78 }
+	{ "W", 0, -88 }, { "S", 0, -76 }, { "A", -14, -76 }, { "D", 14, -76 },
+	{ "JUMP", 56, -76 }, { "DUCK", 56, -88 }
 };
 
 typedef struct {
@@ -1315,6 +1358,7 @@ typedef struct {
 typedef struct {
 	char	name[JMP_NAME_MAX];
 	char	author[16];
+	char	desc[JMP_DESC_MAX];
 	int		fps;
 	int		ms;			// its length
 	int		count;
@@ -1328,6 +1372,11 @@ typedef struct {
 	jmp_take_t	take;		// being recorded, or the last one
 	int		rec_ms, rec_cmds;
 	int		rec_keys;
+	int		rec_fps;		// the client's cl_maxfps, 0 until it has said
+
+	int		ask;			// the question out to the player: JMP_ASK_*, 0 none
+	int		ask_frame;		// level.framenum it lapses at
+	char	ask_name[JMP_NAME_MAX];
 
 	qboolean	playing, pov;
 	qboolean	play_started;
@@ -1409,6 +1458,7 @@ The file: a line per header field, then a line per sample -
 	jmodjump 1
 	map urban2
 	author zaviori
+	desc from the roof to the balcony, strafe left
 	fps 125
 	ms 6410
 	samples 388
@@ -1430,8 +1480,8 @@ static qboolean JmpWrite(jmp_take_t *t)
 	if (!f)
 		return false;
 
-	fprintf(f, "jmodjump %d\nmap %s\nauthor %s\nfps %d\nms %d\nsamples %d\n",
-		JMP_FILE_VERSION, level.mapname, t->author, t->fps, t->ms, t->count);
+	fprintf(f, "jmodjump %d\nmap %s\nauthor %s\ndesc %s\nfps %d\nms %d\nsamples %d\n",
+		JMP_FILE_VERSION, level.mapname, t->author, t->desc, t->fps, t->ms, t->count);
 	for (i = 0; i < t->count; i++) {
 		jmp_sample_t *s = &t->samples[i];
 
@@ -1464,6 +1514,8 @@ static qboolean JmpRead(const char *name, jmp_take_t *t, qboolean samples)
 			version = atoi(value);
 		else if (!strcmp(key, "author"))
 			Q_strncpyz(t->author, value, sizeof(t->author));
+		else if (!strcmp(key, "desc"))
+			Q_strncpyz(t->desc, value, sizeof(t->desc));
 		else if (!strcmp(key, "fps"))
 			t->fps = atoi(value);
 		else if (!strcmp(key, "ms"))
@@ -1594,8 +1646,9 @@ static void JmpRecStop(edict_t *ent)
 		s[i].ms -= start;
 
 	t->ms = s[t->count - 1].ms;
-	t->fps = (st->rec_cmds * 1000 + st->rec_ms / 2) / max(st->rec_ms, 1);
+	t->fps = st->rec_fps > 0 ? st->rec_fps : st->rec_cmds * 1000 / max(st->rec_ms, 1);
 	t->name[0] = 0;
+	t->desc[0] = 0;
 	for (c = ent->client->pers.netname; *c && n + 1 < sizeof(t->author); c++)
 		if (*c >= 32 && *c < 127)
 			t->author[n++] = *c;
@@ -1603,7 +1656,16 @@ static void JmpRecStop(edict_t *ent)
 
 	JmpSecs(t->ms, secs, sizeof(secs));
 	gi.cprintf(ent, PRINT_HIGH, "Recorded %s seconds at %d fps: \"jmod play\" to watch it, "
-		"\"jmod save <name>\" to keep it\n", secs, t->fps);
+		"\"jmod save\" to keep it\n", secs, t->fps);
+}
+
+// "jmod fps <n>", which the recorder has the client send
+static void Jmp_RecordFps(edict_t *ent, int fps)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (st->recording && fps > 0 && fps <= 1000)
+		st->rec_fps = fps;
 }
 
 // called with every command the player moves by
@@ -1675,42 +1737,156 @@ static void Cmd_JumpRec_f(edict_t *ent)
 		st->take.samples = gi.TagMalloc(JMP_REC_MAX * sizeof(jmp_sample_t), TAG_GAME);
 	JmpRecReset(st);
 	st->recording = true;
+	st->rec_fps = 0;
+	stuffcmd(ent, "jmod fps $cl_maxfps\n");
 	gi.cprintf(ent, PRINT_HIGH, "Recording. A teleport (recall, spawnp) starts the take again, "
 		"\"jmod rec\" ends it\n");
 }
 
-// jmod save <name>
-static void Cmd_JumpSave_f(edict_t *ent)
+/*
+Saving asks for what the command did not give - a name, then a line
+describing the jump - by opening the player's chat prompt: what he says
+next is the answer, and goes to nobody.
+*/
+static void JmpAsk(edict_t *ent, int ask)
 {
 	jmp_state_t *st = JmpState(ent);
-	jmp_take_t *t = &st->take, old;
-	char name[JMP_NAME_MAX];
+	gclient_t *client = ent->client;
 
-	if (st->recording)
-		JmpRecStop(ent);
-	if (!t->count) {
-		gi.cprintf(ent, PRINT_HIGH, "Record a jump first: jmod rec\n");
-		return;
-	}
-	if (gi.argc() < 3 || !JmpNameClean(gi.argv(2), name, sizeof(name))) {
-		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod save <name> - letters, digits, - and _, "
-			"%d at most\n", JMP_NAME_MAX - 1);
-		return;
-	}
+	st->ask = ask;
+	st->ask_frame = level.framenum + JMP_ASK_SECS * HZ;
+	if (client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
 
-	// somebody else's jump is not overwritten
-	if (JmpRead(name, &old, false) && strcmp(old.author, t->author)) {
+	if (ask == JMP_ASK_NAME)
+		gi.cprintf(ent, PRINT_HIGH, "Name the jump: letters, digits, - and _, %d at most. "
+			"Type it and press Enter\n", JMP_NAME_MAX - 1);
+	else
+		gi.cprintf(ent, PRINT_HIGH, "Describe \"%s\" in a line: where it goes, what the trick is. "
+			"Type it and press Enter\n", st->ask_name);
+	gi.centerprintf(ent, ask == JMP_ASK_NAME ? "Name the jump\n" : "Describe the jump\n");
+	stuffcmd(ent, "messagemode\n");
+}
+
+// the name as a file's, free or the player's own to overwrite
+static qboolean JmpSaveName(edict_t *ent, const char *arg, char *name, size_t size)
+{
+	jmp_take_t old;
+
+	if (!JmpNameClean(arg, name, size)) {
+		gi.cprintf(ent, PRINT_HIGH, "A jump's name is letters, digits, - and _, %d at most\n",
+			JMP_NAME_MAX - 1);
+		return false;
+	}
+	if (JmpRead(name, &old, false) && strcmp(old.author, JmpState(ent)->take.author)) {
 		gi.cprintf(ent, PRINT_HIGH, "%s has a jump called \"%s\" here already\n", old.author, name);
-		return;
+		return false;
 	}
+	return true;
+}
+
+static void JmpSaveWrite(edict_t *ent, const char *name, const char *desc)
+{
+	jmp_take_t *t = &JmpState(ent)->take;
+	size_t n = 0;
+
+	for (; *desc && n + 1 < sizeof(t->desc); desc++)
+		if (*desc >= 32 && *desc < 127 && (n || *desc != ' '))
+			t->desc[n++] = *desc;
+	while (n && t->desc[n - 1] == ' ')
+		n--;
+	t->desc[n] = 0;
 
 	Q_strncpyz(t->name, name, sizeof(t->name));
 	if (!JmpWrite(t)) {
 		gi.cprintf(ent, PRINT_HIGH, "Could not write the jump\n");
 		return;
 	}
+	gi.centerprintf(ent, "Saved %s\n", name);
 	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\" for %s: %s/jumps/%s/%s.jmp\n", name, level.mapname,
 		JmpGameDir(), level.mapname, name);
+}
+
+// jmod save [name] [description]
+static void Cmd_JumpSave_f(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+	qboolean typed = !Q_stricmp(gi.argv(0), "jmod");	// not so from the menu
+	char desc[256];
+	int i;
+
+	if (st->recording)
+		JmpRecStop(ent);
+	st->ask = 0;
+	if (!st->take.count) {
+		gi.cprintf(ent, PRINT_HIGH, "Record a jump first: jmod rec\n");
+		return;
+	}
+
+	if (!typed || gi.argc() < 3) {
+		JmpAsk(ent, JMP_ASK_NAME);
+		return;
+	}
+	if (!JmpSaveName(ent, gi.argv(2), st->ask_name, sizeof(st->ask_name)))
+		return;
+	if (gi.argc() < 4) {
+		JmpAsk(ent, JMP_ASK_DESC);
+		return;
+	}
+
+	desc[0] = 0;
+	for (i = 3; i < gi.argc(); i++) {
+		if (i > 3)
+			Q_strlcat(desc, " ", sizeof(desc));
+		Q_strlcat(desc, gi.argv(i), sizeof(desc));
+	}
+	JmpSaveWrite(ent, st->ask_name, desc);
+}
+
+// a say while a question is out is its answer: true if it was taken
+qboolean Jmp_Answer(edict_t *ent)
+{
+	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
+	char text[256], *p;
+	size_t len;
+	int ask = st->ask;
+
+	if (!ask || (Q_stricmp(gi.argv(0), "say") && Q_stricmp(gi.argv(0), "say_team")))
+		return false;
+	st = JmpState(ent);
+	st->ask = 0;
+	if (ask != JMP_ASK_NAME && ask != JMP_ASK_DESC)
+		return false;
+	if (level.framenum > st->ask_frame || !st->take.count)
+		return false;
+
+	// the prompt sends it quoted
+	Q_strncpyz(text, gi.args(), sizeof(text));
+	p = text;
+	len = strlen(p);
+	if (len >= 2 && p[0] == '"' && p[len - 1] == '"') {
+		p[len - 1] = 0;
+		p++;
+	}
+	while (*p == ' ')
+		p++;
+	for (len = strlen(p); len && p[len - 1] == ' '; len--)
+		p[len - 1] = 0;
+
+	if (ask == JMP_ASK_NAME) {
+		if (!JmpSaveName(ent, p, st->ask_name, sizeof(st->ask_name)))
+			JmpAsk(ent, JMP_ASK_NAME);
+		else
+			JmpAsk(ent, JMP_ASK_DESC);
+		return true;
+	}
+
+	if (!*p) {
+		JmpAsk(ent, JMP_ASK_DESC);
+		return true;
+	}
+	JmpSaveWrite(ent, st->ask_name, p);
+	return true;
 }
 
 //
@@ -1752,8 +1928,8 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 			Ghud_SetPosition(ent, el, jmp_hud_keys[i].x, jmp_hud_keys[i].y);
 			Ghud_SetText(ent, el, jmp_hud_keys[i].label);
 		} else {
-			Ghud_SetPosition(ent, el, 0, i == JMP_HUD_INFO ? -50 : -40);
-			Ghud_SetColor(ent, el, 255, 255, 255, i == JMP_HUD_INFO ? 255 : 140);
+			Ghud_SetPosition(ent, el, 0, -60 + 10 * (i - JMP_HUD_INFO));
+			Ghud_SetColor(ent, el, 255, 255, 255, i == JMP_HUD_HINT ? 140 : 255);
 		}
 	}
 
@@ -1761,6 +1937,7 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 	Q_snprintf(text, sizeof(text), "%s%s%.15s - %d fps - %s s", t->name,
 		t->name[0] ? " by " : "", t->author, t->fps, secs);
 	Ghud_SetText(ent, st->hud[JMP_HUD_INFO], text);
+	Ghud_SetText(ent, st->hud[JMP_HUD_DESC], t->desc);
 	JmpHudHint(ent, st);
 	JmpHudKeys(ent, st, 0, true);
 }
@@ -2090,16 +2267,14 @@ void Jmp_ClientDisconnect(edict_t *ent)
 The jumps menu, in the spawnpoint menu's rows: the map's stored jumps a
 page at a time, with the recorder above them; a pick asks how to watch.
 */
-static void JmpJumpsShow(edict_t *ent, int step, int cur);
-
 static void JmpJumpsRec(edict_t *ent, pmenu_t *p)
 {
 	jmp_state_t *st = JmpState(ent);
 
-	// recording is done with the menu out of the way, ending it comes back
+	// from where: here, or a spawnpoint off the spawnpoint list, markers and all
 	if (!st->recording) {
-		PMenu_Close(ent);
-		Cmd_JumpRec_f(ent);
+		ent->client->jmp_menu_rec = true;
+		JmpMenuShow(ent, 0, -1);
 		return;
 	}
 	JmpRecStop(ent);
@@ -2109,6 +2284,11 @@ static void JmpJumpsRec(edict_t *ent, pmenu_t *p)
 static void JmpJumpsLast(edict_t *ent, pmenu_t *p)
 {
 	JmpPlay(ent, NULL, false);
+}
+
+static void JmpJumpsSave(edict_t *ent, pmenu_t *p)
+{
+	Cmd_JumpSave_f(ent);
 }
 
 static void JmpJumpsPick(edict_t *ent, pmenu_t *p)
@@ -2165,6 +2345,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			st->recording ? "Stop recording" : "Record a jump");
 		if (st->take.count && !st->recording)
 			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch my last take");
+		if (st->take.count && !st->recording)
+			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save my last take...");
 
 		row = JMP_LIST_FIRST;
 		for (i = st->menu_top; i < jmp_list_count && row < JMP_LIST_FIRST + JMP_LIST_ROWS; i++, row++) {
@@ -2197,11 +2379,21 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
 		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s", t->author);
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
-		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		// the description, over two rows at a space if it is long
+		i = strlen(t->desc);
+		if (i > 31)
+			for (i = 31; i > 0 && t->desc[i] != ' '; i--)
+				;
+		if (!i)
+			i = 31;
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_CENTER, 0, NULL, "%.*s", i, t->desc);
+		if (t->desc[i])
+			JmpMenuRow_Set(ent, 6, PMENU_ALIGN_CENTER, 0, NULL, "%.31s", t->desc + i + (t->desc[i] == ' '));
+		JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		JmpMenuRow_Set(ent, 9, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
-			cur = 5;
+			cur = 8;
 	}
 
 	if (client->layout == LAYOUT_MENU)

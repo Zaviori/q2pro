@@ -37,6 +37,7 @@ qboolean Jmp_PlayThink (edict_t *ent, usercmd_t *ucmd);
 void Jmp_PlayFrame (edict_t *ent);
 qboolean Jmp_GhostHidden (edict_t *clent, edict_t *ent);
 void Jmp_ClientDisconnect (edict_t *ent);
+qboolean Jmp_Answer (edict_t *ent);
 void Cmd_Clear_f (edict_t *ent);
 void Cmd_Reset_f (edict_t *ent);
 void Cmd_Store_f (edict_t *ent);
