@@ -26,3 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // longer text - so the closest names sort first. An empty query matches
 // everything with 0.
 int Fuzzy_Score(const char *query, const char *text);
+
+// Where Fuzzy_Score found the query's letters in text, as offsets into
+// it, up to max: their number (0 when it does not match)
+int Fuzzy_Positions(const char *query, const char *text, int *pos, int max);
