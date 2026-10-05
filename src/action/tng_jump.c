@@ -849,6 +849,16 @@ static void JmpMarkersClear(edict_t *ent)
 	client->jmp_ghud_count = 0;
 }
 
+#define JMP_MARKER_NEAR	64	// no marker on a spot this close
+
+static qboolean JmpNear(edict_t *ent, edict_t *spot)
+{
+	vec3_t d;
+
+	VectorSubtract(spot->s.origin, ent->s.origin, d);
+	return VectorLength(d) < JMP_MARKER_NEAR;
+}
+
 static void JmpMarkersUpdate(edict_t *ent)
 {
 	gclient_t *client = ent->client;
@@ -898,7 +908,11 @@ static void JmpMarkersUpdate(edict_t *ent)
 		}
 	}
 
-	key = (client->jmp_menu_step << 16) | (hl & 0xffff);
+	// redo them when the light or the spot you stand on changes
+	key = (client->jmp_menu_step << 24) | ((hl & 0xff) << 16);
+	for (i = 0; i < count; i++)
+		if (JmpNear(ent, spots[i]))
+			key |= (i + 1) & 0xffff;
 	if (client->jmp_ghud_count && key == client->jmp_ghud_key)
 		return;
 	client->jmp_ghud_key = key;
@@ -928,6 +942,10 @@ static void JmpMarkersUpdate(edict_t *ent)
 	for (i = 0; i < count && 2 * i + 1 < client->jmp_ghud_count; i++) {
 		int el_ring = client->jmp_ghud[2 * i], el = client->jmp_ghud[2 * i + 1];
 		int flags = GHF_3DPOS;
+
+		// none on the spot you stand on: it would hang right over your eye
+		if (JmpNear(ent, spots[i]))
+			flags |= GHF_HIDE;
 
 		if (i + 1 == hl) {
 			if (GetPlayerLocation(spots[i], loc))

@@ -3125,7 +3125,9 @@ static void SCR_DrawGhud(void)
 
             Matrix4x4_CM_Transform4(r_viewmatrix, v, tempv);
 
-            if (tempv[3] < 0) // the element is behind us
+            // behind us, or on the eye's plane - straight above or below
+            // it, where the divide below runs off to infinity
+            if (tempv[3] < 1)
                 continue;
 
             tempv[0] /= tempv[3];
