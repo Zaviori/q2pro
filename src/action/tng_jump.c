@@ -1368,6 +1368,7 @@ way, to try it.
 #define JMP_PACKS_MAX		64		// collections there may be
 #define JMP_PACKS_ROWS		8		// collections on a page of the save menu
 #define JMP_PACKS_FIRST		7		// the row of the first one
+#define JMP_PACKS_PAGE		12		// rows on a page of the collections screen
 #define JMP_LIST_MAX		128
 #define JMP_LIST_ROWS		8		// jumps on a menu page
 #define JMP_LIST_FIRST		3		// the row of the first one
@@ -1450,6 +1451,7 @@ typedef struct {
 
 	int		menu_top, menu_pick;
 	char	menu_pack[JMP_NAME_MAX];	// the collection the list shows
+	int		packs_top;		// the collections screen's first row on the page, from 0
 	int		menu_sel;		// the jump under the list's cursor, its description shown; -1 none
 	int		menu_cur;		// the cursor's row as the list was built
 	qboolean	menu_keep;	// the list is rebuilt for the cursor: not read again
@@ -2845,6 +2847,14 @@ static void JmpPacksPick(edict_t *ent, pmenu_t *p)
 	JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 }
 
+static void JmpPacksPage(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	st->packs_top = max(st->packs_top + (int)(intptr_t)p->arg, 0);
+	JmpJumpsShow(ent, JMP_MENU_PACKS, p - ent->client->jmp_menu);
+}
+
 static void JmpPackDelAsk(edict_t *ent, pmenu_t *p)
 {
 	JmpJumpsShow(ent, JMP_MENU_PACKDEL, -1);
@@ -2966,8 +2976,17 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpListLoad();
 		j = JmpPacksAll(packs, JMP_PACKS_MAX);
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
+
+		// a page of them; a fresh look opens on the page of the one last in
+		if (cur < 0)
+			for (i = 1; i <= j; i++)
+				if (!strcmp(packs[i - 1], st->menu_pack))
+					st->packs_top = i / JMP_PACKS_PAGE * JMP_PACKS_PAGE;
+		if (st->packs_top > j)
+			st->packs_top = j / JMP_PACKS_PAGE * JMP_PACKS_PAGE;
+
 		row = 3;
-		for (i = 0; i <= j && row < JMP_MENU_ROWS - 2; i++, row++) {
+		for (i = st->packs_top; i <= j && row < 3 + JMP_PACKS_PAGE; i++, row++) {
 			const char *pack = i ? packs[i - 1] : "";
 
 			JmpListRange(pack, &lo, &hi);
@@ -2976,6 +2995,13 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			if (cur < 0 && !strcmp(pack, st->menu_pack))
 				cur = row;
 		}
+
+		row = 3 + JMP_PACKS_PAGE;
+		if (st->packs_top > 0)
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_PAGE, JmpPacksPage, "Previous page");
+		if (st->packs_top + JMP_PACKS_PAGE <= j)
+			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_PAGE, JmpPacksPage, "Next page");
+
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
 			cur = 3;
