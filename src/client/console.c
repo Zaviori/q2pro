@@ -1036,6 +1036,29 @@ static void Con_DrawSearchLine(int x, int y, const char *s, bool current)
     int pos[MAX_FIELD_TEXT], n, k = 0;
 
     n = Fuzzy_Positions(con.search.query, t, pos, q_countof(pos));
+
+    if (Con_TextTTF()) {
+        // in the font: runs of matched and unmatched letters, each where
+        // the text before it ends
+        float size = Con_TextSize();
+        uint32_t base = current ? U32_WHITE : MakeColor(192, 192, 192, 255);
+        int off = t - s, i = 0;
+
+        while (s[i]) {
+            bool hit = k < n && pos[k] == i - off;
+            int j = i;
+            while (s[j] && (k < n && pos[k] == j - off) == hit) {
+                if (hit)
+                    k++;
+                j++;
+            }
+            SCR_DrawTextCell(x + R_MeasureText(TEXT_SHADOW, size, s, i), y, CONCHAR_HEIGHT,
+                             0, TEXT_SHADOW, size, hit ? U32_GREEN : base, s + i, j - i);
+            i = j;
+        }
+        return;
+    }
+
     for (int i = 0; s[i] && x < con.vidWidth - CONCHAR_WIDTH; i++, x += CONCHAR_WIDTH) {
         bool hit = k < n && pos[k] == i - (int)(t - s);
         if (hit)
@@ -1072,9 +1095,14 @@ static void Con_DrawSearch(int y, int vislines)
 
         if (i == con.search.pos) {
             R_DrawFill32(0, ry, con.vidWidth, CONCHAR_HEIGHT, MakeColor(64, 64, 64, 224));
-            R_SetColor(U32_YELLOW);
-            R_DrawChar(CONCHAR_WIDTH, ry, 0, '>', con.charsetImage);
-            R_ClearColor();
+            if (Con_TextTTF()) {
+                SCR_DrawTextCell(CONCHAR_WIDTH, ry, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                                 Con_TextSize(), U32_YELLOW, ">", 1);
+            } else {
+                R_SetColor(U32_YELLOW);
+                R_DrawChar(CONCHAR_WIDTH, ry, 0, '>', con.charsetImage);
+                R_ClearColor();
+            }
         }
         Con_DrawSearchLine(3 * CONCHAR_WIDTH, ry, con.search.matches[i], i == con.search.pos);
     }
@@ -1083,9 +1111,14 @@ static void Con_DrawSearch(int y, int vislines)
     char count[32];
     Q_snprintf(count, sizeof(count), "  %d/%d", con.search.count ? con.search.pos + 1 : 0,
                con.search.count);
-    R_SetColor(MakeColor(160, 160, 96, 255));
-    R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
-    R_ClearColor();
+    if (Con_TextTTF()) {
+        SCR_DrawTextCell(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                         Con_TextSize(), MakeColor(160, 160, 96, 255), count, MAX_STRING_CHARS);
+    } else {
+        R_SetColor(MakeColor(160, 160, 96, 255));
+        R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
+        R_ClearColor();
+    }
 }
 
 static void Con_DrawSolidConsole(void)
