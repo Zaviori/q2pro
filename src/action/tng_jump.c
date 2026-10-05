@@ -1111,6 +1111,125 @@ static int JmpPoints(edict_t *ent, jmp_point_t *pts, int *map)
 	return n;
 }
 
+#define JMP_AIM_TAN		0.045f	// a marker's radius, as the tangent of its angle on screen
+#define JMP_CLICK_MS	300		// a second click within this is a double one
+
+// the marker the view points into, as a spawn's number; 0 none
+static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
+{
+	vec3_t eye, forward, d, off;
+	float along, ratio, best = 1;
+	int i, aim = 0;
+
+	VectorCopy(ent->s.origin, eye);
+	eye[2] += ent->viewheight;
+	AngleVectors(ent->client->v_angle, forward, NULL, NULL);
+
+	for (i = 0; i < count; i++) {
+		// the ring's centre; it is drawn the same size from 150 units out
+		VectorSubtract(pts[i].origin, eye, d);
+		d[2] += 8;
+		along = DotProduct(d, forward);
+		if (along < JMP_MARKER_NEAR)
+			continue;
+		VectorMA(d, -along, forward, off);
+		ratio = VectorLength(off) / (JMP_AIM_TAN * max(along, 150));
+		if (ratio < best) {
+			best = ratio;
+			aim = i < map ? i + 1 : JMP_SPOT_JUMPS + i - map;
+		}
+	}
+	return aim;
+}
+
+// what a click on the marker does, under the crosshair while one is aimed at
+static void JmpTip(edict_t *ent, qboolean on)
+{
+	gclient_t *client = ent->client;
+	int i;
+
+	if (on == client->jmp_tip_on)
+		return;
+	client->jmp_tip_on = on;
+
+	for (i = 0; i < 2; i++) {
+		if (!on) {
+			Ghud_RemoveElement(ent, client->jmp_tip[i]);
+			continue;
+		}
+		client->jmp_tip[i] = Ghud_NewElement(ent, GHT_TEXT);
+		Ghud_SetAnchor(ent, client->jmp_tip[i], 0.5f, 0.5f);
+		Ghud_SetPosition(ent, client->jmp_tip[i], 0, 22 + 10 * i);
+		Ghud_SetTextFlags(ent, client->jmp_tip[i], UI_CENTER);
+		Ghud_SetColor(ent, client->jmp_tip[i], 255, 255, 255, i ? 170 : 255);
+	}
+	if (!on)
+		return;
+	if (client->jmp_menu_rec) {
+		Ghud_SetText(ent, client->jmp_tip[0], "click: record a jump from here");
+		Ghud_SetText(ent, client->jmp_tip[1], "");
+	} else {
+		Ghud_SetText(ent, client->jmp_tip[0], "click: spawn here   double click: delay, repeat");
+		Ghud_SetText(ent, client->jmp_tip[1], "shift + click: record a jump from here");
+	}
+}
+
+/*
+With the spawnpoint list up the markers are buttons: fire on the one
+aimed at spawns there at once, a second click in time opens its delay
+and repeat instead, and with shift down - or when the list is asking
+where to record from - a take is started with the spawn. Called with
+every command.
+*/
+void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
+{
+	gclient_t *client = ent->client;
+	qboolean fire = (ucmd->buttons & BUTTON_ATTACK) != 0;
+	qboolean pressed = fire && !client->jmp_fire_held;
+	qboolean list = client->layout == LAYOUT_MENU && client->menu.entries == client->jmp_menu
+		&& client->jmp_menu_step == 0;
+	int spot = client->jmp_menu_aim;
+
+	client->jmp_fire_held = fire;
+
+	// a click waiting to see if it is a double one
+	if (client->jmp_click_ms > 0) {
+		client->jmp_click_ms -= ucmd->msec;
+		if (!list) {
+			client->jmp_click_ms = 0;
+		} else if (pressed && spot == client->jmp_click_spot) {
+			client->jmp_click_ms = 0;
+			client->jmp_menu_pick = spot;
+			client->jmp_menu_rec = false;
+			JmpMenuShow(ent, 1, -1);
+			return;
+		} else if (pressed) {
+			client->jmp_click_ms = 0;	// on another marker: a click of its own
+		} else if (client->jmp_click_ms <= 0) {
+			client->jmp_click_ms = 0;
+			client->jmp_menu_pick = client->jmp_click_spot;
+			PMenu_Close(ent);
+			JmpSpawn(ent, client->jmp_click_spot, 0, 0);
+			return;
+		}
+	}
+
+	if (!pressed || !list || !spot)
+		return;
+	client->latched_buttons &= ~BUTTON_ATTACK;
+
+	if (client->jmp_menu_rec || ucmd->impulse == IMPULSE_SHIFT) {
+		client->jmp_menu_pick = spot;
+		PMenu_Close(ent);
+		if (!JmpIsRecording(ent))
+			Cmd_JumpRec_f(ent);
+		JmpSpawn(ent, spot, JMP_REC_COUNTDOWN, 0);
+		return;
+	}
+	client->jmp_click_spot = spot;
+	client->jmp_click_ms = JMP_CLICK_MS;
+}
+
 static qboolean JmpNear(edict_t *ent, const vec3_t origin)
 {
 	vec3_t d;
@@ -1128,21 +1247,31 @@ static void JmpMarkersUpdate(edict_t *ent)
 	int i, count, map, hl = 0, key, ring;
 
 	// a new map has cleared every slot, ours went with them
-	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum)
+	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum) {
 		client->jmp_ghud_count = 0;
+		client->jmp_tip_on = false;
+	}
 
 	// the jumps menu shares the rows, and marks nothing
 	if (client->layout != LAYOUT_MENU || client->menu.entries != client->jmp_menu
 		|| client->jmp_menu_step >= JMP_MENU_JUMPS) {
+		client->jmp_menu_aim = 0;
+		JmpTip(ent, false);
 		JmpMarkersClear(ent);
 		return;
 	}
 
 	count = JmpPoints(ent, pts, &map);
 
+	// the marker aimed at, on the list: lit over the cursor's, and a button
+	client->jmp_menu_aim = client->jmp_menu_step == 0 ? JmpAim(ent, pts, count, map) : 0;
+	JmpTip(ent, client->jmp_menu_aim != 0);
+
 	// which one to light: the cursor's, or the pick - a start's number
 	// is past the spawnpoints'
-	if (client->jmp_menu_step == 0) {
+	if (client->jmp_menu_aim) {
+		hl = client->jmp_menu_aim;
+	} else if (client->jmp_menu_step == 0) {
 		if (client->menu.cur >= 0) {
 			p = &client->jmp_menu[client->menu.cur];
 			if (p->SelectFunc == JmpMenuPickSpot)

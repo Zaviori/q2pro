@@ -786,6 +786,8 @@ void CL_FinalizeCmd(void)
     cl.cmd.upmove = move[2];
 
     cl.cmd.impulse = in_impulse;
+    if (!in_impulse && Key_IsDown(K_SHIFT) && (cl.frame.ps.stats[STAT_LAYOUTS] & 1))
+        cl.cmd.impulse = IMPULSE_SHIFT;
 
     // save this command off for prediction
     cl.cmdNumber++;
