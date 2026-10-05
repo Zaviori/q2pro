@@ -109,6 +109,7 @@ static cvar_t   *scr_layout_font;
 static cvar_t   *scr_layout_size;
 static cvar_t   *scr_ghud_font;
 static cvar_t   *scr_ghud_size;
+static cvar_t   *scr_ghud_label_size;
 
 static cvar_t   *xhair_dot;
 static cvar_t   *xhair_length;
@@ -1716,6 +1717,9 @@ void SCR_Init(void)
     // for 8-unit text, so a large size can reach past their boxes
     scr_ghud_font = Cvar_Get("scr_ghud_font", "1", CVAR_ARCHIVE);
     scr_ghud_size = Cvar_Get("scr_ghud_size", "16", CVAR_ARCHIVE);
+    // the ghud's text placed in the world (GHF_3DPOS): labels over things
+    // across a map, read from afar, so bigger than the HUD's own
+    scr_ghud_label_size = Cvar_Get("scr_ghud_label_size", "20", CVAR_ARCHIVE);
     scr_demobar = Cvar_Get("scr_demobar", "1", 0);
     scr_font = Cvar_Get("scr_font", "conchars", 0);
     scr_font->changed = scr_font_changed;
@@ -3038,6 +3042,17 @@ static void SCR_DrawGhudElement(ghud_element_t *element, float alpha_base, color
             else if (uiflags & UI_BOTTOM)
                 y -= (length * CONCHAR_HEIGHT);
             uiflags &= UI_ALTCOLOR | UI_XORCOLOR;
+            if (element->flags & GHF_3DPOS) {
+                // a label in the world: one phrase centred on its point,
+                // bold and outlined to read over whatever is behind it
+                // (the grid below sets words on conchar columns, which a
+                // big size overlaps)
+                SCR_DrawTextCell(x, y, 0, uiflags | align, TEXT_BOLD | TEXT_OUTLINE,
+                                 Cvar_ClampValue(scr_ghud_label_size, 6, 40),
+                                 color_base.u32 | MakeColor(0, 0, 0, 255),
+                                 element->text, MAX_STRING_CHARS);
+                break;
+            }
             SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, uiflags | align,
                              Cvar_ClampValue(scr_ghud_size, 6, 20),
                              color_base.u32 | MakeColor(0, 0, 0, 255), NULL,
