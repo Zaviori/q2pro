@@ -1307,6 +1307,10 @@ static bool Con_SearchKey(int key)
         Con_SearchEnd(false);
         return true;
     }
+    if (key == 'c' && ctrl && !Key_IsDown(K_SHIFT)) {
+        Con_SearchEnd(false);
+        return false;   // and the line goes, below
+    }
     if (key == K_BACKSPACE) {
         size_t len = strlen(con.search.query);
         if (len) {
@@ -1351,6 +1355,17 @@ void Key_Console(int key)
     if (key == 'd' && Key_IsDown(K_CTRL)) {
         con.mode = CON_DEFAULT;
         return;
+    }
+
+    // Ctrl-C drops the line, as a shell does: shown with ^C, not kept in
+    // the history, a fresh prompt; Ctrl-Shift-C copies it as before
+    if (key == 'c' && Key_IsDown(K_CTRL) && !Key_IsDown(K_SHIFT)) {
+        Con_Printf("]%s^C\n", con.prompt.inputLine.text);
+        IF_Clear(&con.prompt.inputLine);
+        Prompt_ClearState(&con.prompt);
+        con.prompt.historyLineNum = con.prompt.inputLineNum;
+        Con_InteractiveMode();
+        goto scroll;
     }
 
     if (key == K_ENTER || key == K_KP_ENTER) {
