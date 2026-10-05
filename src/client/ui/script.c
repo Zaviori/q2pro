@@ -609,23 +609,16 @@ static void Parse_Banner(menuFrameWork_t *menu)
     }
 }
 
-static bool Parse_File(const char *path, int depth)
+static bool Parse_File(const char *path, int depth);
+
+// One script in a writable buffer, which this takes apart: a file's, or
+// one of the menus built into the client (UI_LoadExtras)
+static void Parse_Script(char *data, int depth)
 {
-    char *raw, *data, *p, *cmd;
+    char *p, *cmd;
     int argc;
     menuFrameWork_t *menu = NULL;
-    int ret;
 
-    ret = FS_LoadFile(path, (void **)&raw);
-    if (!raw) {
-        if (ret != Q_ERR(ENOENT) || depth) {
-            Com_WPrintf("Couldn't %s %s: %s\n", depth ? "include" : "load",
-                        path, Q_ErrorString(ret));
-        }
-        return false;
-    }
-
-    data = raw;
     COM_Compress(data);
 
     while (*data) {
@@ -753,17 +746,111 @@ static bool Parse_File(const char *path, int depth)
         data = p + 1;
     }
 
-    FS_FreeFile(raw);
-
     if (menu) {
         Com_WPrintf("Menu entry without 'end' terminator\n");
         menu->free(menu);
     }
+}
 
+static bool Parse_File(const char *path, int depth)
+{
+    char *raw;
+    int ret;
+
+    ret = FS_LoadFile(path, (void **)&raw);
+    if (!raw) {
+        if (ret != Q_ERR(ENOENT) || depth) {
+            Com_WPrintf("Couldn't %s %s: %s\n", depth ? "include" : "load",
+                        path, Q_ErrorString(ret));
+        }
+        return false;
+    }
+
+    Parse_Script(raw, depth);
+    FS_FreeFile(raw);
     return true;
+}
+
+/*
+==============================================================================
+
+PRACTICE JUMPS
+
+A local jump mod game on a map picked like the offline bot games', from
+the main menu. The menu is built into the client, as the game's menu file
+comes with its data. jump is a latched server cvar that the bot menus
+never reset, so their Play actions get "set jump 0" put in front.
+
+==============================================================================
+*/
+
+static const char ui_menu_practice[] =
+    "begin practice\n"
+    "title \"Practice Jumps\"\n"
+    "strings \"map\" nextserver $com_maplist\n"
+    "blank\n"
+    "action --align \" Practice\" \"forcemenuoff; set ltk_loadbots 0; set am 0; "
+    "set teamplay 0; set teamdm 0; set ctf 0; set dom 0; set esp 0; set use_tourney 0; "
+    "set deathmatch 1; set jump 1; map $nextserver force\"\n"
+    "end\n";
+
+// the action of a menu that runs cmd, its index
+static int UI_FindAction(menuFrameWork_t *menu, const char *cmd)
+{
+    for (int i = 0; i < menu->nitems; i++) {
+        menuCommon_t *item = menu->items[i];
+        if (item->type == MTYPE_ACTION && strstr(((menuAction_t *)item)->cmd, cmd))
+            return i;
+    }
+    return -1;
+}
+
+static void UI_LoadPractice(void)
+{
+    static const char *const botmenus[] = { "dm_botmenu", "team_botmenu", NULL };
+    char *s = UI_CopyString(ui_menu_practice);
+    menuFrameWork_t *menu;
+    menuAction_t *a;
+    int i;
+
+    Parse_Script(s, 0);
+    Z_Free(s);
+
+    for (i = 0; botmenus[i]; i++) {
+        menu = UI_FindMenu(botmenus[i]);
+        if (!menu || UI_FindAction(menu, "map ") < 0)
+            continue;
+        a = menu->items[UI_FindAction(menu, "map ")];
+        if (!strstr(a->cmd, "set jump 0")) {
+            s = a->cmd;
+            a->cmd = UI_CopyString(va("set jump 0; %s", s));
+            Z_Free(s);
+        }
+    }
+
+    // the main menu's line, under the offline games
+    menu = UI_FindMenu("main");
+    if (!menu || UI_FindAction(menu, "pushmenu practice") >= 0)
+        return;
+
+    a = UI_Mallocz(sizeof(*a));
+    a->generic.type = MTYPE_ACTION;
+    a->generic.name = UI_CopyString(" Practice Jumps ");
+    a->generic.activate = Activate;
+    a->generic.uiFlags = UI_CENTER;
+    a->cmd = UI_CopyString("pushmenu practice");
+    Menu_AddItem(menu, a);
+
+    i = UI_FindAction(menu, "pushmenu playoffline");
+    if (i >= 0 && i + 1 < menu->nitems - 1) {
+        memmove(&menu->items[i + 2], &menu->items[i + 1],
+                (menu->nitems - 2 - i) * sizeof(menu->items[0]));
+        menu->items[i + 1] = a;
+    }
 }
 
 void UI_LoadScript(void)
 {
     Parse_File("q2pro.menu", 0);
+    UI_LoadPractice();
 }
