@@ -6405,9 +6405,11 @@ void ClientBeginServerFrame(edict_t * ent)
 
 	//PaTMaN's jmod
 	if(jump->value) {
+		Jmp_RunSpawn(ent);
+		// the countdown is in 10 Hz frames, as the teamplay one
 		if ((client->resp.toggle_lca) && (client->pers.spectator))
 			client->resp.toggle_lca = 0;
-		else if (client->resp.toggle_lca)
+		else if (client->resp.toggle_lca && FRAMESYNC)
 			Cmd_PMLCA_f(ent);
 	}
 

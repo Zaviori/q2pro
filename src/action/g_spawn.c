@@ -1872,8 +1872,10 @@ void G_SetupStatusbar( void )
 			DomSetupStatusbar();
 		else if( esp->value )
 			EspSetupStatusbar();
-		else if( jump->value )
+		else if( jump->value ) {
 			strcpy( level.statusbar, jump_statusbar );
+			gi.imageindex( JMP_MARKER_PIC );	// jmod's spawnpoint markers
+		}
 	}
 
 	Q_strncpyz(level.spec_statusbar, level.statusbar, sizeof(level.spec_statusbar));

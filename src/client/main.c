@@ -2222,6 +2222,22 @@ static void CL_Say_c(genctx_t *ctx, int argnum)
     CL_Name_g(ctx);
 }
 
+// the jump mod's subcommands, as the game's "jmod" takes them
+static void CL_Jmod_c(genctx_t *ctx, int argnum)
+{
+    static const char *const subcmds[] = {
+        "store", "recall", "reset", "clear", "noclip", "goto",
+        "spawnp", "spawnc", "spawns", "respawn", "delay", "repeat", "stop", "cancel",
+        "lca", "laser", "slippers", "menu", NULL
+    };
+
+    if (argnum == 1) {
+        for (int i = 0; subcmds[i]; i++) {
+            Prompt_AddMatch(ctx, subcmds[i]);
+        }
+    }
+}
+
 static size_t CL_Mapname_m(char *buffer, size_t size)
 {
     return Q_strlcpy(buffer, cl.mapname, size);
@@ -2719,6 +2735,7 @@ static const cmdreg_t c_client[] = {
     { "give" }, { "god" }, { "notarget" }, { "noclip" },
     { "invuse" }, { "invprev" }, { "invnext" }, { "invdrop" },
     { "weapnext" }, { "weapprev" },
+    { "jmod", NULL, CL_Jmod_c },
 
     { NULL }
 };
