@@ -818,6 +818,21 @@ static float Con_TextSize(void)
     return Cvar_ClampValue(con_text_size, 6, 20);
 }
 
+/*
+The console's rows. A conchar's height, which the text fits up to size
+10 - a capital is as tall as a conchar there - and past that growing
+with the text, in the same proportion: at a fixed 8 a bigger
+con_text_size ran every line into the next.
+*/
+static int Con_RowHeight(void)
+{
+    if (!Con_TextTTF())
+        return CONCHAR_HEIGHT;
+    return max(CONCHAR_HEIGHT, Q_rint(CONCHAR_HEIGHT * Con_TextSize() / 10));
+}
+
+#define CON_ROW     Con_RowHeight()
+
 static int Con_DrawLine(int v, int row, float alpha, bool notify)
 {
     const consoleLine_t *line = &con.text[row & CON_TOTALLINES_MASK];
@@ -835,7 +850,7 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
         if (ttf) {
             R_ClearColor();
             R_SetAlpha(alpha);
-            SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, 0, TEXT_SHADOW, size,
+            SCR_DrawTextCell(x, v, CON_ROW, 0, TEXT_SHADOW, size,
                              con.ts_color.u32 | MakeColor(0, 0, 0, 255), s, line->ts_len);
             x += line->ts_len * CONCHAR_WIDTH;  // the stamp keeps its columns
         } else {
@@ -867,10 +882,10 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
         // players' own, so it is drawn as it comes; so is a coloured
         // line, the charset's coloured letters keeping their colour
         if (line->color == COLOR_ALT || hit)
-            return SCR_DrawTextCell(x, v, CONCHAR_HEIGHT, flags,
+            return SCR_DrawTextCell(x, v, CON_ROW, flags,
                                     TEXT_SHADOW | (hit ? TEXT_OWNTINT : 0),
                                     size, color, s, w);
-        return SCR_DrawTextGrid(x, v, CONCHAR_HEIGHT, flags, size, color, NULL, s, w);
+        return SCR_DrawTextGrid(x, v, CON_ROW, flags, size, color, NULL, s, w);
     }
 
     if (hit) {
@@ -968,7 +983,7 @@ static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
                       v, size, lh);
 }
 
-#define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
+#define CON_PRESTEP     (CON_ROW * 3 + CON_ROW / 4)
 
 #define CON_PROMPT_KEYS     "Enter: OK    Esc: cancel"
 #define CON_PROMPT_CHARS    44  // the line typed, at least
@@ -1150,7 +1165,7 @@ static void Con_DrawSearchLine(int x, int y, const char *s, bool current)
                     k++;
                 j++;
             }
-            SCR_DrawTextCell(x + R_MeasureText(TEXT_SHADOW, size, s, i), y, CONCHAR_HEIGHT,
+            SCR_DrawTextCell(x + R_MeasureText(TEXT_SHADOW, size, s, i), y, CON_ROW,
                              0, TEXT_SHADOW, size, hit ? U32_GREEN : base, s + i, j - i);
             i = j;
         }
@@ -1170,7 +1185,7 @@ static void Con_DrawSearchLine(int x, int y, const char *s, bool current)
 static void Con_DrawSearch(int y, int vislines)
 {
     int rows = min(con.search.count, CON_SEARCH_ROWS);
-    int room = (vislines - CON_PRESTEP) / CONCHAR_HEIGHT - 3;
+    int room = (vislines - CON_PRESTEP) / CON_ROW - 3;
     int first, top;
 
     rows = min(rows, room);
@@ -1183,18 +1198,18 @@ static void Con_DrawSearch(int y, int vislines)
     // solid over the console's own transparency: its text must not show
     // through between the candidates
     R_SetAlpha(1);
-    top = y - (rows + 1) * CONCHAR_HEIGHT;
-    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CONCHAR_HEIGHT + 2,
+    top = y - (rows + 1) * CON_ROW;
+    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CON_ROW + 2,
                  MakeColor(0, 0, 0, 255));
 
     for (int k = 0; k < rows; k++) {
         int i = first + k;
-        int ry = y - (k + 2) * CONCHAR_HEIGHT;
+        int ry = y - (k + 2) * CON_ROW;
 
         if (i == con.search.pos) {
-            R_DrawFill32(0, ry, con.vidWidth, CONCHAR_HEIGHT, MakeColor(64, 64, 64, 224));
+            R_DrawFill32(0, ry, con.vidWidth, CON_ROW, MakeColor(64, 64, 64, 224));
             if (Con_TextTTF()) {
-                SCR_DrawTextCell(CONCHAR_WIDTH, ry, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                SCR_DrawTextCell(CONCHAR_WIDTH, ry, CON_ROW, 0, TEXT_SHADOW,
                                  Con_TextSize(), U32_YELLOW, ">", 1);
             } else {
                 R_SetColor(U32_YELLOW);
@@ -1210,11 +1225,11 @@ static void Con_DrawSearch(int y, int vislines)
     Q_snprintf(count, sizeof(count), "  %d/%d", con.search.count ? con.search.pos + 1 : 0,
                con.search.count);
     if (Con_TextTTF()) {
-        SCR_DrawTextCell(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+        SCR_DrawTextCell(CONCHAR_WIDTH, y - CON_ROW, CON_ROW, 0, TEXT_SHADOW,
                          Con_TextSize(), MakeColor(160, 160, 96, 255), count, MAX_STRING_CHARS);
     } else {
         R_SetColor(MakeColor(160, 160, 96, 255));
-        R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
+        R_DrawString(CONCHAR_WIDTH, y - CON_ROW, 0, MAX_STRING_CHARS, count, con.charsetImage);
         R_ClearColor();
     }
 }
@@ -1253,20 +1268,20 @@ static void Con_DrawSolidConsole(void)
 
 // draw the text
     y = vislines - CON_PRESTEP;
-    rows = y / CONCHAR_HEIGHT + 1;  // rows of text to draw
+    rows = y / CON_ROW + 1;  // rows of text to draw
 
 // draw arrows to show the buffer is backscrolled
     if (con.display != con.current) {
         R_SetColor(U32_RED);
         for (i = 1; i < con.linewidth / 2; i += 4) {
             if (ttf)
-                SCR_DrawTextCell(i * CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0,
+                SCR_DrawTextCell(i * CONCHAR_WIDTH, y, CON_ROW, 0,
                                  TEXT_SHADOW, Con_TextSize(), U32_RED, "^", 1);
             else
                 R_DrawChar(i * CONCHAR_WIDTH, y, 0, '^', con.charsetImage);
         }
 
-        y -= CONCHAR_HEIGHT;
+        y -= CON_ROW;
         rows--;
     }
 
@@ -1285,7 +1300,7 @@ static void Con_DrawSolidConsole(void)
             widths[i] = x;
         }
 
-        y -= CONCHAR_HEIGHT;
+        y -= CON_ROW;
         row--;
     }
 
@@ -1334,7 +1349,7 @@ static void Con_DrawSolidConsole(void)
         Q_strlcat(buffer, suf, sizeof(buffer));
 
         // draw it
-        y = vislines - CON_PRESTEP + CONCHAR_HEIGHT * 2;
+        y = vislines - CON_PRESTEP + CON_ROW * 2;
         R_DrawString(CONCHAR_WIDTH, y, 0, con.linewidth, buffer, con.charsetImage);
     } else if (cls.state == ca_loading) {
         // draw loading state
@@ -1363,9 +1378,9 @@ static void Con_DrawSolidConsole(void)
             Q_snprintf(buffer, sizeof(buffer), "Loading %s...", text);
 
             // draw it
-            y = vislines - CON_PRESTEP + CONCHAR_HEIGHT * 2;
+            y = vislines - CON_PRESTEP + CON_ROW * 2;
             if (ttf)
-                SCR_DrawTextCell(CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                SCR_DrawTextCell(CONCHAR_WIDTH, y, CON_ROW, 0, TEXT_SHADOW,
                                  size, U32_WHITE, buffer, con.linewidth);
             else
                 R_DrawString(CONCHAR_WIDTH, y, 0, con.linewidth, buffer, con.charsetImage);
@@ -1375,7 +1390,7 @@ static void Con_DrawSolidConsole(void)
 // draw the input prompt, user text, and cursor if desired
     x = 0;
     if (cls.key_dest & KEY_CONSOLE) {
-        y = vislines - CON_PRESTEP + CONCHAR_HEIGHT;
+        y = vislines - CON_PRESTEP + CON_ROW;
 
         if (con.search.active)
             Con_DrawSearch(y, vislines);
@@ -1394,17 +1409,17 @@ static void Con_DrawSolidConsole(void)
         if (ttf) {
             char p[2] = { i, 0 };
             R_ClearColor();
-            SCR_DrawTextCell(CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+            SCR_DrawTextCell(CONCHAR_WIDTH, y, CON_ROW, 0, TEXT_SHADOW,
                              size, U32_YELLOW, p, 1);
             if (con.search.active) {
-                x = SCR_DrawTextCell(2 * CONCHAR_WIDTH, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                x = SCR_DrawTextCell(2 * CONCHAR_WIDTH, y, CON_ROW, 0, TEXT_SHADOW,
                                      size, U32_GREEN, buffer, MAX_STRING_CHARS);
                 if (m)
-                    x = SCR_DrawTextCell(x, y, CONCHAR_HEIGHT, 0, TEXT_SHADOW,
+                    x = SCR_DrawTextCell(x, y, CON_ROW, 0, TEXT_SHADOW,
                                          size, U32_WHITE, m, MAX_STRING_CHARS);
             } else {
                 x = Con_DrawInputText(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
-                                      size, CONCHAR_HEIGHT);
+                                      size, CON_ROW);
             }
         } else {
             R_SetColor(U32_YELLOW);
@@ -1426,11 +1441,11 @@ static void Con_DrawSolidConsole(void)
 #define APP_VERSION APPLICATION " " VERSION
 #define VER_WIDTH ((int)(sizeof(APP_VERSION) + 1) * CONCHAR_WIDTH)
 
-    y = vislines - CON_PRESTEP + CONCHAR_HEIGHT;
+    y = vislines - CON_PRESTEP + CON_ROW;
     row = 0;
     // shift version upwards to prevent overdraw
     if (x > con.vidWidth - VER_WIDTH) {
-        y -= CONCHAR_HEIGHT;
+        y -= CON_ROW;
         row++;
     }
 
@@ -1441,11 +1456,11 @@ static void Con_DrawSolidConsole(void)
         x = Com_Time_m(buffer, sizeof(buffer)) * CONCHAR_WIDTH;
         if (widths[row] + x + CONCHAR_WIDTH <= con.vidWidth) {
             if (ttf)
-                SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y - CONCHAR_HEIGHT,
-                                 CONCHAR_HEIGHT, UI_RIGHT, TEXT_SHADOW, size,
+                SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y - CON_ROW,
+                                 CON_ROW, UI_RIGHT, TEXT_SHADOW, size,
                                  U32_CYAN, buffer, MAX_STRING_CHARS);
             else
-                R_DrawString(con.vidWidth - CONCHAR_WIDTH - x, y - CONCHAR_HEIGHT,
+                R_DrawString(con.vidWidth - CONCHAR_WIDTH - x, y - CON_ROW,
                              UI_RIGHT, MAX_STRING_CHARS, buffer, con.charsetImage);
         }
     }
@@ -1453,7 +1468,7 @@ static void Con_DrawSolidConsole(void)
 // draw version
     if (!row || widths[0] + VER_WIDTH <= con.vidWidth) {
         if (ttf)
-            SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y, CONCHAR_HEIGHT,
+            SCR_DrawTextCell(con.vidWidth - CONCHAR_WIDTH, y, CON_ROW,
                              UI_RIGHT, TEXT_SHADOW, size, U32_CYAN,
                              APP_VERSION, MAX_STRING_CHARS);
         else
