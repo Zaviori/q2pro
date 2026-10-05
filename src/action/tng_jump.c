@@ -1351,8 +1351,9 @@ a client without that gets the rate its commands came at instead, which
 is not quite the same number (66 sends 15 ms commands, 66.7 a second).
 
 Played back, a translucent ghost in the watcher's skin runs the take in
-the map, and the watcher's view rides behind it or in its eyes - fire
-switches, jump ends it - with the keys and the frame rate on the HUD.
+the map, over and over, and the watcher's view rides behind it or in
+its eyes - fire switches, Escape ends it - with the keys and the frame
+rate on the HUD.
 The watcher is put on the take's first step afterwards, facing the same
 way, to try it.
 */
@@ -1447,7 +1448,9 @@ typedef struct {
 	float	play_ms;
 	int		play_i;			// the sample at or before play_ms
 	float	cam_yaw;
-	int		held;			// fire and jump as last seen, to act on a press only
+	int		held;			// fire as last seen, to act on a press only
+	qboolean	play_layout;	// the client has a layout of somebody's to be blanked
+	qboolean	play_tele;		// the view's teleport bit, flipped at each restart
 	edict_t	*ghost;
 	int		hud[JMP_HUD_COUNT];
 	int		hud_keys;
@@ -2360,8 +2363,8 @@ static void Cmd_JumpDelete_f(edict_t *ent)
 static void JmpHudHint(edict_t *ent, jmp_state_t *st)
 {
 	Ghud_SetText(ent, st->hud[JMP_HUD_HINT], st->pov
-		? "player's view - fire: third person, jump: stop"
-		: "third person - fire: player's view, jump: stop");
+		? "player's view - fire: third person, Esc: stop"
+		: "third person - fire: player's view, Esc: stop");
 }
 
 static void JmpHudKeys(edict_t *ent, jmp_state_t *st, int keys, qboolean all)
@@ -2482,7 +2485,8 @@ static void JmpPlayStart(edict_t *ent, qboolean pov)
 	st->play_ms = 0;
 	st->play_i = 0;
 	st->cam_yaw = st->play.samples[0].yaw;
-	st->held = BUTTON_ATTACK | BUTTON_USE;	// a key still down from before is not a press
+	st->held = BUTTON_ATTACK;	// a key still down from before is not a press
+	st->play_layout = true;
 
 	// the player model in the watcher's skin, without a weapon
 	ghost = st->ghost = G_Spawn();
@@ -2516,7 +2520,7 @@ qboolean Jmp_GhostHidden(edict_t *clent, edict_t *ent)
 	return st->playing && st->pov && ent == st->ghost;
 }
 
-// the watcher's commands: nothing moves him, fire and jump are the controls
+// the watcher's commands: nothing moves him, fire is the one control
 qboolean Jmp_PlayThink(edict_t *ent, usercmd_t *ucmd)
 {
 	jmp_state_t *st = &jmp_states[ent - g_edicts - 1];
@@ -2535,14 +2539,11 @@ qboolean Jmp_PlayThink(edict_t *ent, usercmd_t *ucmd)
 	client->buttons = ucmd->buttons;
 	client->latched_buttons = 0;
 
-	// jump stands in the use button's bit here
-	held = (ucmd->buttons & BUTTON_ATTACK) | (ucmd->upmove >= 10 ? BUTTON_USE : 0);
+	held = ucmd->buttons & BUTTON_ATTACK;
 	pressed = held & ~st->held;
 	st->held = held;
 
-	if (pressed & BUTTON_USE) {
-		JmpPlayStop(ent, true);
-	} else if (pressed & BUTTON_ATTACK) {
+	if (pressed & BUTTON_ATTACK) {
 		st->pov = !st->pov;
 		JmpHudHint(ent, st);
 	}
@@ -2569,9 +2570,14 @@ void Jmp_PlayFrame(edict_t *ent)
 	if (st->play_started)
 		st->play_ms += 1000.0f / HZ;
 	st->play_started = true;
+	// over, and held a moment: again from the top, nothing sliding back there
 	if (st->play_ms > t->ms + JMP_PLAY_TAIL_MS) {
-		JmpPlayStop(ent, true);
-		return;
+		st->play_ms = 0;
+		st->play_i = 0;
+		st->cam_yaw = t->samples[0].yaw;
+		ghost->s.event = EV_OTHER_TELEPORT;
+		client->ps.pmove.pm_flags ^= PMF_TELEPORT_BIT;
+		st->play_tele = !st->play_tele;
 	}
 
 	// the two samples around now, and every key held since the last frame
@@ -2646,7 +2652,39 @@ void Jmp_PlayFrame(edict_t *ent)
 	ent->viewheight = 0;
 	gi.linkentity(ent);
 
+	// the extended protocol's "do not glide there", built anew each frame
+	if (st->play_tele)
+		client->ps.rdflags |= RDF_TELEPORT_BIT;
+	else
+		client->ps.rdflags &= ~RDF_TELEPORT_BIT;
+
+	/*
+	Escape is the client's own key, and is sent on ("putaway") only
+	while a layout is up: an empty one is, for as long as this plays -
+	sent again after a menu or the scores have had the client's.
+	*/
+	if (client->layout != LAYOUT_NONE) {
+		st->play_layout = true;
+	} else {
+		if (st->play_layout) {
+			gi.WriteByte(svc_layout);
+			gi.WriteString("");
+			gi.unicast(ent, true);
+			st->play_layout = false;
+		}
+		client->ps.stats[STAT_LAYOUTS] |= 1;
+	}
+
 	JmpHudKeys(ent, st, keys, false);
+}
+
+// Escape with no menu up: true if it ended a playback
+qboolean Jmp_PlayEscape(edict_t *ent)
+{
+	if (!JmpState(ent)->playing)
+		return false;
+	JmpPlayStop(ent, true);
+	return true;
 }
 
 // "jmod stop": true if there was a playback or a recording to end
