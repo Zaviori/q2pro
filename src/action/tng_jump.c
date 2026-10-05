@@ -477,6 +477,7 @@ void Cmd_GotoPC_f_compat (edict_t *ent, pmenu_t *p)
 #define JMP_REPEAT_MIN	1
 #define JMP_REPEAT_MAX	60
 #define JMP_COUNT_SECS	3	// the countdown shows the last seconds only
+#define JMP_SPOT_STORED	-2	// jmp_spawn_spot: the spot "jmod store" keeps
 
 // a seconds argument, if given
 static qboolean JmpSecsArg(int arg, float *secs)
@@ -500,10 +501,32 @@ static void JmpSpawnAt(edict_t *ent, float delay)
 	client->resp.jmp_spawn_frame = level.framenum + max((int)(delay * HZ + 0.5f), 1);
 }
 
+// the spot "jmod store" keeps, without a word
+static void JmpStoreHere(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+
+	VectorCopy(ent->s.origin, client->resp.jmp_teleport_origin);
+	VectorCopy(client->v_angle, client->resp.jmp_teleport_v_angle);
+	client->resp.jmp_teleport_ducked = (client->ps.pmove.pm_flags & PMF_DUCKED) != 0;
+}
+
+static qboolean JmpIsRecording(edict_t *ent);
+
 static void JmpSpawnNow(edict_t *ent)
 {
 	gclient_t *client = ent->client;
 	edict_t *spot;
+
+	// the stored spot: a recall, started as a spawn is
+	if (client->resp.jmp_spawn_spot == JMP_SPOT_STORED) {
+		Cmd_Recall_f(ent);
+		client->resp.toggle_lca = 0;
+		Cmd_PMLCA_f(ent);
+		if (client->resp.jmp_spawn_repeat > 0)
+			JmpSpawnAt(ent, client->resp.jmp_spawn_repeat);
+		return;
+	}
 
 	if (client->resp.jmp_spawn_spot < 0)
 		spot = PMSelectSpawnPoint(max(JmpClosestNumber(ent), 1));
@@ -517,6 +540,10 @@ static void JmpSpawnNow(edict_t *ent)
 		return;
 	}
 	jmodTeleport(ent, spot);
+
+	// a take begins here: recall brings him back for another go
+	if (JmpIsRecording(ent))
+		JmpStoreHere(ent);
 
 	// a drill: the same spawn again in repeat seconds
 	if (client->resp.jmp_spawn_repeat > 0)
@@ -756,7 +783,8 @@ static void JmpMenuPickSpot(edict_t *ent, pmenu_t *p)
 
 	client->jmp_menu_pick = (int)(intptr_t)p->arg;
 
-	// recording from it: there after a countdown, the take starting on arrival
+	// recording from it: there after a countdown, the take starting on
+	// arrival - this spawn takes the place of the one Cmd_JumpRec_f set up
 	if (client->jmp_menu_rec) {
 		PMenu_Close(ent);
 		Cmd_JumpRec_f(ent);
@@ -766,7 +794,7 @@ static void JmpMenuPickSpot(edict_t *ent, pmenu_t *p)
 	JmpMenuShow(ent, 1, -1);
 }
 
-// recording from where he stands
+// recording from where he stands: Cmd_JumpRec_f does just that
 static void JmpMenuRecHere(edict_t *ent, pmenu_t *p)
 {
 	PMenu_Close(ent);
@@ -1781,6 +1809,17 @@ void Jmp_RecordRestart(edict_t *ent)
 		JmpRecReset(st);
 }
 
+// a take over within its countdown: the start it waited for is off
+static void JmpRecUnspawn(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+
+	if (client->resp.jmp_spawn_frame && !client->resp.jmp_spawn_repeat) {
+		client->resp.jmp_spawn_frame = 0;
+		gi.centerprintf(ent, " ");
+	}
+}
+
 static void JmpRecStop(edict_t *ent)
 {
 	jmp_state_t *st = JmpState(ent);
@@ -1790,6 +1829,7 @@ static void JmpRecStop(edict_t *ent)
 	int i, first, start, fps;
 
 	st->recording = false;
+	JmpRecUnspawn(ent);
 
 	// from half a second before the first key or step on
 	for (i = 1; i < t->count; i++) {
@@ -1895,8 +1935,18 @@ static void Cmd_JumpRec_f(edict_t *ent)
 		st->take.samples = gi.TagMalloc(JMP_REC_MAX * sizeof(jmp_sample_t), TAG_GAME);
 	JmpRecReset(st);
 	st->recording = true;
-	gi.cprintf(ent, PRINT_HIGH, "Recording. A teleport (recall, spawnp) starts the take again, "
-		"\"jmod rec\" ends it\n");
+	gi.cprintf(ent, PRINT_HIGH, "Recording from here. \"jmod recall\" for another go - a teleport "
+		"starts the take again - and \"jmod rec\" ends it\n");
+
+	// the start is stored, and begun as a round is: a countdown, then
+	// back on the spot with lights, camera, action
+	JmpStoreHere(ent);
+	JmpSpawn(ent, JMP_SPOT_STORED, JMP_REC_COUNTDOWN, 0);
+}
+
+static qboolean JmpIsRecording(edict_t *ent)
+{
+	return jmp_states[ent - g_edicts - 1].recording;
 }
 
 /*
@@ -2735,6 +2785,7 @@ static void JmpTakeDiscard(edict_t *ent, pmenu_t *p)
 
 	st->recording = false;
 	st->take.count = 0;
+	JmpRecUnspawn(ent);
 	PMenu_Close(ent);
 	gi.cprintf(ent, PRINT_HIGH, "Take discarded\n");
 }
