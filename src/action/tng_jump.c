@@ -81,7 +81,6 @@ static qboolean Jmp_Stop(edict_t *ent);
 static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
-static void Jmp_RecordFps(edict_t *ent, int fps);
 
 void Cmd_Jmod_f (edict_t *ent)
 {
@@ -191,12 +190,6 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "play") == 0)
 	{
 		Cmd_JumpPlay_f(ent);
-		return;
-	}
-	else if(Q_stricmp(cmd, "fps") == 0)
-	{
-		// the client's answer to the recorder's question, not for typing
-		Jmp_RecordFps(ent, atoi(gi.argv(2)));
 		return;
 	}
 	else if(Q_stricmp(cmd, "jumps") == 0)
@@ -1295,8 +1288,8 @@ and his speed - and "jmod save" writes the take, under a name and with
 a line describing it, to <game>/jumps/<map>/<name>.jmp, a text file:
 everybody on the server gets it in the jumps menu, and the file itself
 can be passed on to another install. The frame rate in it is the
-player's cl_maxfps, asked from his client as the take starts; a client
-that does not answer gets the rate its commands came at instead, which
+player's cl_maxfps, which his client keeps the game told of (cvarsync);
+a client without that gets the rate its commands came at instead, which
 is not quite the same number (66 sends 15 ms commands, 66.7 a second).
 
 Played back, a translucent ghost in the watcher's skin runs the take in
@@ -1372,7 +1365,6 @@ typedef struct {
 	jmp_take_t	take;		// being recorded, or the last one
 	int		rec_ms, rec_cmds;
 	int		rec_keys;
-	int		rec_fps;		// the client's cl_maxfps, 0 until it has said
 
 	int		ask;			// the question out to the player: JMP_ASK_*, 0 none
 	int		ask_frame;		// level.framenum it lapses at
@@ -1618,7 +1610,7 @@ static void JmpRecStop(edict_t *ent)
 	jmp_take_t *t = &st->take;
 	jmp_sample_t *s = t->samples;
 	char secs[16], *c;
-	int i, first, start;
+	int i, first, start, fps;
 	size_t n = 0;
 
 	st->recording = false;
@@ -1646,7 +1638,8 @@ static void JmpRecStop(edict_t *ent)
 		s[i].ms -= start;
 
 	t->ms = s[t->count - 1].ms;
-	t->fps = st->rec_fps > 0 ? st->rec_fps : st->rec_cmds * 1000 / max(st->rec_ms, 1);
+	fps = atoi(ent->client->cl_cvar[clcvar_cl_maxfps]);
+	t->fps = fps > 0 ? fps : st->rec_cmds * 1000 / max(st->rec_ms, 1);
 	t->name[0] = 0;
 	t->desc[0] = 0;
 	for (c = ent->client->pers.netname; *c && n + 1 < sizeof(t->author); c++)
@@ -1657,15 +1650,6 @@ static void JmpRecStop(edict_t *ent)
 	JmpSecs(t->ms, secs, sizeof(secs));
 	gi.cprintf(ent, PRINT_HIGH, "Recorded %s seconds at %d fps: \"jmod play\" to watch it, "
 		"\"jmod save\" to keep it\n", secs, t->fps);
-}
-
-// "jmod fps <n>", which the recorder has the client send
-static void Jmp_RecordFps(edict_t *ent, int fps)
-{
-	jmp_state_t *st = JmpState(ent);
-
-	if (st->recording && fps > 0 && fps <= 1000)
-		st->rec_fps = fps;
 }
 
 // called with every command the player moves by
@@ -1737,8 +1721,6 @@ static void Cmd_JumpRec_f(edict_t *ent)
 		st->take.samples = gi.TagMalloc(JMP_REC_MAX * sizeof(jmp_sample_t), TAG_GAME);
 	JmpRecReset(st);
 	st->recording = true;
-	st->rec_fps = 0;
-	stuffcmd(ent, "jmod fps $cl_maxfps\n");
 	gi.cprintf(ent, PRINT_HIGH, "Recording. A teleport (recall, spawnp) starts the take again, "
 		"\"jmod rec\" ends it\n");
 }
