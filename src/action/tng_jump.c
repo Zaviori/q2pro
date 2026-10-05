@@ -1912,19 +1912,14 @@ static void JmpAsk(edict_t *ent, int ask)
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
 
+	// the box says it all; a client without it is told in Jmp_Answer
 	if (ask == JMP_ASK_NAME) {
-		gi.cprintf(ent, PRINT_HIGH, "Name the jump: letters, digits, - and _, %d at most. "
-			"Type it and press Enter\n", JMP_NAME_MAX - 1);
 		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
 	} else if (ask == JMP_ASK_FIND) {
 		stuffcmd(ent, "messageprompt \"Search the collections - a few letters of the name\" jmod answer\n");
 	} else if (ask == JMP_ASK_PACK) {
-		gi.cprintf(ent, PRINT_HIGH, "Name the new collection: letters, digits, - and _, %d at most. "
-			"Type it and press Enter\n", JMP_NAME_MAX - 1);
 		stuffcmd(ent, "messageprompt \"Name the new collection - letters, digits, - and _\" jmod answer\n");
 	} else {
-		gi.cprintf(ent, PRINT_HIGH, "Describe \"%s\" in a line: where it goes, what the trick is. "
-			"Type it and press Enter\n", st->ask_name);
 		stuffcmd(ent, va("messageprompt \"Describe %s - where it goes, the trick\" jmod answer\n",
 			st->ask_name));
 	}
@@ -2096,6 +2091,10 @@ qboolean Jmp_Answer(edict_t *ent)
 		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n"
 			: st->ask == JMP_ASK_PACK ? "Name the new collection\n"
 			: st->ask == JMP_ASK_FIND ? "Search the collections\n" : "Describe the jump\n");
+		gi.cprintf(ent, PRINT_HIGH, "%s\n", st->ask == JMP_ASK_NAME || st->ask == JMP_ASK_PACK
+			? "A name: letters, digits, - and _. Type it and press Enter"
+			: st->ask == JMP_ASK_FIND ? "A few letters of the collection's name. Type them and press Enter"
+			: "A line on the jump: where it goes, what the trick is. Type it and press Enter");
 		stuffcmd(ent, "messagemode\n");
 		return true;
 	}
