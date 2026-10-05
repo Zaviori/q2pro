@@ -31,6 +31,7 @@ void Cmd_Respawn_f (edict_t *ent);
 void Cmd_Respawn_f_compat (edict_t *ent, pmenu_t *p);
 void Jmp_OpenSpawnMenu (edict_t *ent, pmenu_t *p);
 void Jmp_OpenJumpMenu (edict_t *ent, pmenu_t *p);
+void Jmp_OpenRecordMenu (edict_t *ent, pmenu_t *p);
 void Jmp_RecordCmd (edict_t *ent, usercmd_t *ucmd);
 void Jmp_RecordRestart (edict_t *ent);
 qboolean Jmp_PlayThink (edict_t *ent, usercmd_t *ucmd);

@@ -1137,6 +1137,8 @@ pmenu_t pmitemmenu[] = {
   { "Respawn to Random Spawn    (jmod spawnp)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoP_f_compat   	},
   { "Respawn (delay, repeat)    (jmod respawn)",		PMENU_ALIGN_LEFT,	NULL, Cmd_Respawn_f_compat 	},
   { "Spawnpoints...             (jmod spawns)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenSpawnMenu   	},
+  { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
+  { "Record a jump...           (jmod rec)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenRecordMenu   	},
   { "Recorded jumps...          (jmod jumps)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenJumpMenu   	},
 
 };
