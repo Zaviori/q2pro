@@ -805,6 +805,31 @@ static int UI_FindAction(menuFrameWork_t *menu, const char *cmd)
     return -1;
 }
 
+static void UI_AddPracticeLine(menuFrameWork_t *menu)
+{
+    menuAction_t *a;
+    int i;
+
+    if (!menu || UI_FindAction(menu, "pushmenu practice") >= 0)
+        return;
+
+    // the menu's bar glyphs round the name, as its other lines have them
+    a = UI_Mallocz(sizeof(*a));
+    a->generic.type = MTYPE_ACTION;
+    a->generic.name = UI_CopyString("\x1d\x1e Practice Jumps \x1e\x1f");
+    a->generic.activate = Activate;
+    a->generic.uiFlags = UI_CENTER;
+    a->cmd = UI_CopyString("pushmenu practice");
+    Menu_AddItem(menu, a);
+
+    i = UI_FindAction(menu, "pushmenu playoffline");
+    if (i >= 0 && i + 1 < menu->nitems - 1) {
+        memmove(&menu->items[i + 2], &menu->items[i + 1],
+                (menu->nitems - 2 - i) * sizeof(menu->items[0]));
+        menu->items[i + 1] = a;
+    }
+}
+
 static void UI_LoadPractice(void)
 {
     static const char *const botmenus[] = { "dm_botmenu", "team_botmenu", NULL };
@@ -828,25 +853,9 @@ static void UI_LoadPractice(void)
         }
     }
 
-    // the main menu's line, under the offline games
-    menu = UI_FindMenu("main");
-    if (!menu || UI_FindAction(menu, "pushmenu practice") >= 0)
-        return;
-
-    a = UI_Mallocz(sizeof(*a));
-    a->generic.type = MTYPE_ACTION;
-    a->generic.name = UI_CopyString(" Practice Jumps ");
-    a->generic.activate = Activate;
-    a->generic.uiFlags = UI_CENTER;
-    a->cmd = UI_CopyString("pushmenu practice");
-    Menu_AddItem(menu, a);
-
-    i = UI_FindAction(menu, "pushmenu playoffline");
-    if (i >= 0 && i + 1 < menu->nitems - 1) {
-        memmove(&menu->items[i + 2], &menu->items[i + 1],
-                (menu->nitems - 2 - i) * sizeof(menu->items[0]));
-        menu->items[i + 1] = a;
-    }
+    // a line under the offline games, in the main menu and the in-game one
+    UI_AddPracticeLine(UI_FindMenu("main"));
+    UI_AddPracticeLine(UI_FindMenu("game"));
 }
 
 void UI_LoadScript(void)
