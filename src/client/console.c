@@ -31,7 +31,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 typedef enum {
     CHAT_NONE,
     CHAT_DEFAULT,
-    CHAT_TEAM
+    CHAT_TEAM,
+    CHAT_PROMPT     // a question from the game: messageprompt
 } chatMode_t;
 
 typedef enum {
@@ -75,6 +76,8 @@ typedef struct {
     commandPrompt_t prompt;
 
     chatMode_t chat;
+    char promptLabel[64];   // messageprompt: the question,
+    char promptCmd[64];     // and the command the answer is sent with
     consoleMode_t mode;
     netadr_t remoteAddress;
     char *remotePassword;
@@ -334,6 +337,36 @@ static void Con_MessageMode2_f(void)
 
 /*
 ================
+Con_MessagePrompt_f
+
+messageprompt <label> <command>: asks for a line of text in a box under
+the label and sends it to the server as: command "text". Escape sends
+the bare command, so the asker knows it was turned down. For the game
+to stuff; a client without it forwards the unknown command instead,
+which is how the game tells.
+================
+*/
+static void Con_MessagePrompt_f(void)
+{
+    if (Cmd_Argc() < 3) {
+        Com_Printf("Usage: %s <label> <command>\n", Cmd_Argv(0));
+        return;
+    }
+    if (cls.state != ca_active || cls.demo.playback)
+        return;
+
+    if (cls.key_dest & KEY_CONSOLE)
+        Con_Close(true);
+
+    Q_strlcpy(con.promptLabel, Cmd_Argv(1), sizeof(con.promptLabel));
+    Q_strlcpy(con.promptCmd, Cmd_ArgsFrom(2), sizeof(con.promptCmd));
+    con.chat = CHAT_PROMPT;
+    IF_Clear(&con.chatPrompt.inputLine);
+    Key_SetDest(cls.key_dest | KEY_MESSAGE);
+}
+
+/*
+================
 Con_RemoteMode_f
 ================
 */
@@ -446,6 +479,7 @@ static const cmdreg_t c_console[] = {
     { "toggleconsole", Con_ToggleConsole_f },
     { "messagemode", Con_MessageMode_f },
     { "messagemode2", Con_MessageMode2_f },
+    { "messageprompt", Con_MessagePrompt_f },
     { "remotemode", Con_RemoteMode_f, CL_RemoteMode_c },
     { "clear", Con_Clear_f },
     { "clearnotify", Con_ClearNotify_f },
@@ -933,6 +967,26 @@ static void Con_DrawChatInputText(int v, const char *prompt, float size, int lh)
 
 #define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
 
+// messageprompt's box: the question, the line being typed, the keys
+static void Con_DrawPromptBox(void)
+{
+    int chars = min(con.linewidth - 2, 50);
+    int w = (chars + 2) * CONCHAR_WIDTH, h = CONCHAR_HEIGHT * 11 / 2;
+    int x = (con.vidWidth - w) / 2, y = con.vidHeight / 3;
+
+    R_DrawFill32(x, y, w, h, MakeColor(0, 0, 0, 210));
+    R_DrawFill32(x, y, w, 1, MakeColor(255, 220, 0, 255));
+    x += CONCHAR_WIDTH;
+    R_DrawString(x, y + CONCHAR_HEIGHT, 0, chars, con.promptLabel, con.charsetImage);
+    con.chatPrompt.inputLine.visibleChars = chars;
+    IF_Draw(&con.chatPrompt.inputLine, x, y + CONCHAR_HEIGHT * 5 / 2,
+            UI_DRAWCURSOR, con.charsetImage);
+    R_SetAlpha(0.5f);
+    R_DrawString(x, y + CONCHAR_HEIGHT * 4, 0, chars, "Enter: OK    Esc: cancel",
+                 con.charsetImage);
+    R_ClearColor();
+}
+
 /*
 ================
 Con_DrawNotify
@@ -995,6 +1049,10 @@ static void Con_DrawNotify(void)
     R_ClearColor();
 
     if (cls.key_dest & KEY_MESSAGE) {
+        if (con.chat == CHAT_PROMPT) {
+            Con_DrawPromptBox();
+            return;
+        }
         if (con.chat == CHAT_TEAM) {
             text = "say_team:";
             skip = 11;
@@ -1435,6 +1493,10 @@ void Con_DrawConsole(void)
 
 static void Con_Say(const char *msg)
 {
+    if (con.chat == CHAT_PROMPT) {
+        CL_ClientCommand(va("%s \"%s\"", con.promptCmd, msg));
+        return;
+    }
     CL_ClientCommand(va("say%s \"%s\"", con.chat == CHAT_TEAM ? "_team" : "", msg));
 }
 
@@ -1864,6 +1926,8 @@ void Key_Message(int key)
     }
 
     if (key == K_ESCAPE) {
+        if (con.chat == CHAT_PROMPT)
+            CL_ClientCommand(con.promptCmd);
         Key_SetDest(cls.key_dest & ~KEY_MESSAGE);
         IF_Clear(&con.chatPrompt.inputLine);
         return;
