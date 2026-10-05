@@ -2094,6 +2094,12 @@ typedef struct
   vec3_t jmp_teleport_origin;
   vec3_t jmp_teleport_v_angle;
   qboolean jmp_teleport_ducked;
+  float jmp_spawn_delay;			// jmod: default seconds before spawnp/spawnc teleports
+  int jmp_spawn_frame;				// jmod: framenum of a pending delayed spawn, 0 none
+  int jmp_spawn_spot;				// jmod: its spot - >0 that spawnpoint, 0 random, -1 closest
+  float jmp_spawn_repeat;			// jmod: seconds between repeated spawns, 0 once
+  float jmp_menu_repeat;			// jmod: the repeat the spawnpoint menu uses
+  float jmp_spawn_last_delay;		// jmod: the delay the last spawn used, for respawn
 
 #ifdef AQTION_EXTENSION
   int	hud_items[128];
@@ -2160,6 +2166,16 @@ struct gclient_s
 	qboolean	showinventory;	// set layout stat
 
 	pmenuhnd_t	menu;		// current menu
+	pmenu_t		jmp_menu[JMP_MENU_ROWS];	// jmod's spawnpoint menu, built per client
+	char		jmp_menu_text[JMP_MENU_ROWS][32];
+	int			jmp_menu_top;	// its first spawnpoint on the page, from 0
+	int			jmp_menu_step;	// its step: 0 the spawnpoint, 1 the delay, 2 the repeat
+	int			jmp_menu_pick;	// the spawnpoint picked, as spawnp takes it (-1 closest)
+	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
+	int			jmp_ghud_count;
+	int			jmp_ghud_key;	// what they show, to redo them only on a change
+	int			jmp_ghud_size[JMP_SPOTS_MAX];	// each ring's size as last sent
+	int			jmp_ghud_made;	// level.framenum they were made at; a map change frees them
 
 	int			ammo_index;
 

@@ -1135,6 +1135,8 @@ pmenu_t pmitemmenu[] = {
   { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { "Respawn to Closest Spawn   (jmod spawnc)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoPC_f_compat  	},
   { "Respawn to Random Spawn    (jmod spawnp)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoP_f_compat   	},
+  { "Respawn (delay, repeat)    (jmod respawn)",		PMENU_ALIGN_LEFT,	NULL, Cmd_Respawn_f_compat 	},
+  { "Spawnpoints...             (jmod spawns)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenSpawnMenu   	},
 
 };
 
