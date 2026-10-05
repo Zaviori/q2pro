@@ -1,7 +1,6 @@
 #define JMP_MENU_ROWS	20
 #define JMP_SPOTS_MAX	40				// spawnpoints jmod lists
 #define JMP_GHUD_MAX	(JMP_SPOTS_MAX * 2)	// a marker and a label each
-#define JMP_MARKER_PIC	"ch14"			// a ring, in every install's pak
 #define JMP_MARKER_PX	64				// its size on screen
 #define JMP_MARKER_HL	96				// the highlighted one's
 #define STAT_SPEEDX					1
@@ -24,6 +23,7 @@ void Cmd_GotoP_f (edict_t *ent);
 void Cmd_GotoPC_f (edict_t *ent);
 void Jmp_RunSpawn (edict_t *ent);
 int Jmp_Spots (edict_t **spots, int max);
+const char *Jmp_MarkerPic (void);
 void Cmd_SpawnDelay_f (edict_t *ent);
 void Cmd_SpawnRepeat_f (edict_t *ent);
 void Cmd_SpawnCancel_f (edict_t *ent);
