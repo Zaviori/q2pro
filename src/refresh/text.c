@@ -549,10 +549,16 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
     int ty = y + (CONCHAR_HEIGHT - lh) / 2;
     int end = x + (int)n * CONCHAR_WIDTH;
 
-    // An input line places its cursor by conchar cells, and r_ttf_cells
-    // asks for cells everywhere: a letter per cell
-    if ((uiflags & UI_DRAWCURSOR) || r_ttf_cells->integer) {
+    // r_ttf_cells asks for cells everywhere: a letter per cell
+    if (r_ttf_cells->integer) {
         R_DrawText(x, ty, flags | TEXT_MONO, size, c0.u32, c1.u32, buf, n);
+        return end;
+    }
+
+    // An input line: its text as text, from x, the cursor placed by
+    // R_TextCursorX - a letter per cell while typing read as spaced out
+    if (uiflags & UI_DRAWCURSOR) {
+        R_DrawText(x, ty, flags, size, c0.u32, c1.u32, buf, n);
         return end;
     }
 
@@ -610,6 +616,22 @@ int Text_DrawConchars(int x, int y, int uiflags, size_t maxlen, const char *s)
         R_DrawText(fx, ty, tflags, size, c0.u32, c1.u32, fs, len[f]);
     }
     return end;
+}
+
+// Where an input line's cursor goes, pos letters into s, from where the
+// line starts: as Text_DrawConchars sets the line, or by conchar cells
+int R_TextCursorX(int uiflags, const char *s, size_t pos)
+{
+    if (!Text_ReplacesConchars() || r_ttf_cells->integer)
+        return (int)pos * CONCHAR_WIDTH;
+
+    float size = text_menu ? Cvar_ClampValue(r_ttf_menu_size, 6, 24)
+                           : Cvar_ClampValue(r_ttf_size, 6, 16);
+    int flags = TEXT_CHARSET;
+    if ((uiflags & UI_DROPSHADOW) || gl_fontshadow->integer > 0)
+        flags |= TEXT_SHADOW;
+
+    return R_MeasureText(flags, size, s, pos);
 }
 
 int R_MeasureText(int flags, float size, const char *s, size_t maxlen)

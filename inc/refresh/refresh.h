@@ -246,6 +246,7 @@ void    R_TextConchars(bool on);    // real conchars for now, whatever r_ttf say
 int     R_DrawText(int x, int y, int flags, float size, uint32_t color,
                    uint32_t alt, const char *s, size_t maxlen);
 int     R_MeasureText(int flags, float size, const char *s, size_t maxlen);
+int     R_TextCursorX(int uiflags, const char *s, size_t pos);   // an input line's cursor
 int     R_TextLineHeight(int flags, float size);
 
 void    R_DrawKeepAspectPic(int x, int y, int w, int h, qhandle_t pic);
