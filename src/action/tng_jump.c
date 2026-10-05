@@ -2016,6 +2016,10 @@ static void JmpSaveWrite(edict_t *ent)
 	jmp_take_t *t = &st->take;
 	char path[MAX_OSPATH];
 
+	// the collection menu is done with, whatever comes of the write
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+
 	Q_strncpyz(t->desc, st->ask_desc, sizeof(t->desc));
 	Q_strncpyz(t->name, st->ask_name, sizeof(t->name));
 	Q_strncpyz(t->pack, st->ask_pack, sizeof(t->pack));
