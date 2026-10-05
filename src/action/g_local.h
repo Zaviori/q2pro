@@ -2171,6 +2171,7 @@ struct gclient_s
 	int			jmp_menu_top;	// its first spawnpoint on the page, from 0
 	int			jmp_menu_step;	// its step: 0 the spawnpoint, 1 the delay, 2 the repeat
 	int			jmp_menu_pick;	// the spawnpoint picked, as spawnp takes it (-1 closest)
+	qboolean	jmp_menu_rec;	// the spawnpoint list is asking where to record a jump from
 	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
 	int			jmp_ghud_count;
 	int			jmp_ghud_key;	// what they show, to redo them only on a change

@@ -2094,6 +2094,10 @@ void ClientCommand (edict_t * ent)
 	// if (level.intermission_framenum)
 	// return;
 
+	// what is said after jmod has asked something is the answer
+	if (jump->value && Jmp_Answer(ent))
+		return;
+
 	text = gi.argv(0);
 
 	hash = Cmd_HashValue( text ) & (MAX_COMMAND_HASH - 1);
