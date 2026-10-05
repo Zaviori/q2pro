@@ -863,10 +863,13 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 	} else if (client->resp.jmp_spawn_frame)
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuStop,
 			client->resp.jmp_spawn_repeat > 0 ? "Stop repeating" : "Stop the pending spawn");
-	JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, -1, JmpMenuPickSpot, "Closest spawnpoint");
-	JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpMenuPickSpot, "Random spawnpoint");
-	if (client->jmp_menu_pick < 1 && *cur < 0)
-		*cur = client->jmp_menu_pick < 0 ? 5 : 6;
+	// a jump is recorded from a spot picked, not from whichever
+	if (!client->jmp_menu_rec) {
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, -1, JmpMenuPickSpot, "Closest spawnpoint");
+		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpMenuPickSpot, "Random spawnpoint");
+		if (client->jmp_menu_pick < 1 && *cur < 0)
+			*cur = client->jmp_menu_pick < 0 ? 5 : 6;
+	}
 
 	// the page's spawnpoints, numbered as spawnp takes them
 	row = JMP_MENU_FIRST;
