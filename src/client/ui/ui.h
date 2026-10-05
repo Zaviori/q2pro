@@ -124,6 +124,7 @@ typedef struct menuFrameWork_s {
     void (*size)(struct menuFrameWork_s *);
     void (*free)(struct menuFrameWork_s *);
     menuSound_t (*keydown)(struct menuFrameWork_s *, int);
+    menuSound_t (*charevent)(struct menuFrameWork_s *, int);   // a character no item took
 } menuFrameWork_t;
 
 typedef struct menuCommon_s {

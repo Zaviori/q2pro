@@ -26,6 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "common/field.h"
 #include "common/files.h"
 #include "common/prompt.h"
+#include "common/fuzzy.h"
 
 static cvar_t   *com_completion_mode;
 static cvar_t   *com_completion_treshold;
@@ -510,7 +511,7 @@ void Prompt_Clear(commandPrompt_t *prompt)
     IF_Clear(&prompt->inputLine);
 }
 
-void Prompt_SaveHistory(const commandPrompt_t *prompt, const char *filename, int lines)
+void Prompt_SaveHistoryTo(const commandPrompt_t *prompt, const char *filename, int lines, unsigned fsflags)
 {
     qhandle_t f;
     const char *s;
@@ -520,7 +521,7 @@ void Prompt_SaveHistory(const commandPrompt_t *prompt, const char *filename, int
         return;
     }
 
-    FS_OpenFile(filename, &f, FS_MODE_WRITE | FS_PATH_BASE);
+    FS_OpenFile(filename, &f, FS_MODE_WRITE | fsflags);
     if (!f) {
         return;
     }
@@ -539,15 +540,20 @@ void Prompt_SaveHistory(const commandPrompt_t *prompt, const char *filename, int
     FS_CloseFile(f);
 }
 
-void Prompt_LoadHistory(commandPrompt_t *prompt, const char *filename)
+void Prompt_SaveHistory(const commandPrompt_t *prompt, const char *filename, int lines)
+{
+    Prompt_SaveHistoryTo(prompt, filename, lines, FS_PATH_BASE);
+}
+
+bool Prompt_LoadHistoryFrom(commandPrompt_t *prompt, const char *filename, unsigned fsflags)
 {
     char buffer[MAX_FIELD_TEXT];
     qhandle_t f;
     unsigned i;
 
-    FS_OpenFile(filename, &f, FS_MODE_READ | FS_TYPE_REAL | FS_PATH_BASE | FS_DIR_HOME);
+    FS_OpenFile(filename, &f, FS_MODE_READ | FS_TYPE_REAL | FS_DIR_HOME | fsflags);
     if (!f) {
-        return;
+        return false;
     }
 
     i = 0;
@@ -569,6 +575,55 @@ void Prompt_LoadHistory(commandPrompt_t *prompt, const char *filename)
 
     prompt->historyLineNum = i;
     prompt->inputLineNum = i;
+    return true;
+}
+
+void Prompt_LoadHistory(commandPrompt_t *prompt, const char *filename)
+{
+    Prompt_LoadHistoryFrom(prompt, filename, FS_PATH_BASE);
+}
+
+static int                      fuzzy_scores[HISTORY_SIZE];
+
+static int fuzzycmp(const void *p1, const void *p2)
+{
+    int i1 = *(const int *)p1, i2 = *(const int *)p2;
+
+    if (fuzzy_scores[i1] != fuzzy_scores[i2])
+        return fuzzy_scores[i2] - fuzzy_scores[i1];
+    return i1 - i2;     // gathered newest first
+}
+
+int Prompt_FuzzyHistory(const commandPrompt_t *prompt, const char *query, const char **out, int max)
+{
+    const char *lines[HISTORY_SIZE];
+    int order[HISTORY_SIZE];
+    int i, j, n = 0;
+    unsigned k;
+
+    // the distinct lines, newest first; the leading slash is not matched
+    for (k = prompt->inputLineNum - 1; k != prompt->inputLineNum - 1 - HISTORY_SIZE; k--) {
+        const char *s = prompt->history[k & HISTORY_MASK];
+        if (!s || !*s)
+            continue;
+        for (j = 0; j < n && strcmp(lines[j], s); j++)
+            ;
+        if (j < n)
+            continue;
+        const char *t = (*s == '/' || *s == '\\') ? s + 1 : s;
+        int score = Fuzzy_Score(query, t);
+        if (score < 0)
+            continue;
+        fuzzy_scores[n] = score;
+        order[n] = n;
+        lines[n++] = s;
+    }
+
+    qsort(order, n, sizeof(order[0]), fuzzycmp);
+
+    for (i = 0; i < n && i < max; i++)
+        out[i] = lines[order[i]];
+    return i;
 }
 
 /*

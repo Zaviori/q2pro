@@ -28,6 +28,7 @@ common_src = [
   'src/common/pmove/common.c',
   'src/common/pmove/new.c',
   'src/common/pmove/old.c',
+  'src/common/fuzzy.c',
   'src/common/prompt.c',
   'src/common/sizebuf.c',
   'src/common/utils.c',

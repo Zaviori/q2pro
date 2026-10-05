@@ -79,9 +79,20 @@ typedef struct {
     char *remotePassword;
 
     load_state_t loadstate;
+
+    // Ctrl-R: a bash-like search back through the history, fuzzy
+    struct {
+        bool        active;
+        char        query[MAX_FIELD_TEXT];
+        const char  *matches[HISTORY_SIZE];     // best first
+        int         count, pos;
+        char        *saved;     // the line before it, for a cancel
+    } search;
 } console_t;
 
 static console_t    con;
+
+static const char *Con_SearchMatch(void);
 
 static cvar_t   *con_notifytime;
 static cvar_t   *con_notifylines;
@@ -494,10 +505,20 @@ void Con_Init(void)
     con.initialized = true;
 }
 
+// The history lives in the game's directory (action/.conhistory); one
+// kept where it used to be, the base game's, is read once to carry over
 void Con_PostInit(void)
 {
     if (con_history->integer > 0) {
-        Prompt_LoadHistory(&con.prompt, COM_HISTORYFILE_NAME);
+        if (!Prompt_LoadHistoryFrom(&con.prompt, COM_HISTORYFILE_NAME, FS_PATH_GAME))
+            Prompt_LoadHistory(&con.prompt, COM_HISTORYFILE_NAME);
+    }
+}
+
+static void Con_SaveHistory(void)
+{
+    if (con_history->integer > 0) {
+        Prompt_SaveHistoryTo(&con.prompt, COM_HISTORYFILE_NAME, con_history->integer, FS_PATH_GAME);
     }
 }
 
@@ -508,9 +529,7 @@ Con_Shutdown
 */
 void Con_Shutdown(void)
 {
-    if (con_history->integer > 0) {
-        Prompt_SaveHistory(&con.prompt, COM_HISTORYFILE_NAME, con_history->integer);
-    }
+    Con_SaveHistory();
     Prompt_Clear(&con.prompt);
 }
 
@@ -958,9 +977,19 @@ static void Con_DrawSolidConsole(void)
         R_DrawChar(CONCHAR_WIDTH, y, 0, i, con.charsetImage);
         R_ClearColor();
 
-        // draw input line
-        x = IF_Draw(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
-                    UI_DRAWCURSOR, con.charsetImage);
+        // draw input line, or the history search in its place
+        if (con.search.active) {
+            const char *m = Con_SearchMatch();
+            Q_snprintf(buffer, sizeof(buffer), "(%sfuzzy-search)`%s': ",
+                       m ? "" : "failed ", con.search.query);
+            x = R_DrawString(2 * CONCHAR_WIDTH, y, UI_ALTCOLOR, MAX_STRING_CHARS,
+                             buffer, con.charsetImage);
+            if (m)
+                x = R_DrawString(x, y, 0, con.linewidth, m, con.charsetImage);
+        } else {
+            x = IF_Draw(&con.prompt.inputLine, 2 * CONCHAR_WIDTH, y,
+                        UI_DRAWCURSOR, con.charsetImage);
+        }
     }
 
 #define APP_VERSION APPLICATION " " VERSION
@@ -1085,6 +1114,9 @@ static void Con_Action(void)
         return;
     }
 
+    // every line kept as it is entered: a crash loses none of them
+    Con_SaveHistory();
+
     // backslash text are commands, else chat
     int backslash = cmd[0] == '\\' || cmd[0] == '/';
 
@@ -1200,6 +1232,100 @@ static void Con_SearchDown(void)
 
 /*
 ====================
+History search
+
+Ctrl-R opens it with what the line holds as the query; typing narrows it,
+Backspace widens it. The matches are the history's lines the query fuzzy
+matches, best first and the newest among equals: Ctrl-R steps down them,
+Ctrl-S back up. Enter runs the match, Escape or Ctrl-G puts the line back
+as it was, and any other key takes the match into the line to edit.
+====================
+*/
+
+static void Con_SearchUpdate(void)
+{
+    con.search.count = Prompt_FuzzyHistory(&con.prompt, con.search.query,
+                                           con.search.matches, HISTORY_SIZE);
+    con.search.pos = 0;
+}
+
+static const char *Con_SearchMatch(void)
+{
+    return con.search.pos < con.search.count ? con.search.matches[con.search.pos] : NULL;
+}
+
+static void Con_SearchStart(void)
+{
+    const char *s = con.prompt.inputLine.text;
+
+    con.search.active = true;
+    con.search.saved = Z_CopyString(s);
+    if (*s == '/' || *s == '\\')
+        s++;
+    Q_strlcpy(con.search.query, s, sizeof(con.search.query));
+    Con_SearchUpdate();
+}
+
+static void Con_SearchEnd(bool accept)
+{
+    const char *m = Con_SearchMatch();
+
+    if (accept && m)
+        IF_Replace(&con.prompt.inputLine, m);
+    else if (!accept)
+        IF_Replace(&con.prompt.inputLine, con.search.saved);
+    Z_Freep(&con.search.saved);
+    con.search.active = false;
+    Prompt_ClearState(&con.prompt);
+}
+
+// Escape while searching: back to the line, the console stays
+bool Con_SearchCancel(void)
+{
+    if (!con.search.active)
+        return false;
+    Con_SearchEnd(false);
+    return true;
+}
+
+// a key while searching; false when it ends the search and goes on as usual
+static bool Con_SearchKey(int key)
+{
+    bool ctrl = Key_IsDown(K_CTRL);
+
+    if (key == 'r' && ctrl) {
+        if (con.search.pos + 1 < con.search.count)
+            con.search.pos++;
+        return true;
+    }
+    if (key == 's' && ctrl) {
+        if (con.search.pos > 0)
+            con.search.pos--;
+        return true;
+    }
+    if (key == 'g' && ctrl) {
+        Con_SearchEnd(false);
+        return true;
+    }
+    if (key == K_BACKSPACE) {
+        size_t len = strlen(con.search.query);
+        if (len) {
+            con.search.query[len - 1] = 0;
+            Con_SearchUpdate();
+        }
+        return true;
+    }
+    // the modifiers themselves, and letters (they come as characters)
+    if (key == K_SHIFT || key == K_CTRL || key == K_ALT ||
+        (key >= 32 && key < 127 && !ctrl && !Key_IsDown(K_ALT)))
+        return true;
+
+    Con_SearchEnd(true);
+    return false;
+}
+
+/*
+====================
 Key_Console
 
 Interactive line editing and console scrollback
@@ -1207,6 +1333,16 @@ Interactive line editing and console scrollback
 */
 void Key_Console(int key)
 {
+    if (con.search.active) {
+        if (key == K_ENTER || key == K_KP_ENTER) {
+            Con_SearchEnd(true);
+            Con_Action();
+            goto scroll;
+        }
+        if (Con_SearchKey(key))
+            return;
+    }
+
     if (key == 'l' && Key_IsDown(K_CTRL)) {
         Con_Clear_f();
         return;
@@ -1242,7 +1378,7 @@ void Key_Console(int key)
     }
 
     if (key == 'r' && Key_IsDown(K_CTRL)) {
-        Prompt_CompleteHistory(&con.prompt, false);
+        Con_SearchStart();
         goto scroll;
     }
 
@@ -1317,6 +1453,16 @@ scroll:
 
 void Char_Console(int key)
 {
+    if (con.search.active) {
+        size_t len = strlen(con.search.query);
+        if (Q_isprint(key) && len < sizeof(con.search.query) - 1) {
+            con.search.query[len] = key;
+            con.search.query[len + 1] = 0;
+            Con_SearchUpdate();
+        }
+        return;
+    }
+
     if (IF_CharEvent(&con.prompt.inputLine, key)) {
         Con_InteractiveMode();
     }
