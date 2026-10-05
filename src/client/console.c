@@ -1579,9 +1579,12 @@ History search
 
 Ctrl-R opens it with what the line holds as the query; typing narrows it,
 Backspace widens it. The matches are the history's lines the query fuzzy
-matches, best first and the newest among equals: Ctrl-R steps down them,
-Ctrl-S back up. Enter runs the match, Escape or Ctrl-G puts the line back
-as it was, and any other key takes the match into the line to edit.
+matches, best first and the newest among equals, listed over the console
+best nearest the prompt: Up, Ctrl-R or Ctrl-P go up the list, Down,
+Ctrl-S or Ctrl-N back, the page keys and the wheel a page at a time.
+Enter runs the match, Escape or Ctrl-G puts the line back as it was, and
+any other key (Left, Right, Home, End, Tab ...) takes the match into the
+line to edit.
 ====================
 */
 
@@ -1636,14 +1639,26 @@ static bool Con_SearchKey(int key)
 {
     bool ctrl = Key_IsDown(K_CTRL);
 
-    if (key == 'r' && ctrl) {
+    // through the list as fzf goes: it is drawn best next to the prompt
+    // and going up, so up (or Ctrl-R) is the next match, down the last
+    if ((key == 'r' && ctrl) || (key == 'p' && ctrl) ||
+        key == K_UPARROW || key == K_KP_UPARROW) {
         if (con.search.pos + 1 < con.search.count)
             con.search.pos++;
         return true;
     }
-    if (key == 's' && ctrl) {
+    if ((key == 's' && ctrl) || (key == 'n' && ctrl) ||
+        key == K_DOWNARROW || key == K_KP_DOWNARROW) {
         if (con.search.pos > 0)
             con.search.pos--;
+        return true;
+    }
+    if (key == K_PGUP || key == K_KP_PGUP || key == K_MWHEELUP) {
+        con.search.pos = min(con.search.pos + CON_SEARCH_ROWS, max(con.search.count - 1, 0));
+        return true;
+    }
+    if (key == K_PGDN || key == K_KP_PGDN || key == K_MWHEELDOWN) {
+        con.search.pos = max(con.search.pos - CON_SEARCH_ROWS, 0);
         return true;
     }
     if (key == 'g' && ctrl) {
