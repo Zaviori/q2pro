@@ -1802,6 +1802,7 @@ static void JmpSaveWrite(edict_t *ent, const char *name, const char *desc)
 
 	Q_strncpyz(t->name, name, sizeof(t->name));
 	if (!JmpWrite(t)) {
+		t->name[0] = 0;	// a take with a name is a saved one
 		gi.cprintf(ent, PRINT_HIGH, "Could not write the jump\n");
 		return;
 	}
@@ -2410,7 +2411,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a jump");
 		if (st->take.count) {
 			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch my last take");
-			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save my last take...");
+			if (!st->take.name[0])
+				JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save my last take...");
 		}
 
 		row = JMP_LIST_FIRST;
