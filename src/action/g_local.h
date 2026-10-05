@@ -3096,6 +3096,7 @@ typedef enum {
 	clcvar_cl_xerp,
 	clcvar_cl_spectatorhud,
 	clcvar_cl_spectatorkillfeed,
+	clcvar_cl_maxfps,	// read by jmod's jump recorder
 } clcvar_t;
 
 // UI flags from q2pro
