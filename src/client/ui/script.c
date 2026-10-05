@@ -908,23 +908,13 @@ static void UI_LoadExtras(void)
 
 PRACTICE JUMPS
 
-A local jump mod game on a map picked like the offline bot games', from
-the main menu. The menu is built into the client, as the game's menu file
-comes with its data. jump is a latched server cvar that the bot menus
-never reset, so their Play actions get "set jump 0" put in front.
+A local jump mod game from the main menu: its line goes under the offline
+games, and the menu - a searchable map list - is M_Menu_Practice
+(maps.c). jump is a latched server cvar that the bot menus never reset,
+so their Play actions get "set jump 0" put in front.
 
 ==============================================================================
 */
-
-static const char ui_menu_practice[] =
-    "begin practice\n"
-    "title \"Practice Jumps\"\n"
-    "strings \"map\" nextserver $com_maplist\n"
-    "blank\n"
-    "action --align \" Practice\" \"forcemenuoff; set ltk_loadbots 0; set am 0; "
-    "set teamplay 0; set teamdm 0; set ctf 0; set dom 0; set esp 0; set use_tourney 0; "
-    "set deathmatch 1; set jump 1; map $nextserver force\"\n"
-    "end\n";
 
 // the action of a menu that runs cmd, its index
 static int UI_FindAction(menuFrameWork_t *menu, const char *cmd)
@@ -965,13 +955,10 @@ static void UI_AddPracticeLine(menuFrameWork_t *menu)
 static void UI_LoadPractice(void)
 {
     static const char *const botmenus[] = { "dm_botmenu", "team_botmenu", NULL };
-    char *s = UI_CopyString(ui_menu_practice);
     menuFrameWork_t *menu;
     menuAction_t *a;
+    char *s;
     int i;
-
-    Parse_Script(s, 0);
-    Z_Free(s);
 
     for (i = 0; botmenus[i]; i++) {
         menu = UI_FindMenu(botmenus[i]);

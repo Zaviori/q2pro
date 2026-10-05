@@ -646,6 +646,7 @@ void UI_Init(void)
     M_Menu_PlayerConfig();
     M_Menu_Servers();
     M_Menu_Demos();
+    M_Menu_Practice();
 
     Com_DPrintf("Registered %d menus.\n", List_Count(&ui_menus));
 

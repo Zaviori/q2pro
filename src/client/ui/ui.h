@@ -361,4 +361,5 @@ void        Menu_Free(menuFrameWork_t *menu);
 
 void M_Menu_PlayerConfig(void);
 void M_Menu_Demos(void);
+void M_Menu_Practice(void);
 void M_Menu_Servers(void);
