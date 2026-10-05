@@ -76,6 +76,7 @@ typedef struct {
 
     chatMode_t chat;
     char promptLabel[64];   // messageprompt: the question,
+    char promptHint[64];    // a line on what to answer,
     char promptCmd[64];     // and the command the answer is sent with
     consoleMode_t mode;
     netadr_t remoteAddress;
@@ -333,8 +334,9 @@ static void Con_MessageMode2_f(void)
 ================
 Con_MessagePrompt_f
 
-messageprompt <label> <command>: asks for a line of text in a box under
-the label and sends it to the server as: command "text". Escape sends
+messageprompt <label> <hint> <command>: asks for a line of text in a box
+under the label, the hint (which may be "") below it, and sends it to
+the server as: command "text". Escape sends
 the bare command, so the asker knows it was turned down. For the game
 to stuff; a client without it forwards the unknown command instead,
 which is how the game tells.
@@ -342,8 +344,8 @@ which is how the game tells.
 */
 static void Con_MessagePrompt_f(void)
 {
-    if (Cmd_Argc() < 3) {
-        Com_Printf("Usage: %s <label> <command>\n", Cmd_Argv(0));
+    if (Cmd_Argc() < 4) {
+        Com_Printf("Usage: %s <label> <hint> <command>\n", Cmd_Argv(0));
         return;
     }
     if (cls.state != ca_active || cls.demo.playback)
@@ -353,7 +355,8 @@ static void Con_MessagePrompt_f(void)
         Con_Close(true);
 
     Q_strlcpy(con.promptLabel, Cmd_Argv(1), sizeof(con.promptLabel));
-    Q_strlcpy(con.promptCmd, Cmd_ArgsFrom(2), sizeof(con.promptCmd));
+    Q_strlcpy(con.promptHint, Cmd_Argv(2), sizeof(con.promptHint));
+    Q_strlcpy(con.promptCmd, Cmd_ArgsFrom(3), sizeof(con.promptCmd));
     con.chat = CHAT_PROMPT;
     IF_Clear(&con.chatPrompt.inputLine);
     Key_SetDest(cls.key_dest | KEY_MESSAGE);
@@ -779,12 +782,19 @@ static int Con_DrawLine(int v, int row, float alpha, bool notify)
 
 #define CON_PRESTEP     (CONCHAR_HEIGHT * 3 + CONCHAR_HEIGHT / 4)
 
-// messageprompt's box: the question, the line being typed, the keys
+#define CON_PROMPT_KEYS     "Enter: OK    Esc: cancel"
+#define CON_PROMPT_CHARS    44  // the line typed, at least
+
+// messageprompt's box: the question, the line being typed, the hint and
+// the keys - as wide as the longest of them
 static void Con_DrawPromptBox(void)
 {
-    int chars = min(con.linewidth - 2, 50);
-    int w = (chars + 2) * CONCHAR_WIDTH, h = CONCHAR_HEIGHT * 11 / 2;
-    int x = (con.vidWidth - w) / 2, y = con.vidHeight / 3;
+    int chars = max(strlen(con.promptLabel), strlen(con.promptHint));
+    int w, h = CONCHAR_HEIGHT * 15 / 2, x, y = con.vidHeight / 3;
+
+    chars = min(max(chars, CON_PROMPT_CHARS), con.linewidth - 2);
+    w = (chars + 2) * CONCHAR_WIDTH;
+    x = (con.vidWidth - w) / 2;
 
     R_DrawFill32(x, y, w, h, MakeColor(0, 0, 0, 210));
     R_DrawFill32(x, y, w, 1, MakeColor(255, 220, 0, 255));
@@ -794,8 +804,8 @@ static void Con_DrawPromptBox(void)
     IF_Draw(&con.chatPrompt.inputLine, x, y + CONCHAR_HEIGHT * 5 / 2,
             UI_DRAWCURSOR, con.charsetImage);
     R_SetAlpha(0.5f);
-    R_DrawString(x, y + CONCHAR_HEIGHT * 4, 0, chars, "Enter: OK    Esc: cancel",
-                 con.charsetImage);
+    R_DrawString(x, y + CONCHAR_HEIGHT * 9 / 2, 0, chars, con.promptHint, con.charsetImage);
+    R_DrawString(x, y + CONCHAR_HEIGHT * 11 / 2, 0, chars, CON_PROMPT_KEYS, con.charsetImage);
     R_ClearColor();
 }
 

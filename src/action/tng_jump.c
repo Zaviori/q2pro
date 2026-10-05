@@ -1397,6 +1397,8 @@ typedef struct {
 	int		ask_frame;		// level.framenum it lapses at
 	char	ask_name[JMP_NAME_MAX];
 	char	ask_pack[JMP_NAME_MAX];
+	char	ask_desc[JMP_DESC_MAX];
+	qboolean	ask_packed;	// the collection is settled, be it none
 	char	save_find[JMP_NAME_MAX];	// the save menu's search, "" all the collections
 	int		save_top;		// its first collection on the page
 
@@ -1891,8 +1893,9 @@ static void Cmd_JumpRec_f(edict_t *ent)
 }
 
 /*
-Saving asks for what the command did not give - a name, the collection,
-then a line describing the jump. The collection is picked from a menu;
+Saving asks for what the command did not give - a line describing the
+jump, then its name, then the collection. The collection is picked from
+a menu;
 the texts are asked with the client's messageprompt, a box with the
 question over the line typed, answered as "jmod answer <text>". A client
 without the command sends it on as an unknown one: that one is asked in
@@ -1913,16 +1916,14 @@ static void JmpAsk(edict_t *ent, int ask)
 		PMenu_Close(ent);
 
 	// the box says it all; a client without it is told in Jmp_Answer
-	if (ask == JMP_ASK_NAME) {
-		stuffcmd(ent, "messageprompt \"Name the jump - letters, digits, - and _\" jmod answer\n");
-	} else if (ask == JMP_ASK_FIND) {
-		stuffcmd(ent, "messageprompt \"Search the collections - a few letters of the name\" jmod answer\n");
-	} else if (ask == JMP_ASK_PACK) {
-		stuffcmd(ent, "messageprompt \"Name the new collection - letters, digits, - and _\" jmod answer\n");
-	} else {
-		stuffcmd(ent, va("messageprompt \"Describe %s - where it goes, the trick\" jmod answer\n",
-			st->ask_name));
-	}
+	if (ask == JMP_ASK_DESC)
+		stuffcmd(ent, "messageprompt \"Describe the jump\" \"Where it goes, what the trick is\" jmod answer\n");
+	else if (ask == JMP_ASK_NAME)
+		stuffcmd(ent, "messageprompt \"Name the jump\" \"Letters, digits, - and _\" jmod answer\n");
+	else if (ask == JMP_ASK_PACK)
+		stuffcmd(ent, "messageprompt \"Name the new collection\" \"Letters, digits, - and _\" jmod answer\n");
+	else
+		stuffcmd(ent, "messageprompt \"Search the collections\" \"A few letters of the name\" jmod answer\n");
 }
 
 // the name is free in its collection, or the player's own to overwrite
@@ -1939,27 +1940,26 @@ static qboolean JmpSaveFree(edict_t *ent)
 	return true;
 }
 
-// the name and the collection are known: on to the description, or back
-// for another name
-static void JmpSaveTo(edict_t *ent)
+// a description as the file holds it: a line of plain text
+static void JmpDescClean(const char *in, char *out, size_t size)
 {
-	JmpAsk(ent, JmpSaveFree(ent) ? JMP_ASK_DESC : JMP_ASK_NAME);
+	size_t n = 0;
+
+	for (; *in && n + 1 < size; in++)
+		if (*in >= 32 && *in < 127 && *in != '"' && (n || *in != ' '))
+			out[n++] = *in;
+	while (n && out[n - 1] == ' ')
+		n--;
+	out[n] = 0;
 }
 
-static void JmpSaveWrite(edict_t *ent, const char *desc)
+static void JmpSaveWrite(edict_t *ent)
 {
 	jmp_state_t *st = JmpState(ent);
 	jmp_take_t *t = &st->take;
 	char path[MAX_OSPATH];
-	size_t n = 0;
 
-	for (; *desc && n + 1 < sizeof(t->desc); desc++)
-		if (*desc >= 32 && *desc < 127 && *desc != '"' && (n || *desc != ' '))
-			t->desc[n++] = *desc;
-	while (n && t->desc[n - 1] == ' ')
-		n--;
-	t->desc[n] = 0;
-
+	Q_strncpyz(t->desc, st->ask_desc, sizeof(t->desc));
 	Q_strncpyz(t->name, st->ask_name, sizeof(t->name));
 	Q_strncpyz(t->pack, st->ask_pack, sizeof(t->pack));
 	if (!JmpWrite(t)) {
@@ -1971,6 +1971,27 @@ static void JmpSaveWrite(edict_t *ent, const char *desc)
 	gi.centerprintf(ent, "Saved %s\n", t->name);
 	gi.cprintf(ent, PRINT_HIGH, "Saved \"%s\"%s%s: %s\n", t->name,
 		t->pack[0] ? " in " : "", t->pack, path);
+}
+
+// the next thing a save is missing, in the order it is asked - the
+// description, the name, the collection - or the save itself
+static void JmpSaveNext(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (!st->ask_desc[0]) {
+		JmpAsk(ent, JMP_ASK_DESC);
+	} else if (!st->ask_name[0]) {
+		JmpAsk(ent, JMP_ASK_NAME);
+	} else if (!st->ask_packed) {
+		JmpSaveToOpen(ent);
+	} else if (!JmpSaveFree(ent)) {
+		// another name, for the same collection
+		st->ask_name[0] = 0;
+		JmpAsk(ent, JMP_ASK_NAME);
+	} else {
+		JmpSaveWrite(ent);
+	}
 }
 
 // jmod save [[collection/]name] [description]
@@ -1989,33 +2010,26 @@ static void Cmd_JumpSave_f(edict_t *ent)
 		return;
 	}
 
-	if (!typed || gi.argc() < 3) {
-		JmpAsk(ent, JMP_ASK_NAME);
-		return;
-	}
-	if (!JmpSplit(gi.argv(2), st->ask_pack, st->ask_name)) {
-		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod save [[collection/]name] [description] - "
-			"names are letters, digits, - and _, %d at most\n", JMP_NAME_MAX - 1);
-		return;
-	}
-	if (gi.argc() < 4) {
-		// a bare name still has its collection to be asked
-		if (st->ask_pack[0])
-			JmpSaveTo(ent);
-		else
-			JmpSaveToOpen(ent);
-		return;
-	}
-	if (!JmpSaveFree(ent))
-		return;
+	st->ask_desc[0] = st->ask_name[0] = st->ask_pack[0] = 0;
+	st->ask_packed = false;
+	if (typed && gi.argc() >= 3) {
+		if (!JmpSplit(gi.argv(2), st->ask_pack, st->ask_name)) {
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod save [[collection/]name] [description] - "
+				"names are letters, digits, - and _, %d at most\n", JMP_NAME_MAX - 1);
+			return;
+		}
+		// the whole command given saves without a question: a bare name is in no collection
+		st->ask_packed = st->ask_pack[0] || gi.argc() >= 4;
 
-	desc[0] = 0;
-	for (i = 3; i < gi.argc(); i++) {
-		if (i > 3)
-			Q_strlcat(desc, " ", sizeof(desc));
-		Q_strlcat(desc, gi.argv(i), sizeof(desc));
+		desc[0] = 0;
+		for (i = 3; i < gi.argc(); i++) {
+			if (i > 3)
+				Q_strlcat(desc, " ", sizeof(desc));
+			Q_strlcat(desc, gi.argv(i), sizeof(desc));
+		}
+		JmpDescClean(desc, st->ask_desc, sizeof(st->ask_desc));
 	}
-	JmpSaveWrite(ent, desc);
+	JmpSaveNext(ent);
 }
 
 // the answer to the question that is out; NULL turns it down
@@ -2052,28 +2066,27 @@ static void JmpAnswerText(edict_t *ent, const char *text)
 		p[len - 1] = 0;
 
 	if (ask == JMP_ASK_NAME) {
-		if (!JmpSplit(p, st->ask_pack, st->ask_name)) {
+		char pack[JMP_NAME_MAX];
+
+		if (!JmpSplit(p, pack, st->ask_name)) {
+			st->ask_name[0] = 0;
 			gi.cprintf(ent, PRINT_HIGH, "A name is letters, digits, - and _, %d at most\n",
 				JMP_NAME_MAX - 1);
-			JmpAsk(ent, JMP_ASK_NAME);
-		} else if (st->ask_pack[0]) {
-			JmpSaveTo(ent);
-		} else {
-			JmpSaveToOpen(ent);
+		} else if (pack[0]) {
+			// "collection/name" settles both
+			Q_strncpyz(st->ask_pack, pack, sizeof(st->ask_pack));
+			st->ask_packed = true;
 		}
 	} else if (ask == JMP_ASK_PACK) {
-		if (!JmpNameClean(p, st->ask_pack, sizeof(st->ask_pack))) {
+		if (JmpNameClean(p, st->ask_pack, sizeof(st->ask_pack)))
+			st->ask_packed = true;
+		else
 			gi.cprintf(ent, PRINT_HIGH, "A name is letters, digits, - and _, %d at most\n",
 				JMP_NAME_MAX - 1);
-			JmpAsk(ent, JMP_ASK_PACK);
-		} else {
-			JmpSaveTo(ent);
-		}
-	} else if (!*p) {
-		JmpAsk(ent, JMP_ASK_DESC);
 	} else {
-		JmpSaveWrite(ent, p);
+		JmpDescClean(p, st->ask_desc, sizeof(st->ask_desc));
 	}
+	JmpSaveNext(ent);
 }
 
 // a client's commands while a question is out: true if this one was to do with it
@@ -2677,7 +2690,8 @@ static void JmpSaveToPick(edict_t *ent, pmenu_t *p)
 	jmp_state_t *st = JmpState(ent);
 
 	Q_strncpyz(st->ask_pack, p->arg ? p->text : "", sizeof(st->ask_pack));
-	JmpSaveTo(ent);
+	st->ask_packed = true;
+	JmpSaveNext(ent);
 }
 
 static void JmpSaveToNew(edict_t *ent, pmenu_t *p)
