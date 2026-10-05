@@ -2225,7 +2225,8 @@ static void CL_Jmod_c(genctx_t *ctx, int argnum)
     static const char *const subcmds[] = {
         "store", "recall", "reset", "clear", "noclip", "goto",
         "spawnp", "spawnc", "spawns", "respawn", "delay", "repeat", "stop", "cancel",
-        "lca", "laser", "slippers", "menu", NULL
+        "lca", "laser", "slippers", "menu", "markers",
+        "rec", "save", "play", "start", "delete", "jumps", NULL
     };
 
     if (argnum == 1) {
