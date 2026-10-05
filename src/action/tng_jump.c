@@ -113,7 +113,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod spawns - pick a spawnpoint, then its delay and repeat, from a menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod save [name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod play [name] [pov] - watch a stored jump, or your last take\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod play [name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
 		return;
@@ -2244,7 +2244,7 @@ static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
 		}
 	} else {
 		if (!t->count) {
-			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod play <name> [pov], or record a take first\n");
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod play <name> [3rd], or record a take first\n");
 			return;
 		}
 		// a copy: the next recording takes the buffer back
@@ -2255,15 +2255,15 @@ static void JmpPlay(edict_t *ent, const char *name, qboolean pov)
 	JmpPlayStart(ent, pov);
 }
 
-// jmod play [name] [pov]
+// jmod play [name] [3rd]
 static void Cmd_JumpPlay_f(edict_t *ent)
 {
 	char name[JMP_NAME_MAX];
 	int arg = 2;
 	qboolean named = false;
 
-	// "jmod play pov" is the last take in the player's view, unless a jump is called that
-	if (gi.argc() > arg && (gi.argc() > arg + 1 || Q_stricmp(gi.argv(arg), "pov"))) {
+	// "jmod play 3rd" is the last take in third person, unless a jump is called that
+	if (gi.argc() > arg && (gi.argc() > arg + 1 || Q_stricmp(gi.argv(arg), "3rd"))) {
 		if (!JmpNameClean(gi.argv(arg), name, sizeof(name))) {
 			gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\"\n", gi.argv(arg));
 			return;
@@ -2271,7 +2271,7 @@ static void Cmd_JumpPlay_f(edict_t *ent)
 		named = true;
 		arg++;
 	}
-	JmpPlay(ent, named ? name : NULL, gi.argc() > arg && !Q_stricmp(gi.argv(arg), "pov"));
+	JmpPlay(ent, named ? name : NULL, !(gi.argc() > arg && !Q_stricmp(gi.argv(arg), "3rd")));
 }
 
 void Jmp_ClientDisconnect(edict_t *ent)
@@ -2341,7 +2341,7 @@ static void JmpTakeKeep(edict_t *ent, pmenu_t *p)
 
 static void JmpJumpsLast(edict_t *ent, pmenu_t *p)
 {
-	JmpPlay(ent, NULL, false);
+	JmpPlay(ent, NULL, true);
 }
 
 static void JmpJumpsSave(edict_t *ent, pmenu_t *p)
@@ -2464,8 +2464,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
 		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s", t->author);
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
-		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
 			cur = 5;
