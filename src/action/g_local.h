@@ -2100,6 +2100,9 @@ typedef struct
   float jmp_spawn_repeat;			// jmod: seconds between repeated spawns, 0 once
   float jmp_menu_repeat;			// jmod: the repeat the spawnpoint menu uses
   float jmp_spawn_last_delay;		// jmod: the delay the last spawn used, for respawn
+  jmp_start_t jmp_starts[JMP_STARTS_MAX];	// jmod: stored jumps' starts on the spawnpoint list
+  int jmp_starts_count;
+  char jmp_starts_packs[JMP_STARTS_PACKS][JMP_NAME_MAX];	// jmod: the collections they are of; "/" is the jumps in none
 
 #ifdef AQTION_EXTENSION
   int	hud_items[128];
@@ -2175,7 +2178,7 @@ struct gclient_s
 	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
 	int			jmp_ghud_count;
 	int			jmp_ghud_key;	// what they show, to redo them only on a change
-	int			jmp_ghud_size[JMP_SPOTS_MAX];	// each ring's size as last sent
+	int			jmp_ghud_size[JMP_POINTS_MAX];	// each ring's size as last sent
 	int			jmp_ghud_made;	// level.framenum they were made at; a map change frees them
 
 	int			ammo_index;

@@ -1,6 +1,21 @@
 #define JMP_MENU_ROWS	20
 #define JMP_SPOTS_MAX	40				// spawnpoints jmod lists
-#define JMP_GHUD_MAX	(JMP_SPOTS_MAX * 2)	// a marker and a label each
+#define JMP_STARTS_MAX	24				// stored jumps' starts listed with them
+#define JMP_STARTS_PACKS	4			// collections whose starts are, at a time
+#define JMP_POINTS_MAX	(JMP_SPOTS_MAX + JMP_STARTS_MAX)
+#define JMP_GHUD_MAX	(JMP_POINTS_MAX * 2)	// a marker and a label each
+#define JMP_NAME_MAX	24				// a jump's name, a collection's
+#define JMP_PACKS_MAX	64				// collections a map may have
+#define JMP_SPOT_JUMPS	1000			// jmp_spawn_spot: from here on, a start in jmp_starts
+
+// where a stored jump begins, as a place to spawn
+typedef struct {
+	vec3_t	origin;
+	float	pitch, yaw;
+	qboolean	ducked;
+	char	name[JMP_NAME_MAX];
+	char	pack[JMP_NAME_MAX];
+} jmp_start_t;
 #define JMP_MARKER_PX	40				// its size on screen
 #define JMP_MARKER_HL	56				// the highlighted one's
 #define STAT_SPEEDX					1
