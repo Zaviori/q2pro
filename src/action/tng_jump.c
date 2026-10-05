@@ -525,11 +525,26 @@ static void JmpSpawnNow(edict_t *ent)
 	gclient_t *client = ent->client;
 	edict_t *spot;
 
-	// the stored spot: a recall, started as a spawn is
-	if (client->resp.jmp_spawn_spot == JMP_SPOT_STORED) {
+	// a stored jump's start: it becomes the stored spot, which is next
+	if (client->resp.jmp_spawn_spot >= JMP_SPOT_JUMPS) {
+		int k = client->resp.jmp_spawn_spot - JMP_SPOT_JUMPS;
+		jmp_start_t *start = &client->resp.jmp_starts[k];
+
+		if (k >= client->resp.jmp_starts_count) {
+			gi.cprintf(ent, PRINT_HIGH, "That jump's start is not on the list any more\n");
+			client->resp.jmp_spawn_frame = 0;
+			client->resp.jmp_spawn_repeat = 0;
+			return;
+		}
+		VectorCopy(start->origin, client->resp.jmp_teleport_origin);
+		VectorSet(client->resp.jmp_teleport_v_angle, start->pitch, start->yaw, 0);
+		client->resp.jmp_teleport_ducked = start->ducked;
+	}
+
+	// the stored spot: a recall. No lights, camera, action - that is
+	// for a round's start at a spawnpoint, not for a place of one's own
+	if (client->resp.jmp_spawn_spot == JMP_SPOT_STORED || client->resp.jmp_spawn_spot >= JMP_SPOT_JUMPS) {
 		Cmd_Recall_f(ent);
-		client->resp.toggle_lca = 0;
-		Cmd_PMLCA_f(ent);
 		if (client->resp.jmp_spawn_repeat > 0)
 			JmpSpawnAt(ent, client->resp.jmp_spawn_repeat);
 		return;
@@ -752,12 +767,30 @@ static void JmpMenuRow_Set(edict_t *ent, int row, int align, intptr_t arg,
 	p->SelectFunc = func;
 }
 
+static int JmpSpotPacks(char packs[][JMP_NAME_MAX], int *counts, int max);
+static qboolean JmpStartsOn(edict_t *ent, const char *pack);
+static void JmpStartsToggle(edict_t *ent, const char *pack);
+static edict_t *jmp_name_ent;	// whose starts JmpSpotName names
+
+static const char *JmpStartName(int number)
+{
+	int k = number - JMP_SPOT_JUMPS;
+
+	if (!jmp_name_ent || k < 0 || k >= jmp_name_ent->client->resp.jmp_starts_count)
+		return "A jump's start";
+	return jmp_name_ent->client->resp.jmp_starts[k].name;
+}
+
 // the spawnpoint's name: its number and location, or closest/random
 static void JmpSpotName(int number, char *buf, size_t size, qboolean shortname)
 {
 	edict_t *spot;
 	char loc[128];
 
+	if (number >= JMP_SPOT_JUMPS) {
+		Q_strncpyz(buf, JmpStartName(number), size);
+		return;
+	}
 	if (number < 0) {
 		Q_strncpyz(buf, "Closest spawnpoint", size);
 		return;
@@ -851,15 +884,53 @@ static void JmpMenuBack(edict_t *ent, pmenu_t *p)
 	JmpMenuShow(ent, ent->client->jmp_menu_step - 1, -1);
 }
 
+// a collection's row: its jumps' starts on the list and marked, or off again
+static void JmpMenuPickPack(edict_t *ent, pmenu_t *p)
+{
+	char packs[JMP_PACKS_MAX][JMP_NAME_MAX];
+	int counts[JMP_PACKS_MAX];
+	int i = (int)(intptr_t)p->arg, n = JmpSpotPacks(packs, counts, JMP_PACKS_MAX);
+
+	if (i >= 0 && i < n)
+		JmpStartsToggle(ent, packs[i]);
+	JmpMenuShow(ent, 0, p - ent->client->jmp_menu);
+}
+
+/*
+The list: the map's spawnpoints, then the map's collections of stored
+jumps - a row each, which Enter turns on and off - and under one that
+is on, the places its jumps start from, to spawn at as at a spawnpoint.
+*/
 static void JmpMenuSpots(edict_t *ent, int *cur)
 {
 	gclient_t *client = ent->client;
 	edict_t *spots[JMP_SPOTS_MAX];
-	char name[32];
-	int i, count = Jmp_Spots(spots, JMP_SPOTS_MAX), row;
+	char packs[JMP_PACKS_MAX][JMP_NAME_MAX], name[32];
+	int counts[JMP_PACKS_MAX];
+	int kind[JMP_SPOTS_MAX + JMP_PACKS_MAX + JMP_STARTS_MAX], arg[JMP_SPOTS_MAX + JMP_PACKS_MAX + JMP_STARTS_MAX];
+	int i, k, n = 0, count = Jmp_Spots(spots, JMP_SPOTS_MAX), npacks, row;
 
-	if (client->jmp_menu_top >= count)
-		client->jmp_menu_top = max(count - 1, 0) / JMP_MENU_SPOTS * JMP_MENU_SPOTS;
+	// what is listed: 0 a spawnpoint, 1 a collection, 2 a jump's start
+	for (i = 0; i < count; i++, n++) {
+		kind[n] = 0;
+		arg[n] = i + 1;
+	}
+	npacks = JmpSpotPacks(packs, counts, JMP_PACKS_MAX);
+	for (i = 0; i < npacks; i++) {
+		kind[n] = 1;
+		arg[n++] = i;
+		if (!JmpStartsOn(ent, packs[i]))
+			continue;
+		for (k = 0; k < client->resp.jmp_starts_count; k++) {
+			if (strcmp(client->resp.jmp_starts[k].pack, packs[i]))
+				continue;
+			kind[n] = 2;
+			arg[n++] = JMP_SPOT_JUMPS + k;
+		}
+	}
+
+	if (client->jmp_menu_top >= n)
+		client->jmp_menu_top = max(n - 1, 0) / JMP_MENU_SPOTS * JMP_MENU_SPOTS;
 
 	JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL,
 		client->jmp_menu_rec ? "*Record a jump from" : "*Pick a spawnpoint (%d)", count);
@@ -878,21 +949,32 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 			*cur = client->jmp_menu_pick < 0 ? 5 : 6;
 	}
 
-	// the page's spawnpoints, numbered as spawnp takes them
 	row = JMP_MENU_FIRST;
-	for (i = client->jmp_menu_top; i < count && row < JMP_MENU_FIRST + JMP_MENU_SPOTS; i++, row++) {
-		// "12 Courtyard", or the bare number on a map without locations
-		JmpSpotName(i + 1, name, sizeof(name), false);
-		JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i + 1, JmpMenuPickSpot, "%2d %s", i + 1,
-			Q_isdigit(name[0]) ? strchr(name, ' ') + 1 : "");
-		if (*cur < 0 && i + 1 == client->jmp_menu_pick)
+	for (i = client->jmp_menu_top; i < n && row < JMP_MENU_FIRST + JMP_MENU_SPOTS; i++, row++) {
+		if (kind[i] == 0) {
+			// "12 Courtyard", or the bare number on a map without locations
+			JmpSpotName(arg[i], name, sizeof(name), false);
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "%2d %s", arg[i],
+				Q_isdigit(name[0]) ? strchr(name, ' ') + 1 : "");
+		} else if (kind[i] == 1) {
+			const char *pack = packs[arg[i]];
+
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickPack, "%s %.19s (%d)",
+				JmpStartsOn(ent, pack) ? "[x]" : "[ ]", pack[0] ? pack : "Jumps in no collection",
+				counts[arg[i]]);
+			continue;
+		} else {
+			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "    %.26s",
+				client->resp.jmp_starts[arg[i] - JMP_SPOT_JUMPS].name);
+		}
+		if (*cur < 0 && arg[i] == client->jmp_menu_pick)
 			*cur = row;
 	}
 
 	row = JMP_MENU_FIRST + JMP_MENU_SPOTS;
 	if (client->jmp_menu_top > 0)
 		JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_MENU_SPOTS, JmpMenuPage, "Previous page");
-	if (client->jmp_menu_top + JMP_MENU_SPOTS < count)
+	if (client->jmp_menu_top + JMP_MENU_SPOTS < n)
 		JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_MENU_SPOTS, JmpMenuPage, "Next page");
 
 	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
@@ -929,6 +1011,8 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 	gclient_t *client = ent->client;
 	char name[32], secs[32];
 	int i;
+
+	jmp_name_ent = ent;
 
 	for (i = 0; i < JMP_MENU_ROWS; i++)
 		JmpMenuRow_Set(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
@@ -1000,21 +1084,48 @@ const char *Jmp_MarkerPic(void)
 
 #define JMP_MARKER_NEAR	64	// no marker on a spot this close
 
-static qboolean JmpNear(edict_t *ent, edict_t *spot)
+// what is marked: the map's spawnpoints, then the listed jumps' starts
+typedef struct {
+	vec3_t	origin;
+	edict_t	*spot;		// a spawnpoint's, NULL for a start
+	const char	*name;	// a start's jump
+} jmp_point_t;
+
+static int JmpPoints(edict_t *ent, jmp_point_t *pts, int *map)
+{
+	gclient_t *client = ent->client;
+	edict_t *spots[JMP_SPOTS_MAX];
+	int i, n = 0;
+
+	*map = Jmp_Spots(spots, JMP_SPOTS_MAX);
+	for (i = 0; i < *map; i++, n++) {
+		VectorCopy(spots[i]->s.origin, pts[n].origin);
+		pts[n].spot = spots[i];
+		pts[n].name = NULL;
+	}
+	for (i = 0; i < client->resp.jmp_starts_count; i++, n++) {
+		VectorCopy(client->resp.jmp_starts[i].origin, pts[n].origin);
+		pts[n].spot = NULL;
+		pts[n].name = client->resp.jmp_starts[i].name;
+	}
+	return n;
+}
+
+static qboolean JmpNear(edict_t *ent, const vec3_t origin)
 {
 	vec3_t d;
 
-	VectorSubtract(spot->s.origin, ent->s.origin, d);
+	VectorSubtract(origin, ent->s.origin, d);
 	return VectorLength(d) < JMP_MARKER_NEAR;
 }
 
 static void JmpMarkersUpdate(edict_t *ent)
 {
 	gclient_t *client = ent->client;
-	edict_t *spots[JMP_SPOTS_MAX];
+	jmp_point_t pts[JMP_POINTS_MAX];
 	pmenu_t *p;
 	char text[64], loc[128];
-	int i, count, hl = 0, key, ring;
+	int i, count, map, hl = 0, key, ring;
 
 	// a new map has cleared every slot, ours went with them
 	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum)
@@ -1027,7 +1138,10 @@ static void JmpMarkersUpdate(edict_t *ent)
 		return;
 	}
 
-	// which one to light: the cursor's, or the pick
+	count = JmpPoints(ent, pts, &map);
+
+	// which one to light: the cursor's, or the pick - a start's number
+	// is past the spawnpoints'
 	if (client->jmp_menu_step == 0) {
 		if (client->menu.cur >= 0) {
 			p = &client->jmp_menu[client->menu.cur];
@@ -1037,11 +1151,14 @@ static void JmpMarkersUpdate(edict_t *ent)
 	} else {
 		hl = client->jmp_menu_pick;
 	}
-	if (hl < 0)
+	if (hl >= JMP_SPOT_JUMPS)
+		hl = map + 1 + hl - JMP_SPOT_JUMPS;
+	else if (hl < 0)
 		hl = JmpClosestNumber(ent);
 
-	// each spot: a ring at chest height and its number over it
-	count = Jmp_Spots(spots, JMP_SPOTS_MAX);
+	// a collection turned on or off: other points, made anew
+	if (client->jmp_ghud_count && client->jmp_ghud_count != 2 * count)
+		JmpMarkersClear(ent);
 
 	// the client scales a 3D image by 300 / distance, unclamped, so a
 	// far ring shrinks to a dot: size it by distance here to keep it
@@ -1050,7 +1167,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 		vec3_t d;
 		int want, *had = &client->jmp_ghud_size[i];
 
-		VectorSubtract(spots[i]->s.origin, ent->s.origin, d);
+		VectorSubtract(pts[i].origin, ent->s.origin, d);
 		want = (i + 1 == hl ? JMP_MARKER_HL : JMP_MARKER_PX) * max(VectorLength(d), 150) / 300;
 		want = min(want, 30000);
 		if (abs(want - *had) * 10 > *had) {
@@ -1062,7 +1179,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 	// redo them when the light or the spot you stand on changes
 	key = (client->jmp_menu_step << 24) | ((hl & 0xff) << 16);
 	for (i = 0; i < count; i++)
-		if (JmpNear(ent, spots[i]))
+		if (JmpNear(ent, pts[i].origin))
 			key |= (i + 1) & 0xffff;
 	if (client->jmp_ghud_count && key == client->jmp_ghud_key)
 		return;
@@ -1073,7 +1190,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 		ring = gi.imageindex((char *)Jmp_MarkerPic());
 		client->jmp_ghud_made = level.framenum;
 		for (i = 0; i < count; i++) {
-			vec_t *o = spots[i]->s.origin;
+			vec_t *o = pts[i].origin;
 			int el = Ghud_NewElement(ent, GHT_IMG);
 
 			Ghud_SetFlags(ent, el, GHF_3DPOS);
@@ -1095,20 +1212,29 @@ static void JmpMarkersUpdate(edict_t *ent)
 		int flags = GHF_3DPOS;
 
 		// none on the spot you stand on: it would hang right over your eye
-		if (JmpNear(ent, spots[i]))
+		if (JmpNear(ent, pts[i].origin))
 			flags |= GHF_HIDE;
 
+		// a spawnpoint by its number, a jump's start by the jump's name, in blue
 		if (i + 1 == hl) {
-			if (GetPlayerLocation(spots[i], loc))
+			if (pts[i].name)
+				Q_snprintf(text, sizeof(text), "> %s <", pts[i].name);
+			else if (GetPlayerLocation(pts[i].spot, loc))
 				Q_snprintf(text, sizeof(text), "> %d %.40s <", i + 1, loc);
 			else
 				Q_snprintf(text, sizeof(text), "> %d <", i + 1);
 			Ghud_SetColor(ent, el, 255, 220, 0, 255);
 			Ghud_SetColor(ent, el_ring, 255, 220, 0, 255);
 		} else {
-			Q_snprintf(text, sizeof(text), "%d", i + 1);
-			Ghud_SetColor(ent, el, 255, 255, 255, 255);
-			Ghud_SetColor(ent, el_ring, 120, 255, 120, 255);
+			if (pts[i].name) {
+				Q_snprintf(text, sizeof(text), "%s", pts[i].name);
+				Ghud_SetColor(ent, el, 150, 210, 255, 255);
+				Ghud_SetColor(ent, el_ring, 110, 190, 255, 255);
+			} else {
+				Q_snprintf(text, sizeof(text), "%d", i + 1);
+				Ghud_SetColor(ent, el, 255, 255, 255, 255);
+				Ghud_SetColor(ent, el_ring, 120, 255, 120, 255);
+			}
 			if (client->jmp_menu_step)
 				flags |= GHF_HIDE;
 		}
@@ -1369,14 +1495,12 @@ way, to try it.
 #define JMP_REC_MAX			(JMP_REC_MAX_MS / JMP_REC_STEP_MS + 2)
 #define JMP_REC_LEAD_MS		500		// kept of the standing still before the first move
 #define JMP_PLAY_TAIL_MS	1000	// held on the last sample
-#define JMP_NAME_MAX		24
 #define JMP_DESC_MAX		57		// two menu rows, indented
 #define JMP_ASK_SECS		60		// a question waits this long for its answer
 #define JMP_ASK_NAME		1
 #define JMP_ASK_DESC		2
 #define JMP_ASK_PACK		3		// the name of a new collection
 #define JMP_ASK_FIND		4		// what to search the collections for
-#define JMP_PACKS_MAX		64		// collections there may be
 #define JMP_PACKS_ROWS		8		// collections on a page of the save menu
 #define JMP_PACKS_FIRST		7		// the row of the first one
 #define JMP_PACKS_PAGE		12		// rows on a page of the collections screen
@@ -1805,6 +1929,116 @@ static void JmpListRange(const char *pack, int *lo, int *hi)
 		;
 }
 
+/*
+Stored jumps on the spawnpoint list: a collection turned on there has
+the places its jumps start from listed and marked with the spawnpoints,
+to spawn at. Up to JMP_STARTS_PACKS collections at a time, the key "/"
+standing for the jumps in none; kept with the player for the map.
+*/
+static const char *JmpStartsKey(const char *pack)
+{
+	return pack[0] ? pack : "/";
+}
+
+static qboolean JmpStartsOn(edict_t *ent, const char *pack)
+{
+	gclient_t *client = ent->client;
+	int i;
+
+	for (i = 0; i < JMP_STARTS_PACKS; i++)
+		if (!strcmp(client->resp.jmp_starts_packs[i], JmpStartsKey(pack)))
+			return true;
+	return false;
+}
+
+// the map's collections that have jumps, with how many; "" is those in none
+static int JmpSpotPacks(char packs[][JMP_NAME_MAX], int *counts, int max)
+{
+	int i, j, n = 0;
+
+	JmpListLoad();
+	for (i = 0; i < jmp_list_count && n < max; i = j, n++) {
+		for (j = i; j < jmp_list_count && !strcmp(jmp_list[j].pack, jmp_list[i].pack); j++)
+			;
+		Q_strncpyz(packs[n], jmp_list[i].pack, JMP_NAME_MAX);
+		counts[n] = j - i;
+	}
+	return n;
+}
+
+// a jump's first sample alone
+static qboolean JmpReadStart(const char *pack, const char *name, jmp_start_t *start)
+{
+	char path[MAX_OSPATH], line[256];
+	float speed;
+	int ms, frame, keys, viewheight;
+	qboolean ok = false;
+	FILE *f;
+
+	JmpPath(path, sizeof(path), pack, name);
+	f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, "samples ", 8))
+			continue;
+		ok = fgets(line, sizeof(line), f) && sscanf(line, "%d %f %f %f %f %f %d %d %d %f", &ms,
+			&start->origin[0], &start->origin[1], &start->origin[2], &start->pitch, &start->yaw,
+			&frame, &keys, &viewheight, &speed) == 10;
+		break;
+	}
+	fclose(f);
+	if (!ok)
+		return false;
+
+	start->ducked = viewheight < 10;
+	Q_strncpyz(start->name, name, sizeof(start->name));
+	Q_strncpyz(start->pack, pack, sizeof(start->pack));
+	return true;
+}
+
+// the starts of every collection that is on, read again
+static void JmpStartsLoad(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+	int i;
+
+	client->resp.jmp_starts_count = 0;
+	JmpListLoad();
+	for (i = 0; i < jmp_list_count && client->resp.jmp_starts_count < JMP_STARTS_MAX; i++) {
+		if (!JmpStartsOn(ent, jmp_list[i].pack))
+			continue;
+		if (JmpReadStart(jmp_list[i].pack, jmp_list[i].name,
+			&client->resp.jmp_starts[client->resp.jmp_starts_count]))
+			client->resp.jmp_starts_count++;
+	}
+}
+
+static void JmpStartsToggle(edict_t *ent, const char *pack)
+{
+	gclient_t *client = ent->client;
+	int i, slot = -1;
+
+	for (i = 0; i < JMP_STARTS_PACKS; i++) {
+		if (!strcmp(client->resp.jmp_starts_packs[i], JmpStartsKey(pack))) {
+			client->resp.jmp_starts_packs[i][0] = 0;
+			JmpStartsLoad(ent);
+			return;
+		}
+		if (slot < 0 && !client->resp.jmp_starts_packs[i][0])
+			slot = i;
+	}
+	if (slot < 0) {
+		gi.cprintf(ent, PRINT_HIGH, "%d collections at a time: turn one off first\n", JMP_STARTS_PACKS);
+		return;
+	}
+	Q_strncpyz(client->resp.jmp_starts_packs[slot], JmpStartsKey(pack), JMP_NAME_MAX);
+	JmpStartsLoad(ent);
+	if (client->resp.jmp_starts_count >= JMP_STARTS_MAX)
+		gi.cprintf(ent, PRINT_HIGH, "The list takes %d starts: some are left out\n", JMP_STARTS_MAX);
+}
+
 //
 // recording
 //
@@ -1952,8 +2186,8 @@ static void Cmd_JumpRec_f(edict_t *ent)
 	gi.cprintf(ent, PRINT_HIGH, "Recording from here. \"jmod recall\" for another go - a teleport "
 		"starts the take again - and \"jmod rec\" ends it\n");
 
-	// the start is stored, and begun as a round is: a countdown, then
-	// back on the spot with lights, camera, action
+	// the start is stored, and begun with a countdown that ends back on
+	// the spot
 	JmpStoreHere(ent);
 	JmpSpawn(ent, JMP_SPOT_STORED, JMP_REC_COUNTDOWN, 0);
 }
@@ -2757,7 +2991,7 @@ static void JmpPlay(edict_t *ent, const char *pack, const char *name, qboolean p
 }
 
 // to a stored jump's start, as a spawn: stored, so recall and respawn
-// come back to it, and begun with the usual delay and lights, camera, action
+// come back to it, and begun with the usual delay
 static void JmpGoStart(edict_t *ent, const char *pack, const char *name)
 {
 	gclient_t *client = ent->client;
