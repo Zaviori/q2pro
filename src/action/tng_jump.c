@@ -955,7 +955,7 @@ static void JmpMarkersUpdate(edict_t *ent)
 			el = Ghud_NewElement(ent, GHT_TEXT);
 			Ghud_SetFlags(ent, el, GHF_3DPOS);
 			Ghud_SetPosition3D(ent, el, o[0], o[1], o[2] + 72);
-			Ghud_SetTextFlags(ent, el, UI_CENTER | UI_DROPSHADOW);
+			Ghud_SetTextFlags(ent, el, UI_CENTER);	// the client shifts a 3D element by its "size": keep it small
 			client->jmp_ghud[client->jmp_ghud_count++] = el;
 		}
 	}
