@@ -2950,15 +2950,15 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 		if (step == JMP_MENU_PACKDEL) {
 			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete this collection?");
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s", st->menu_pack);
+			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s", st->menu_pack);
 			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
 			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelYes, "Yes, delete it");
 		} else {
 			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*It is not empty!");
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s has", st->menu_pack);
-			JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d jump%s on %d map%s",
+			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s has", st->menu_pack);
+			JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d jump%s on %d map%s",
 				count, count == 1 ? "" : "s", maps, maps == 1 ? "" : "s");
-			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_CENTER, 0, NULL, "They are deleted with it.");
+			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "They are deleted with it.");
 			JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
 			JmpMenuRow_Set(ent, 7, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
 		}
@@ -3088,8 +3088,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		t = &jmp_list[st->menu_pick];
 		JmpSecs(t->ms, secs, sizeof(secs));
 		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
-		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s", t->author);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_CENTER, 0, NULL, "%d fps, %s seconds", t->fps, secs);
+		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "by %s", t->author);
+		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d fps, %s seconds", t->fps, secs);
 		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
 		if (JmpMayDelete(ent, t))
