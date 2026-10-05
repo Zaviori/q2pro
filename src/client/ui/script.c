@@ -845,9 +845,35 @@ static const char ui_menu_keyboard[] =
     "end\n";
 #endif
 
+// Jump mod: keys for its commands, which are all "jmod <something>"
+static const char ui_menu_jmod[] =
+    "begin jmodkeys\n"
+    "title \"Jump Mod Keys\"\n"
+    "bind \"jump menu\" jmod menu\n"
+    "bind \"spawnpoint markers\" jmod markers\n"
+    "bind \"spawnpoint list\" jmod spawns\n"
+    "blank\n"
+    "bind \"respawn (last spawn again)\" jmod respawn\n"
+    "bind \"closest spawnpoint\" jmod spawnc\n"
+    "bind \"random spawnpoint\" jmod spawnp\n"
+    "bind \"store position\" jmod store\n"
+    "bind \"recall position\" jmod recall\n"
+    "bind \"stop (spawn, take, playback)\" jmod stop\n"
+    "blank\n"
+    "bind \"record a jump / end the take\" jmod rec\n"
+    "bind \"watch the last take\" jmod play\n"
+    "bind \"save the last take\" jmod save\n"
+    "bind \"recorded jumps\" jmod jumps\n"
+    "blank\n"
+    "bind \"noclip\" jmod noclip\n"
+    "bind \"laser sight\" jmod laser\n"
+    "bind \"slippers\" jmod slippers\n"
+    "end\n";
+
 static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
     { "Stainmaps", "stains", ui_menu_stains },
+    { "Jump Mod Keys", "jmodkeys", ui_menu_jmod },
 #ifdef _WIN32
     { "Keyboard", "keyboard", ui_menu_keyboard },
 #endif
