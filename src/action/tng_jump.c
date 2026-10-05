@@ -1315,7 +1315,7 @@ way, to try it.
 #define JMP_REC_LEAD_MS		500		// kept of the standing still before the first move
 #define JMP_PLAY_TAIL_MS	1000	// held on the last sample
 #define JMP_NAME_MAX		24
-#define JMP_DESC_MAX		61		// two menu rows
+#define JMP_DESC_MAX		57		// two menu rows, indented
 #define JMP_ASK_SECS		60		// a question waits this long for its answer
 #define JMP_ASK_NAME		1
 #define JMP_ASK_DESC		2
@@ -2292,7 +2292,7 @@ The jump under the cursor has its description in the rows below it, the
 rest of the list making way - the menu is rebuilt as the cursor moves
 (JmpJumpsFrame), since its rows are only text to the client.
 */
-#define JMP_DESC_ROW	30	// characters of a description on a menu row
+#define JMP_DESC_ROW	28	// characters of a description on a menu row, after its indent
 
 // how much of a description goes on its first row
 static int JmpDescBreak(const char *desc)
@@ -2425,10 +2425,10 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			if (i == st->menu_sel && t->desc[0]) {
 				int len = JmpDescBreak(t->desc);
 
-				JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "*%.*s", len, t->desc);
+				JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE, len, t->desc);
 				if (t->desc[len])
-					JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "*%.*s", JMP_DESC_ROW,
-						t->desc + len + (t->desc[len] == ' '));
+					JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE,
+						JMP_DESC_ROW, t->desc + len + (t->desc[len] == ' '));
 			}
 		}
 		if (!jmp_list_count)

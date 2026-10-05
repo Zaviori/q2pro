@@ -21,6 +21,8 @@ enum
   PMENU_ALIGN_RIGHT
 };
 
+#define PMENU_NOTE	'\x7f'	// a row's text starting with it is a note: PMenu_Update
+
 typedef struct pmenuhnd_s
 {
   struct pmenu_s *entries;
