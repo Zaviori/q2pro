@@ -74,6 +74,23 @@ void IF_Replace(inputField_t *field, const char *text)
 IF_KeyEvent
 ================
 */
+// The last text Ctrl-U, Ctrl-K, Ctrl-W, Alt-D or Alt-Backspace cut, for
+// Ctrl-Y to put back, as readline keeps it
+static char if_killed[MAX_FIELD_TEXT];
+
+// cut text[from, to) out of the field, kept for a yank
+static void IF_Kill(inputField_t *field, size_t from, size_t to)
+{
+    if (to <= from)
+        return;
+    size_t len = min(to - from, sizeof(if_killed) - 1);
+    memcpy(if_killed, field->text + from, len);
+    if_killed[len] = 0;
+    memmove(field->text + from, field->text + to, sizeof(field->text) - to);
+    memset(field->text + sizeof(field->text) - (to - from), 0, to - from);
+    field->cursorPos = from;
+}
+
 bool IF_KeyEvent(inputField_t *field, int key)
 {
     if (!field->maxChars) {
@@ -81,7 +98,7 @@ bool IF_KeyEvent(inputField_t *field, int key)
     }
     Q_assert(field->cursorPos < field->maxChars);
 
-    if (key == K_DEL && Key_IsDown(K_CTRL)) {
+    if ((key == K_DEL && Key_IsDown(K_CTRL)) || (key == 'd' && Key_IsDown(K_ALT))) {
         size_t pos = field->cursorPos;
 
         // kill leading whitespace
@@ -94,25 +111,31 @@ bool IF_KeyEvent(inputField_t *field, int key)
             pos++;
         }
         Q_assert(pos < sizeof(field->text));
-        memmove(field->text + field->cursorPos, field->text + pos,
-                sizeof(field->text) - pos);
+        IF_Kill(field, field->cursorPos, pos);
         return true;
     }
 
-    if ((key == K_BACKSPACE || key == 'w') && Key_IsDown(K_CTRL)) {
-        size_t pos = field->cursorPos;
+    if (((key == K_BACKSPACE || key == 'w') && Key_IsDown(K_CTRL)) ||
+        (key == K_BACKSPACE && Key_IsDown(K_ALT))) {
+        size_t pos = field->cursorPos, start = pos;
 
         // kill trailing whitespace
-        while (field->cursorPos > 0 && field->text[field->cursorPos - 1] <= 32) {
-            field->cursorPos--;
+        while (start > 0 && field->text[start - 1] <= 32) {
+            start--;
         }
 
         // kill this word
-        while (field->cursorPos > 0 && field->text[field->cursorPos - 1] > 32) {
-            field->cursorPos--;
+        while (start > 0 && field->text[start - 1] > 32) {
+            start--;
         }
-        memmove(field->text + field->cursorPos, field->text + pos,
-                sizeof(field->text) - pos);
+        IF_Kill(field, start, pos);
+        return true;
+    }
+
+    if (key == 'y' && Key_IsDown(K_CTRL)) {
+        for (const char *k = if_killed; *k; k++) {
+            IF_CharEvent(field, *k);
+        }
         return true;
     }
 
@@ -136,14 +159,12 @@ bool IF_KeyEvent(inputField_t *field, int key)
     }
 
     if (key == 'u' && Key_IsDown(K_CTRL)) {
-        memmove(field->text, field->text + field->cursorPos,
-                sizeof(field->text) - field->cursorPos);
-        field->cursorPos = 0;
+        IF_Kill(field, 0, field->cursorPos);
         return true;
     }
 
     if (key == 'k' && Key_IsDown(K_CTRL)) {
-        field->text[field->cursorPos] = 0;
+        IF_Kill(field, field->cursorPos, strlen(field->text));
         return true;
     }
 
