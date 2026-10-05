@@ -1081,9 +1081,9 @@ static void JmpMarkersClear(edict_t *ent)
 	gclient_t *client = ent->client;
 	int i;
 
-	for (i = 0; i < client->jmp_ghud_count; i++)
-		Ghud_RemoveElement(ent, client->jmp_ghud[i]);
-	client->jmp_ghud_count = 0;
+	for (i = 0; i < client->resp.jmp_ghud_count; i++)
+		Ghud_RemoveElement(ent, client->resp.jmp_ghud[i]);
+	client->resp.jmp_ghud_count = 0;
 }
 
 /*
@@ -1173,29 +1173,29 @@ static void JmpTip(edict_t *ent, qboolean on)
 	gclient_t *client = ent->client;
 	int i;
 
-	if (on == client->jmp_tip_on)
+	if (on == client->resp.jmp_tip_on)
 		return;
-	client->jmp_tip_on = on;
+	client->resp.jmp_tip_on = on;
 
 	for (i = 0; i < 2; i++) {
 		if (!on) {
-			Ghud_RemoveElement(ent, client->jmp_tip[i]);
+			Ghud_RemoveElement(ent, client->resp.jmp_tip[i]);
 			continue;
 		}
-		client->jmp_tip[i] = Ghud_NewElement(ent, GHT_TEXT);
-		Ghud_SetAnchor(ent, client->jmp_tip[i], 0.5f, 0.5f);
-		Ghud_SetPosition(ent, client->jmp_tip[i], 0, 22 + 10 * i);
-		Ghud_SetTextFlags(ent, client->jmp_tip[i], UI_CENTER);
-		Ghud_SetColor(ent, client->jmp_tip[i], 255, 255, 255, i ? 170 : 255);
+		client->resp.jmp_tip[i] = Ghud_NewElement(ent, GHT_TEXT);
+		Ghud_SetAnchor(ent, client->resp.jmp_tip[i], 0.5f, 0.5f);
+		Ghud_SetPosition(ent, client->resp.jmp_tip[i], 0, 22 + 10 * i);
+		Ghud_SetTextFlags(ent, client->resp.jmp_tip[i], UI_CENTER);
+		Ghud_SetColor(ent, client->resp.jmp_tip[i], 255, 255, 255, i ? 170 : 255);
 	}
 	if (!on)
 		return;
 	if (client->jmp_menu_rec && client->layout == LAYOUT_MENU) {
-		Ghud_SetText(ent, client->jmp_tip[0], "click: record a jump from here");
-		Ghud_SetText(ent, client->jmp_tip[1], "");
+		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: record a jump from here");
+		Ghud_SetText(ent, client->resp.jmp_tip[1], "");
 	} else {
-		Ghud_SetText(ent, client->jmp_tip[0], "click: spawn here   double click: delay, repeat");
-		Ghud_SetText(ent, client->jmp_tip[1], "shift + click: record a jump from here");
+		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: spawn here   double click: delay, repeat");
+		Ghud_SetText(ent, client->resp.jmp_tip[1], "shift + click: record a jump from here");
 	}
 }
 
@@ -1277,9 +1277,9 @@ static void JmpMarkersUpdate(edict_t *ent)
 		&& !(ent->svflags & SVF_NOCLIENT);	// not over a jump being watched
 
 	// a new map has cleared every slot, ours went with them
-	if (client->jmp_ghud_count && client->jmp_ghud_made > level.framenum) {
-		client->jmp_ghud_count = 0;
-		client->jmp_tip_on = false;
+	if (client->resp.jmp_ghud_count && client->resp.jmp_ghud_made > level.framenum) {
+		client->resp.jmp_ghud_count = 0;
+		client->resp.jmp_tip_on = false;
 	}
 
 	// up with the spawnpoint menu - the jumps menu shares its rows, and
@@ -1321,22 +1321,22 @@ static void JmpMarkersUpdate(edict_t *ent)
 		hl = JmpClosestNumber(ent);
 
 	// a collection turned on or off: other points, made anew
-	if (client->jmp_ghud_count && client->jmp_ghud_count != 2 * count)
+	if (client->resp.jmp_ghud_count && client->resp.jmp_ghud_count != 2 * count)
 		JmpMarkersClear(ent);
 
 	// the client scales a 3D image by 300 / distance, unclamped, so a
 	// far ring shrinks to a dot: size it by distance here to keep it
 	// about the same on screen, updated when it drifts past 10%
-	for (i = 0; i < count && 2 * i < client->jmp_ghud_count; i++) {
+	for (i = 0; i < count && 2 * i < client->resp.jmp_ghud_count; i++) {
 		vec3_t d;
-		int want, *had = &client->jmp_ghud_size[i];
+		int want, *had = &client->resp.jmp_ghud_size[i];
 
 		VectorSubtract(pts[i].origin, ent->s.origin, d);
 		want = (i + 1 == hl ? JMP_MARKER_HL : JMP_MARKER_PX) * max(VectorLength(d), 150) / 300;
 		want = min(want, 30000);
 		if (abs(want - *had) * 10 > *had) {
 			*had = want;
-			Ghud_SetSize(ent, client->jmp_ghud[2 * i], want, want);
+			Ghud_SetSize(ent, client->resp.jmp_ghud[2 * i], want, want);
 		}
 	}
 
@@ -1345,14 +1345,14 @@ static void JmpMarkersUpdate(edict_t *ent)
 	for (i = 0; i < count; i++)
 		if (JmpNear(ent, pts[i].origin))
 			key |= (i + 1) & 0xffff;
-	if (client->jmp_ghud_count && key == client->jmp_ghud_key)
+	if (client->resp.jmp_ghud_count && key == client->resp.jmp_ghud_key)
 		return;
-	client->jmp_ghud_key = key;
-	memset(client->jmp_ghud_size, 0, sizeof(client->jmp_ghud_size));	// resize on the next frame
+	client->resp.jmp_ghud_key = key;
+	memset(client->resp.jmp_ghud_size, 0, sizeof(client->resp.jmp_ghud_size));	// resize on the next frame
 
-	if (!client->jmp_ghud_count) {
+	if (!client->resp.jmp_ghud_count) {
 		ring = gi.imageindex((char *)Jmp_MarkerPic());
-		client->jmp_ghud_made = level.framenum;
+		client->resp.jmp_ghud_made = level.framenum;
 		for (i = 0; i < count; i++) {
 			vec_t *o = pts[i].origin;
 			int el = Ghud_NewElement(ent, GHT_IMG);
@@ -1361,18 +1361,18 @@ static void JmpMarkersUpdate(edict_t *ent)
 			Ghud_SetPosition3D(ent, el, o[0], o[1], o[2] + 8);
 			Ghud_SetInt(ent, el, ring);
 			Ghud_SetSize(ent, el, JMP_MARKER_PX, JMP_MARKER_PX);
-			client->jmp_ghud[client->jmp_ghud_count++] = el;
+			client->resp.jmp_ghud[client->resp.jmp_ghud_count++] = el;
 
 			el = Ghud_NewElement(ent, GHT_TEXT);
 			Ghud_SetFlags(ent, el, GHF_3DPOS);
 			Ghud_SetPosition3D(ent, el, o[0], o[1], o[2] + 72);
 			Ghud_SetTextFlags(ent, el, UI_CENTER);	// the client shifts a 3D element by its "size": keep it small
-			client->jmp_ghud[client->jmp_ghud_count++] = el;
+			client->resp.jmp_ghud[client->resp.jmp_ghud_count++] = el;
 		}
 	}
 
-	for (i = 0; i < count && 2 * i + 1 < client->jmp_ghud_count; i++) {
-		int el_ring = client->jmp_ghud[2 * i], el = client->jmp_ghud[2 * i + 1];
+	for (i = 0; i < count && 2 * i + 1 < client->resp.jmp_ghud_count; i++) {
+		int el_ring = client->resp.jmp_ghud[2 * i], el = client->resp.jmp_ghud[2 * i + 1];
 		int flags = GHF_3DPOS;
 
 		// none on the spot you stand on: it would hang right over your eye
@@ -1406,6 +1406,14 @@ static void JmpMarkersUpdate(edict_t *ent)
 		Ghud_SetFlags(ent, el, flags);
 		Ghud_SetFlags(ent, el_ring, flags);
 	}
+}
+
+// the game has cleared every HUD element of the client's: the markers
+// and the tooltip went with them, and are made again where still wanted
+void Jmp_HudCleared(edict_t *ent)
+{
+	ent->client->resp.jmp_ghud_count = 0;
+	ent->client->resp.jmp_tip_on = false;
 }
 
 // jmod markers - the markers without the list, for a bind

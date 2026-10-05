@@ -2103,6 +2103,15 @@ typedef struct
   jmp_start_t jmp_starts[JMP_STARTS_MAX];	// jmod: stored jumps' starts on the spawnpoint list
   int jmp_starts_count;
   qboolean jmp_markers;				// jmod: the markers are up without the list ("jmod markers")
+  // jmod: the markers' HUD elements. Here, not in the client, which a
+  // respawn wipes: the elements outlive that, and would be left on screen
+  int jmp_ghud[JMP_GHUD_MAX];		// a ring and a label for each spawnpoint and listed start
+  int jmp_ghud_count;
+  int jmp_ghud_key;					// what they show, to redo them only on a change
+  int jmp_ghud_size[JMP_POINTS_MAX];	// each ring's size as last sent
+  int jmp_ghud_made;				// level.framenum they were made at; a map change frees them
+  int jmp_tip[2];					// the tooltip under the crosshair while one is aimed at
+  qboolean jmp_tip_on;
   char jmp_starts_packs[JMP_STARTS_PACKS][JMP_NAME_MAX];	// jmod: the collections they are of; "/" is the jumps in none
 
 #ifdef AQTION_EXTENSION
@@ -2180,14 +2189,7 @@ struct gclient_s
 	qboolean	jmp_fire_held;	// fire as last seen, to act on a press
 	int			jmp_click_spot;	// a click on a marker waiting to see if it is a double one,
 	int			jmp_click_ms;	// and for how long yet
-	int			jmp_tip[2];		// the tooltip under the crosshair while one is aimed at
-	qboolean	jmp_tip_on;
 	qboolean	jmp_blank;		// the empty layout "jmod markers" keeps up has been sent
-	int			jmp_ghud[JMP_GHUD_MAX];	// the spawnpoints' labels in the world, while the menu is up
-	int			jmp_ghud_count;
-	int			jmp_ghud_key;	// what they show, to redo them only on a change
-	int			jmp_ghud_size[JMP_POINTS_MAX];	// each ring's size as last sent
-	int			jmp_ghud_made;	// level.framenum they were made at; a map change frees them
 
 	int			ammo_index;
 

@@ -791,6 +791,7 @@ void HUD_SetType(edict_t *clent, int type)
 	else
 	{
 		Ghud_ClearForClient(clent);
+		Jmp_HudCleared(clent);
 		clent->client->resp.hud_type = 0;
 	}
 }
@@ -798,6 +799,7 @@ void HUD_SetType(edict_t *clent, int type)
 void HUD_ClientSetup(edict_t *clent)
 {
 	Ghud_ClearForClient(clent);
+	Jmp_HudCleared(clent);
 	clent->client->resp.hud_type = -1;
 
 }
@@ -1121,6 +1123,7 @@ void HUD_SpectatorStatsSetup(edict_t *clent)
 void HUD_SpectatorSetup(edict_t *clent)
 {
 	Ghud_ClearForClient(clent);
+	Jmp_HudCleared(clent);
 	clent->client->resp.hud_type = 1;
 
 	int nameplate_alpha = 230;
