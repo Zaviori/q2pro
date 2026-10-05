@@ -88,6 +88,7 @@ static void Cmd_JumpRec_f(edict_t *ent);
 static void Cmd_JumpSave_f(edict_t *ent);
 static void Cmd_JumpPlay_f(edict_t *ent);
 static void Cmd_JumpDelete_f(edict_t *ent);
+static void Cmd_JumpStart_f(edict_t *ent);
 static void JmpAnswerText(edict_t *ent, const char *text);
 
 void Cmd_Jmod_f (edict_t *ent)
@@ -121,6 +122,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod rec - record a jump, again to end it; a teleport restarts the take\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod save [[collection/]name] [description] - keep the last take for everybody on this map; asks for what is left out\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod play [[collection/]name] [3rd] - watch a stored jump, or your last take, from the player's view or in third person\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod start <[collection/]name> - spawn where a stored jump starts, facing its way\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours; \"collection/\" the collection itself\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 
@@ -199,6 +201,11 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "play") == 0)
 	{
 		Cmd_JumpPlay_f(ent);
+		return;
+	}
+	else if(Q_stricmp(cmd, "start") == 0)
+	{
+		Cmd_JumpStart_f(ent);
 		return;
 	}
 	else if(Q_stricmp(cmd, "delete") == 0)
@@ -2438,6 +2445,17 @@ static void JmpPlace(edict_t *ent, const vec3_t origin, float pitch, float yaw)
 	gi.linkentity(ent);
 }
 
+// a jump's start as the stored spot: where it began, facing its way
+static void JmpStoreStart(edict_t *ent, jmp_take_t *t)
+{
+	gclient_t *client = ent->client;
+	jmp_sample_t *s = &t->samples[0];
+
+	VectorCopy(s->origin, client->resp.jmp_teleport_origin);
+	VectorSet(client->resp.jmp_teleport_v_angle, s->pitch, s->yaw, 0);
+	client->resp.jmp_teleport_ducked = s->viewheight < 10;
+}
+
 // end the playback; place puts the watcher on the take's first step
 static void JmpPlayStop(edict_t *ent, qboolean place)
 {
@@ -2460,8 +2478,10 @@ static void JmpPlayStop(edict_t *ent, qboolean place)
 	ent->viewheight = 22;
 	client->ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
 	client->ps.pmove.pm_type = PM_NORMAL;
-	if (place)
+	if (place) {
 		JmpPlace(ent, st->play.samples[0].origin, st->play.samples[0].pitch, st->play.samples[0].yaw);
+		JmpStoreStart(ent, &st->play);	// and recall is back here
+	}
 
 	JmpTakeFree(&st->play);
 }
@@ -2736,6 +2756,43 @@ static void JmpPlay(edict_t *ent, const char *pack, const char *name, qboolean p
 	JmpPlayStart(ent, pov);
 }
 
+// to a stored jump's start, as a spawn: stored, so recall and respawn
+// come back to it, and begun with the usual delay and lights, camera, action
+static void JmpGoStart(edict_t *ent, const char *pack, const char *name)
+{
+	gclient_t *client = ent->client;
+	jmp_take_t t;
+
+	if (ent->deadflag || client->pers.spectator) {
+		gi.cprintf(ent, PRINT_HIGH, "This command cannot be used by spectators\n");
+		return;
+	}
+	if (!JmpRead(pack, name, &t, true)) {
+		gi.cprintf(ent, PRINT_HIGH, "No jump called \"%s\" there on %s: jmod jumps lists them\n",
+			name, level.mapname);
+		return;
+	}
+	JmpPlayStop(ent, false);
+	if (client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+
+	JmpStoreStart(ent, &t);
+	JmpTakeFree(&t);
+	JmpSpawn(ent, JMP_SPOT_STORED, client->resp.jmp_spawn_delay, 0);
+}
+
+// jmod start <[collection/]name>
+static void Cmd_JumpStart_f(edict_t *ent)
+{
+	char pack[JMP_NAME_MAX], name[JMP_NAME_MAX];
+
+	if (gi.argc() < 3 || !JmpSplit(gi.argv(2), pack, name)) {
+		gi.cprintf(ent, PRINT_HIGH, "Usage: jmod start <[collection/]name>\n");
+		return;
+	}
+	JmpGoStart(ent, pack, name);
+}
+
 // jmod play [[collection/]name] [3rd]
 static void Cmd_JumpPlay_f(edict_t *ent)
 {
@@ -2856,6 +2913,17 @@ static void JmpJumpsWatch(edict_t *ent, pmenu_t *p)
 		return;
 	t = jmp_list[st->menu_pick];
 	JmpPlay(ent, t.pack, t.name, p->arg != NULL);
+}
+
+static void JmpJumpsStart(edict_t *ent, pmenu_t *p)
+{
+	jmp_state_t *st = JmpState(ent);
+	jmp_take_t t;
+
+	if (st->menu_pick < 0 || st->menu_pick >= jmp_list_count)
+		return;
+	t = jmp_list[st->menu_pick];
+	JmpGoStart(ent, t.pack, t.name);
 }
 
 static void JmpJumpsBack(edict_t *ent, pmenu_t *p)
@@ -3194,8 +3262,9 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d fps, %s seconds", t->fps, secs);
 		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsStart, "Spawn at its start");
 		if (JmpMayDelete(ent, t))
-			JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteAsk, "Delete it...");
+			JmpMenuRow_Set(ent, 10, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteAsk, "Delete it...");
 		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
 			cur = 5;
