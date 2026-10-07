@@ -26,6 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #define MIN_MATCHES     64
 #define MAX_MATCHES     250000000
+#define MAX_MATCH_COLS  6
 
 typedef struct {
     unsigned    inputLineNum;
@@ -38,12 +39,30 @@ typedef struct {
     int         widthInChars;
     bool        tooMany;
 
+    // the matches of the last ambiguous completion, kept for cycling
+    // (TAB again, the arrows); live while the line is as the last
+    // step left it, see Prompt_CycleLive()
+    char        **cycle;        // sorted
+    int         cycleCount;
+    int         cycleIndex;     // -1: the common prefix, else the match on the line
+    char        *cycleHead;     // the line up to the argument
+    char        *cycleTail;     // the arguments after it, or NULL
+    char        *cyclePrefix;   // the line with the common prefix
+    size_t      cyclePrefixPos;
+    char        *cycleLine;     // the line as the last step left it
+    size_t      cyclePos;
+    bool        drawMatches;    // the front end draws the matches: do not print them
+
     void        (* q_printf(1, 2) printf)(const char *fmt, ...);
 } commandPrompt_t;
 
 void Prompt_Init(void);
 void Prompt_AddMatch(genctx_t *ctx, const char *s);
 void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash);
+int Prompt_LayoutMatches(const commandPrompt_t *prompt, char **matches, int count,
+                         size_t colwidths[MAX_MATCH_COLS], int *numLines);
+bool Prompt_CycleLive(const commandPrompt_t *prompt);
+bool Prompt_CycleMatches(commandPrompt_t *prompt, int dir, bool column);
 void Prompt_CompleteHistory(commandPrompt_t *prompt, bool forward);
 void Prompt_ClearState(commandPrompt_t *prompt);
 char *Prompt_Action(commandPrompt_t *prompt);

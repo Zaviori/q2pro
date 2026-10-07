@@ -31,22 +31,31 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 static cvar_t   *com_completion_mode;
 static cvar_t   *com_completion_treshold;
 
-static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches, int count)
+/*
+====================
+Prompt_LayoutMatches
+
+Fits the matches into as many columns (at most MAX_MATCH_COLS) as the
+prompt's width takes, column-major: match k sits in column
+k / numLines. Returns the number of columns.
+====================
+*/
+int Prompt_LayoutMatches(const commandPrompt_t *prompt, char **matches, int count,
+                         size_t colwidths[MAX_MATCH_COLS], int *numLines)
 {
-    int numCols = 7, numLines;
+    int numCols = MAX_MATCH_COLS + 1;
     int i, j, k;
     size_t maxlen, len, total;
-    size_t colwidths[6];
 
     // determine number of columns needed
     do {
         numCols--;
-        numLines = (count + numCols - 1) / numCols;
+        *numLines = (count + numCols - 1) / numCols;
         total = 0;
         for (i = 0; i < numCols; i++) {
             maxlen = 0;
-            k = min((i + 1) * numLines, count);
-            for (j = i * numLines; j < k; j++) {
+            k = min((i + 1) * *numLines, count);
+            for (j = i * *numLines; j < k; j++) {
                 len = strlen(matches[j]);
                 maxlen = max(maxlen, len);
             }
@@ -59,6 +68,17 @@ static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches, in
             break; // this number of columns does fit
         }
     } while (numCols > 1);
+
+    return numCols;
+}
+
+static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches, int count)
+{
+    int numCols, numLines;
+    int i, j, k;
+    size_t colwidths[MAX_MATCH_COLS];
+
+    numCols = Prompt_LayoutMatches(prompt, matches, count, colwidths, &numLines);
 
     for (i = 0; i < numLines; i++) {
         for (j = 0; j < numCols; j++) {
@@ -161,6 +181,113 @@ static bool needs_quotes(const char *s)
     return false;
 }
 
+static void Prompt_ClearCycle(commandPrompt_t *prompt)
+{
+    int i;
+
+    for (i = 0; i < prompt->cycleCount; i++) {
+        Z_Free(prompt->cycle[i]);
+    }
+    Z_Freep(&prompt->cycle);
+    prompt->cycleCount = 0;
+    prompt->cycleIndex = -1;
+    Z_Freep(&prompt->cycleHead);
+    Z_Freep(&prompt->cycleTail);
+    Z_Freep(&prompt->cyclePrefix);
+    Z_Freep(&prompt->cycleLine);
+}
+
+/*
+====================
+Prompt_CycleLive
+
+The kept matches apply while the line is exactly as the last
+completion step left it: anything typed, moved or recalled since
+means a fresh completion.
+====================
+*/
+bool Prompt_CycleLive(const commandPrompt_t *prompt)
+{
+    return prompt->cycle && prompt->cycleLine &&
+        !strcmp(prompt->inputLine.text, prompt->cycleLine) &&
+        prompt->inputLine.cursorPos == prompt->cyclePos;
+}
+
+// Puts the match at cycleIndex (or the common prefix) on the line, the
+// way a single match would have gone: quoted if need be, a space after,
+// the trailing arguments kept, the cursor after the space or the match
+static void Prompt_CycleApply(commandPrompt_t *prompt)
+{
+    inputField_t *f = &prompt->inputLine;
+    size_t size = f->maxChars + 1;
+    size_t pos;
+
+    if (prompt->cycleIndex < 0) {
+        Q_strlcpy(f->text, prompt->cyclePrefix, size);
+        pos = prompt->cyclePrefixPos;
+    } else {
+        const char *m = prompt->cycle[prompt->cycleIndex];
+
+        Q_strlcpy(f->text, prompt->cycleHead, size);
+        if (needs_quotes(m)) {
+            Q_strlcat(f->text, "\"", size);
+            Q_strlcat(f->text, m, size);
+            Q_strlcat(f->text, "\"", size);
+        } else {
+            Q_strlcat(f->text, m, size);
+        }
+        pos = strlen(f->text);
+        Q_strlcat(f->text, " ", size);
+        if (prompt->cycleTail)
+            Q_strlcat(f->text, prompt->cycleTail, size);
+        else
+            pos++;
+    }
+
+    f->cursorPos = min(pos, f->maxChars - 1);
+
+    Z_Free(prompt->cycleLine);
+    prompt->cycleLine = Z_CopyString(f->text);
+    prompt->cyclePos = f->cursorPos;
+}
+
+/*
+====================
+Prompt_CycleMatches
+
+Steps the line through the kept matches: dir +1/-1 to the next or
+previous, or by a column of the layout the matches were shown in.
+Past either end lands on the common prefix again. Returns false
+when there is nothing live to cycle.
+====================
+*/
+bool Prompt_CycleMatches(commandPrompt_t *prompt, int dir, bool column)
+{
+    int i, n, step = 1;
+
+    if (!Prompt_CycleLive(prompt))
+        return false;
+
+    if (column) {
+        size_t colwidths[MAX_MATCH_COLS];
+        Prompt_LayoutMatches(prompt, prompt->cycle, prompt->cycleCount, colwidths, &step);
+    }
+
+    n = prompt->cycleCount;
+    i = prompt->cycleIndex;
+    if (i < 0) {
+        i = dir > 0 ? 0 : n - 1;
+    } else {
+        i += dir > 0 ? step : -step;
+        if (i < 0 || i >= n)
+            i = -1;
+    }
+
+    prompt->cycleIndex = i;
+    Prompt_CycleApply(prompt);
+    return true;
+}
+
 /*
 ====================
 Prompt_CompleteCommand
@@ -173,9 +300,15 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     int i, j, c, pos, size, argnum;
     genctx_t ctx;
     int numCommands, numCvars, numAliases;
+    bool keep = false;
 
     if (!inputLine->maxChars)
         return;
+
+    // TAB again on an ambiguous line steps through its matches
+    if (Prompt_CycleMatches(prompt, 1, false))
+        return;
+    Prompt_ClearCycle(prompt);
 
     text = inputLine->text;
     size = inputLine->maxChars + 1;
@@ -258,6 +391,11 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
         Q_strlcat(text, " ", size);
     }
 
+    // the line either side of the argument, for cycling
+    prompt->cycleHead = Z_CopyString(inputLine->text);
+    if (argnum + 1 < Cmd_Argc())
+        prompt->cycleTail = Z_CopyString(Cmd_RawArgsFrom(argnum + 1));
+
     if (ctx.count == 1) {
         // we have finished completion!
         if (needs_quotes(ctx.matches[0])) {
@@ -308,6 +446,17 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
         Q_strlcat(text, Cmd_RawArgsFrom(argnum + 1), size);
     }
 
+    // keep the matches for cycling
+    prompt->cycle = sorted;
+    prompt->cycleCount = ctx.count;
+    prompt->cycleIndex = -1;
+    prompt->cyclePrefix = Z_CopyString(inputLine->text);
+    prompt->cyclePrefixPos = pos;
+    keep = true;
+
+    if (prompt->drawMatches)
+        goto finish;    // the front end shows them itself
+
     prompt->printf("]\\%s\n", Cmd_ArgsFrom(0));
     if (argnum) {
         goto multi;
@@ -332,17 +481,23 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
         break;
     }
 
-    Z_Free(sorted);
-
 finish:
-    // free matches
-    for (i = 0; i < ctx.count; i++) {
-        Z_Free(ctx.matches[i]);
+    // free matches, unless kept (sorted) for cycling
+    if (!keep) {
+        for (i = 0; i < ctx.count; i++) {
+            Z_Free(ctx.matches[i]);
+        }
+        Prompt_ClearCycle(prompt);
     }
     Z_Free(ctx.matches);
 
     // move cursor
     inputLine->cursorPos = min(pos, inputLine->maxChars - 1);
+
+    if (keep) {
+        prompt->cycleLine = Z_CopyString(inputLine->text);
+        prompt->cyclePos = inputLine->cursorPos;
+    }
 }
 
 void Prompt_CompleteHistory(commandPrompt_t *prompt, bool forward)
@@ -403,6 +558,7 @@ void Prompt_ClearState(commandPrompt_t *prompt)
 {
     prompt->tooMany = false;
     Z_Freep(&prompt->search);
+    Prompt_ClearCycle(prompt);
 }
 
 /*
