@@ -891,6 +891,25 @@ static void Con_DrawSearch(int y, int vislines)
     R_ClearColor();
 }
 
+// A match in its column, the letters a fuzzy query picked out in green
+static void Con_DrawMatchName(int x, int y, const char *s, size_t maxlen,
+                              const char *query, uint32_t color)
+{
+    int pos[MAX_FIELD_TEXT], n = 0, k = 0;
+
+    if (query)
+        n = Fuzzy_Positions(query, s, pos, q_countof(pos));
+
+    for (int i = 0; s[i] && i < maxlen; i++, x += CONCHAR_WIDTH) {
+        bool hit = k < n && pos[k] == i;
+        if (hit)
+            k++;
+        R_SetColor(hit ? U32_GREEN : color);
+        R_DrawChar(x, y, 0, s[i], con.charsetImage);
+    }
+    R_ClearColor();
+}
+
 /*
 The completion's matches above the input line, in the columns
 Prompt_ShowMatches would print them in, for as long as TAB and the
@@ -940,14 +959,11 @@ static void Con_DrawMatches(int y, int vislines)
             int ry = top + i * CONCHAR_HEIGHT;
             bool sel = k == p->cycleIndex;
 
-            if (sel) {
+            if (sel)
                 R_DrawFill32(x - CONCHAR_WIDTH / 2, ry, cw - CONCHAR_WIDTH, CONCHAR_HEIGHT,
                              MakeColor(64, 64, 64, 224));
-                R_SetColor(U32_YELLOW);
-            } else {
-                R_SetColor(MakeColor(192, 192, 192, 255));
-            }
-            R_DrawString(x, ry, 0, colwidths[j], p->cycle[k], con.charsetImage);
+            Con_DrawMatchName(x, ry, p->cycle[k], colwidths[j], p->cycleQuery,
+                              sel ? U32_YELLOW : MakeColor(192, 192, 192, 255));
         }
         x += cw;
     }
