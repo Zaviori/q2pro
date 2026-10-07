@@ -1248,13 +1248,17 @@ static void Con_DrawMatches(int y, int vislines)
     size_t colwidths[MAX_MATCH_COLS];
     int numCols, numLines, rows, first, room, top;
     int i, j, k, x;
+    bool ttf = Con_TextTTF();
+    float size = Con_TextSize();
+    // the columns are laid out in conchars; in the font they grow with the rows
+    int cw1 = CONCHAR_WIDTH * CON_ROW / CONCHAR_HEIGHT;
 
     if (!Prompt_CycleLive(p))
         return;
 
     numCols = Prompt_LayoutMatches(p, p->cycle, p->cycleCount, colwidths, &numLines);
 
-    room = (vislines - CON_PRESTEP) / CONCHAR_HEIGHT - 3;
+    room = (vislines - CON_PRESTEP) / CON_ROW - 3;
     rows = min(numLines, room);
     if (rows < 1)
         return;
@@ -1268,30 +1272,32 @@ static void Con_DrawMatches(int y, int vislines)
 
     // solid over the console's own transparency, as the search list is
     R_SetAlpha(1);
-    top = y - (rows + 1) * CONCHAR_HEIGHT;
-    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CONCHAR_HEIGHT + 2,
+    top = y - (rows + 1) * CON_ROW;
+    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CON_ROW + 2,
                  MakeColor(0, 0, 0, 255));
 
     x = CONCHAR_WIDTH;
     for (j = 0; j < numCols; j++) {
-        int cw = colwidths[j] * CONCHAR_WIDTH;
+        int cw = colwidths[j] * cw1;
 
         for (i = 0; i < rows; i++) {
             k = j * numLines + first + i;
             if (k >= p->cycleCount)
                 break;
 
-            int ry = top + i * CONCHAR_HEIGHT;
+            int ry = top + i * CON_ROW;
             bool sel = k == p->cycleIndex;
+            uint32_t color = sel ? U32_YELLOW : MakeColor(192, 192, 192, 255);
 
-            if (sel) {
-                R_DrawFill32(x - CONCHAR_WIDTH / 2, ry, cw - CONCHAR_WIDTH, CONCHAR_HEIGHT,
-                             MakeColor(64, 64, 64, 224));
-                R_SetColor(U32_YELLOW);
+            if (sel)
+                R_DrawFill32(x - cw1 / 2, ry, cw - cw1, CON_ROW, MakeColor(64, 64, 64, 224));
+            if (ttf) {
+                SCR_DrawTextCell(x, ry, CON_ROW, 0, TEXT_SHADOW, size, color,
+                                 p->cycle[k], colwidths[j]);
             } else {
-                R_SetColor(MakeColor(192, 192, 192, 255));
+                R_SetColor(color);
+                R_DrawString(x, ry, 0, colwidths[j], p->cycle[k], con.charsetImage);
             }
-            R_DrawString(x, ry, 0, colwidths[j], p->cycle[k], con.charsetImage);
         }
         x += cw;
     }
@@ -1300,9 +1306,14 @@ static void Con_DrawMatches(int y, int vislines)
     // where in the list the chosen one is, as the search counts
     char count[32];
     Q_snprintf(count, sizeof(count), "  %d/%d", p->cycleIndex + 1, p->cycleCount);
-    R_SetColor(MakeColor(160, 160, 96, 255));
-    R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
-    R_ClearColor();
+    if (ttf) {
+        SCR_DrawTextCell(CONCHAR_WIDTH, y - CON_ROW, CON_ROW, 0, TEXT_SHADOW,
+                         size, MakeColor(160, 160, 96, 255), count, MAX_STRING_CHARS);
+    } else {
+        R_SetColor(MakeColor(160, 160, 96, 255));
+        R_DrawString(CONCHAR_WIDTH, y - CON_ROW, 0, MAX_STRING_CHARS, count, con.charsetImage);
+        R_ClearColor();
+    }
 }
 
 static void Con_DrawSolidConsole(void)
