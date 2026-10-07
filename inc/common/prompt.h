@@ -51,6 +51,7 @@ typedef struct {
     size_t      cyclePrefixPos;
     char        *cycleLine;     // the line as the last step left it
     size_t      cyclePos;
+    char        *cycleQuery;    // the fuzzy query the matches answer, or NULL
     bool        drawMatches;    // the front end draws the matches: do not print them
 
     void        (* q_printf(1, 2) printf)(const char *fmt, ...);
@@ -58,6 +59,7 @@ typedef struct {
 
 void Prompt_Init(void);
 void Prompt_AddMatch(genctx_t *ctx, const char *s);
+bool Prompt_MatchPartial(const genctx_t *ctx, const char *s);
 void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash);
 int Prompt_LayoutMatches(const commandPrompt_t *prompt, char **matches, int count,
                          size_t colwidths[MAX_MATCH_COLS], int *numLines);

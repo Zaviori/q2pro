@@ -98,6 +98,7 @@ typedef struct genctx_s {
     void *data;
     bool ignorecase;
     bool ignoredups;
+    bool fuzzy;         // partial's letters in order anywhere, not a prefix
 } genctx_t;
 
 typedef void (*xcommand_t)(void);

@@ -143,21 +143,31 @@ static bool find_dup(genctx_t *ctx, const char *s)
     return false;
 }
 
+/*
+====================
+Prompt_MatchPartial
+
+Whether s answers the partial: starts with it, or, when the context is
+fuzzy, has its letters in order anywhere (case never minding then).
+====================
+*/
+bool Prompt_MatchPartial(const genctx_t *ctx, const char *s)
+{
+    if (ctx->fuzzy)
+        return Fuzzy_Score(ctx->partial, s) >= 0;
+    if (ctx->ignorecase)
+        return !Q_strncasecmp(ctx->partial, s, ctx->length);
+    return !strncmp(ctx->partial, s, ctx->length);
+}
+
 void Prompt_AddMatch(genctx_t *ctx, const char *s)
 {
-    int r;
-
     if (!*s)
         return;
     if (ctx->count >= ctx->size)
         return;
 
-    if (ctx->ignorecase)
-        r = Q_strncasecmp(ctx->partial, s, ctx->length);
-    else
-        r = strncmp(ctx->partial, s, ctx->length);
-
-    if (r)
+    if (!Prompt_MatchPartial(ctx, s))
         return;
 
     if (ctx->ignoredups && find_dup(ctx, s))
@@ -195,6 +205,40 @@ static void Prompt_ClearCycle(commandPrompt_t *prompt)
     Z_Freep(&prompt->cycleTail);
     Z_Freep(&prompt->cyclePrefix);
     Z_Freep(&prompt->cycleLine);
+    Z_Freep(&prompt->cycleQuery);
+}
+
+// the fuzzy matches best first, Fuzzy_Score against the query being
+// completed (qsort carries no context), the names breaking ties
+static const char *sort_query;
+
+static int SortFuzzy(const void *p1, const void *p2)
+{
+    const char *s1 = *(const char **)p1, *s2 = *(const char **)p2;
+    int d = Fuzzy_Score(sort_query, s2) - Fuzzy_Score(sort_query, s1);
+
+    return d ? d : strcmp(s1, s2);
+}
+
+// the command, cvar and alias names, or the argument's completer
+static void Prompt_Generate(genctx_t *ctx, int argnum,
+                            int *numCommands, int *numCvars, int *numAliases)
+{
+    if (argnum) {
+        // complete a command/cvar argument
+        Com_Generic_c(ctx, argnum);
+        *numCommands = *numCvars = *numAliases = 0;
+    } else {
+        // complete a command/cvar/alias name
+        Cmd_Command_g(ctx);
+        *numCommands = ctx->count;
+
+        Cvar_Variable_g(ctx);
+        *numCvars = ctx->count - *numCommands;
+
+        Cmd_Alias_g(ctx);
+        *numAliases = ctx->count - *numCvars - *numCommands;
+    }
 }
 
 /*
@@ -301,6 +345,7 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     genctx_t ctx;
     int numCommands, numCvars, numAliases;
     bool keep = false;
+    char partial[MAX_FIELD_TEXT];
 
     if (!inputLine->maxChars)
         return;
@@ -351,21 +396,15 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     ctx.length = strlen(ctx.partial);
     ctx.argnum = argnum;
     ctx.size = MAX_MATCHES;
+    Q_strlcpy(partial, ctx.partial, sizeof(partial));
 
-    if (argnum) {
-        // complete a command/cvar argument
-        Com_Generic_c(&ctx, argnum);
-        numCommands = numCvars = numAliases = 0;
-    } else {
-        // complete a command/cvar/alias name
-        Cmd_Command_g(&ctx);
-        numCommands = ctx.count;
+    Prompt_Generate(&ctx, argnum, &numCommands, &numCvars, &numAliases);
 
-        Cvar_Variable_g(&ctx);
-        numCvars = ctx.count - numCommands;
-
-        Cmd_Alias_g(&ctx);
-        numAliases = ctx.count - numCvars - numCommands;
+    // nothing starts with it: the names with its letters in order
+    // anywhere, best first (a single one goes on the line as any would)
+    if (!ctx.count && ctx.length) {
+        ctx.fuzzy = true;
+        Prompt_Generate(&ctx, argnum, &numCommands, &numCvars, &numAliases);
     }
 
     if (!ctx.count) {
@@ -417,26 +456,36 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
         goto finish;
     }
 
-    // sort matches alphabethically
+    // sort matches alphabethically, or fuzzy ones best first
     sorted = Z_Malloc(ctx.count * sizeof(sorted[0]));
     memcpy(sorted, ctx.matches, ctx.count * sizeof(sorted[0]));
-    qsort(sorted, ctx.count, sizeof(sorted[0]), ctx.ignorecase ? SortStricmp : SortStrcmp);
+    if (ctx.fuzzy) {
+        sort_query = partial;
+        qsort(sorted, ctx.count, sizeof(sorted[0]), SortFuzzy);
+    } else {
+        qsort(sorted, ctx.count, sizeof(sorted[0]), ctx.ignorecase ? SortStricmp : SortStrcmp);
+    }
 
-    // copy matching part
-    first = sorted[0];
-    last = sorted[ctx.count - 1];
-    do {
-        if (*first != *last && (!ctx.ignorecase || Q_tolower(*first) != Q_tolower(*last))) {
-            break;
-        }
-        first++;
-        last++;
-    } while (*first);
+    if (ctx.fuzzy) {
+        // fuzzy matches share nothing to fill in: the line stays as typed
+        Q_strlcat(text, partial, size);
+    } else {
+        // copy matching part
+        first = sorted[0];
+        last = sorted[ctx.count - 1];
+        do {
+            if (*first != *last && (!ctx.ignorecase || Q_tolower(*first) != Q_tolower(*last))) {
+                break;
+            }
+            first++;
+            last++;
+        } while (*first);
 
-    c = *first;
-    *first = 0;
-    Q_strlcat(text, sorted[0], size);
-    *first = c;
+        c = *first;
+        *first = 0;
+        Q_strlcat(text, sorted[0], size);
+        *first = c;
+    }
 
     pos = strlen(inputLine->text);
 
@@ -452,14 +501,16 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     prompt->cycleIndex = -1;
     prompt->cyclePrefix = Z_CopyString(inputLine->text);
     prompt->cyclePrefixPos = pos;
+    if (ctx.fuzzy)
+        prompt->cycleQuery = Z_CopyString(partial);
     keep = true;
 
     if (prompt->drawMatches)
         goto finish;    // the front end shows them itself
 
     prompt->printf("]\\%s\n", Cmd_ArgsFrom(0));
-    if (argnum) {
-        goto multi;
+    if (argnum || ctx.fuzzy) {
+        goto multi;     // fuzzy ones in their order, not by type
     }
 
     switch (com_completion_mode->integer) {

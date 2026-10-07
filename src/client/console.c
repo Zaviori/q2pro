@@ -1235,6 +1235,46 @@ static void Con_DrawSearch(int y, int vislines)
     }
 }
 
+// A match in its column, the letters a fuzzy query picked out in green
+static void Con_DrawMatchName(int x, int y, const char *s, size_t maxlen,
+                              const char *query, uint32_t color)
+{
+    int pos[MAX_FIELD_TEXT], n = 0, k = 0;
+
+    if (query)
+        n = Fuzzy_Positions(query, s, pos, q_countof(pos));
+
+    if (Con_TextTTF()) {
+        // in the font: runs of matched and unmatched letters, each where
+        // the text before it ends, as the search list draws them
+        float size = Con_TextSize();
+        int i = 0, len = strnlen(s, maxlen);
+
+        while (i < len) {
+            bool hit = k < n && pos[k] == i;
+            int j = i;
+            while (j < len && (k < n && pos[k] == j) == hit) {
+                if (hit)
+                    k++;
+                j++;
+            }
+            SCR_DrawTextCell(x + R_MeasureText(TEXT_SHADOW, size, s, i), y, CON_ROW,
+                             0, TEXT_SHADOW, size, hit ? U32_GREEN : color, s + i, j - i);
+            i = j;
+        }
+        return;
+    }
+
+    for (int i = 0; s[i] && i < maxlen; i++, x += CONCHAR_WIDTH) {
+        bool hit = k < n && pos[k] == i;
+        if (hit)
+            k++;
+        R_SetColor(hit ? U32_GREEN : color);
+        R_DrawChar(x, y, 0, s[i], con.charsetImage);
+    }
+    R_ClearColor();
+}
+
 /*
 The completion's matches above the input line, in the columns
 Prompt_ShowMatches would print them in, for as long as TAB and the
@@ -1291,13 +1331,7 @@ static void Con_DrawMatches(int y, int vislines)
 
             if (sel)
                 R_DrawFill32(x - cw1 / 2, ry, cw - cw1, CON_ROW, MakeColor(64, 64, 64, 224));
-            if (ttf) {
-                SCR_DrawTextCell(x, ry, CON_ROW, 0, TEXT_SHADOW, size, color,
-                                 p->cycle[k], colwidths[j]);
-            } else {
-                R_SetColor(color);
-                R_DrawString(x, ry, 0, colwidths[j], p->cycle[k], con.charsetImage);
-            }
+            Con_DrawMatchName(x, ry, p->cycle[k], colwidths[j], p->cycleQuery, color);
         }
         x += cw;
     }
