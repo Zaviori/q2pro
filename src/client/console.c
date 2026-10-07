@@ -492,6 +492,7 @@ void Con_Init(void)
     IF_Init(&con.chatPrompt.inputLine, 0, MAX_FIELD_TEXT - 1);
 
     con.prompt.printf = Con_Printf;
+    con.prompt.drawMatches = true;  // Con_DrawMatches
 
     // use default width since no video is initialized yet
     r_config.width = 640;
@@ -890,6 +891,76 @@ static void Con_DrawSearch(int y, int vislines)
     R_ClearColor();
 }
 
+/*
+The completion's matches above the input line, in the columns
+Prompt_ShowMatches would print them in, for as long as TAB and the
+arrows are stepping through them (Prompt_CycleLive): the one on the line
+marked like the search's current candidate, and its place in the list
+under them. A list taller than the console shows the rows around it.
+*/
+static void Con_DrawMatches(int y, int vislines)
+{
+    const commandPrompt_t *p = &con.prompt;
+    size_t colwidths[MAX_MATCH_COLS];
+    int numCols, numLines, rows, first, room, top;
+    int i, j, k, x;
+
+    if (!Prompt_CycleLive(p))
+        return;
+
+    numCols = Prompt_LayoutMatches(p, p->cycle, p->cycleCount, colwidths, &numLines);
+
+    room = (vislines - CON_PRESTEP) / CONCHAR_HEIGHT - 3;
+    rows = min(numLines, room);
+    if (rows < 1)
+        return;
+
+    // the window keeps the chosen one in it
+    first = 0;
+    if (numLines > rows) {
+        int sel = p->cycleIndex < 0 ? 0 : p->cycleIndex % numLines;
+        first = Q_clip(sel - rows / 2, 0, numLines - rows);
+    }
+
+    // solid over the console's own transparency, as the search list is
+    R_SetAlpha(1);
+    top = y - (rows + 1) * CONCHAR_HEIGHT;
+    R_DrawFill32(0, top - 2, con.vidWidth, (rows + 1) * CONCHAR_HEIGHT + 2,
+                 MakeColor(0, 0, 0, 255));
+
+    x = CONCHAR_WIDTH;
+    for (j = 0; j < numCols; j++) {
+        int cw = colwidths[j] * CONCHAR_WIDTH;
+
+        for (i = 0; i < rows; i++) {
+            k = j * numLines + first + i;
+            if (k >= p->cycleCount)
+                break;
+
+            int ry = top + i * CONCHAR_HEIGHT;
+            bool sel = k == p->cycleIndex;
+
+            if (sel) {
+                R_DrawFill32(x - CONCHAR_WIDTH / 2, ry, cw - CONCHAR_WIDTH, CONCHAR_HEIGHT,
+                             MakeColor(64, 64, 64, 224));
+                R_SetColor(U32_YELLOW);
+            } else {
+                R_SetColor(MakeColor(192, 192, 192, 255));
+            }
+            R_DrawString(x, ry, 0, colwidths[j], p->cycle[k], con.charsetImage);
+        }
+        x += cw;
+    }
+    R_ClearColor();
+
+    // where in the list the chosen one is, as the search counts
+    char count[32];
+    Q_snprintf(count, sizeof(count), "  %d/%d", p->cycleIndex + 1, p->cycleCount);
+    R_SetColor(MakeColor(160, 160, 96, 255));
+    R_DrawString(CONCHAR_WIDTH, y - CONCHAR_HEIGHT, 0, MAX_STRING_CHARS, count, con.charsetImage);
+    R_ClearColor();
+}
+
 static void Con_DrawSolidConsole(void)
 {
     int             i, x, y;
@@ -1040,6 +1111,8 @@ static void Con_DrawSolidConsole(void)
 
         if (con.search.active)
             Con_DrawSearch(y, vislines);
+        else
+            Con_DrawMatches(y, vislines);
 
         // draw command prompt
         i = con.mode == CON_REMOTE ? '#' : 17;
@@ -1473,6 +1546,9 @@ void Key_Console(int key)
     if (key == K_TAB) {
         if (con_timestamps->integer)
             Con_CheckResize();
+        // Shift-TAB steps back through the matches; TAB steps on itself
+        if (Key_IsDown(K_SHIFT) && Prompt_CycleMatches(&con.prompt, -1, false))
+            goto scroll;
         Prompt_CompleteCommand(&con.prompt, true);
         goto scroll;
     }
@@ -1495,6 +1571,15 @@ void Key_Console(int key)
     if (key == K_DOWNARROW && Key_IsDown(K_CTRL)) {
         Con_SearchDown();
         return;
+    }
+
+    // the arrows walk the completion matches while they are up:
+    // up and down by one, left and right by a column
+    if (key == K_UPARROW || key == K_DOWNARROW || key == K_LEFTARROW || key == K_RIGHTARROW) {
+        if (Prompt_CycleMatches(&con.prompt,
+                                (key == K_UPARROW || key == K_LEFTARROW) ? -1 : 1,
+                                key == K_LEFTARROW || key == K_RIGHTARROW))
+            goto scroll;
     }
 
     if (key == K_UPARROW || (key == 'p' && Key_IsDown(K_CTRL))) {
