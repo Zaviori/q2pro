@@ -3140,6 +3140,7 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 			Ghud_SetAnchor(ent, el, 0.5f, 1);
 			Ghud_SetPosition(ent, el, 24 - JMP_MVD_PX / 2, -82 - JMP_MVD_PX / 2);
 			Ghud_SetSize(ent, el, JMP_MVD_PX, JMP_MVD_PX);
+			Ghud_SetColor(ent, el, 255, 255, 255, 95);	// faint: a mark, not a sign
 			if (t->mvd && pic)
 				Ghud_SetInt(ent, el, gi.imageindex((char *)pic));
 			else
