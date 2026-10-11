@@ -33,8 +33,8 @@ pick **View player pathing...**, or type `jmod paths`.
    number leaves that route alone and follows its ghost from the
    player's own view (fire for third person and back), with the rest of
    that round running as ghosts in their teams' colours; Escape lets go
-   of the ghost, Escape again brings the spawn's set back, and once more
-   takes the lines and ghosts down. Shift+fire on a route's number
+   and brings the spawn's set back, and once more takes the lines and
+   ghosts down. Shift+fire on a route's number
    **drills** it: the route alone stays drawn, its ghost runs dim beside
    you and sets off again every time you spawn, and the spawn menu asks
    how long until you spawn at the route's start, how often again, and

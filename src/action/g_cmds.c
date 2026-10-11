@@ -1173,7 +1173,7 @@ void Cmd_PutAway_f(edict_t *ent)
 {
 	// nothing up to put away: it is the Escape that ends a jump's playback
 	if (jump->value && ent->client->layout == LAYOUT_NONE
-		&& (Jmp_PlayEscape(ent) || Jmp_RecEscape(ent) || JmpPath_Escape(ent) || Jmp_MarkersEscape(ent)
+		&& (JmpPath_Escape(ent) || Jmp_PlayEscape(ent) || Jmp_RecEscape(ent) || Jmp_MarkersEscape(ent)
 			|| Jmp_SpawnEscape(ent)))
 		return;
 
