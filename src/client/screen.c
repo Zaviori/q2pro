@@ -3096,10 +3096,17 @@ static void SCR_DrawGhudElement(ghud_element_t *element, float alpha_base, color
                 break;
             }
             // a text's val, unused by the ghud, is ours: the size's offset
-            // (the jump mod's tooltips a step up)
+            // and an outline (the jump mod's tooltips, a step up and
+            // outlined to read over the map)
             float gsize = Cvar_ClampValue(scr_ghud_size, 6, 20);
-            if (element->val)
-                gsize = Q_clipf(gsize + element->val, 6, 40);
+            if (GHUD_TEXT_SIZE(element->val))
+                gsize = Q_clipf(gsize + GHUD_TEXT_SIZE(element->val), 6, 40);
+            if (element->val & GHUD_TEXT_OUTLINE) {
+                SCR_DrawTextCell(x, y, CONCHAR_HEIGHT, uiflags | align, TEXT_OUTLINE, gsize,
+                                 color_base.u32 | MakeColor(0, 0, 0, 255),
+                                 element->text, MAX_STRING_CHARS);
+                break;
+            }
             SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, uiflags | align, gsize,
                              color_base.u32 | MakeColor(0, 0, 0, 255), NULL,
                              element->text, MAX_STRING_CHARS);
