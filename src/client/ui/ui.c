@@ -17,6 +17,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "ui.h"
+#include "common/fuzzy.h"
 #include "client/input.h"
 #include "common/prompt.h"
 
@@ -311,6 +312,29 @@ void UI_DrawString(int x, int y, int flags, const char *string)
     }
 
     R_DrawString(x, y, flags, MAX_STRING_CHARS, string, uis.fontHandle);
+}
+
+/*
+=================
+UI_MarkMatches
+
+The letters a fuzzy query matched in text, in the alt colour (the high
+bit), as the console's search lists them; none when the query is empty
+or does not match. Any earlier marks come off first.
+=================
+*/
+void UI_MarkMatches(char *text, const char *query)
+{
+    int pos[MAX_QPATH], n, i;
+
+    for (i = 0; text[i]; i++)
+        text[i] &= 0x7f;
+    if (!query || !*query)
+        return;
+    n = Fuzzy_Positions(query, text, pos, q_countof(pos));
+    for (i = 0; i < n; i++)
+        if (pos[i] >= 0 && pos[i] < (int)strlen(text))
+            text[pos[i]] |= 0x80;
 }
 
 void UI_DrawChar(int x, int y, int flags, int ch)

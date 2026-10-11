@@ -334,6 +334,15 @@ static void ApplyFilter(void)
     m_demos.list.curvalue = 0;
     m_demos.list.prestep = 0;
 
+    // the letters the filter matched lit, in the name and in the players
+    for (i = 0; i < m_demos.numAll; i++) {
+        e = m_demos.all[i];
+        if (e->type == ENTRY_DEMO) {
+            UI_MarkMatches(e->name, m_demos.filter);
+            UI_MarkMatches(UI_GetColumn(e->name, COL_PLAYERS), m_demos.filter);
+        }
+    }
+
     if (*m_demos.filter) {
         dirs = m_demos.numDirs;
         // the aq2world row and ".." stay on top

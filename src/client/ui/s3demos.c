@@ -973,6 +973,16 @@ static void S3_ApplyFilter(void)
     m_s3.list.numItems = n;
     m_s3.list.curvalue = 0;
     m_s3.list.prestep = 0;
+    // the letters the filter matched lit: in the teams and the map, and
+    // in the players
+    for (i = 0; i < m_s3.numAll; i++) {
+        s3entry_t *e = m_s3.all[i];
+
+        UI_MarkMatches(UI_GetColumn(e->text, COL_TEAMS), m_s3.filter);
+        UI_MarkMatches(UI_GetColumn(e->text, COL_MAP), m_s3.filter);
+        if (strcmp(e->players, S3_NONE))
+            UI_MarkMatches(e->players, m_s3.filter);
+    }
     if (*m_s3.filter)
         qsort(m_s3.list.items, n, sizeof(void *), S3_ScoreCmp);
     MenuList_Init(&m_s3.list);
