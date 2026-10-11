@@ -44,6 +44,23 @@ static cvar_t *jpath_cut;           // seconds after a kill or a death a running
 #define JPATH_ICONS_MAX     256
 #define JPATH_KILL_HOLD     50      // frames a kill ray stays whole: five seconds
 #define JPATH_KILL_FADE     10      // and fades out over: one
+#define JPATH_SHOT_HOLD     20      // and a shot's line: two seconds whole
+#define JPATH_SHOT_FADE     10      // and one to go
+
+// a mark's share of its colour at this age while the run plays: whole
+// for hold, gone fade later; 1 on a still view, 0 past it
+static float JPath_Fade(float upto, int frame, int hold, int fade)
+{
+    float age = upto - frame;
+
+    if (!jpath.playing)
+        return 1;
+    if (age > hold + fade)
+        return 0;
+    if (age > hold)
+        return 1 - (age - hold) / fade;
+    return 1;
+}
 static struct {
     vec3_t      org;
     qhandle_t   pic;
@@ -254,15 +271,14 @@ static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float l
         int kf = t->kills[c], shot = -1;
         const mvp_trail_t *o = NULL;
         vec3_t eye, him, mid;
-        float age = upto - kf, fade = 1;
+        float fade;
 
         if (kf >= t->count || kf > upto)
             continue;
         // whole for five seconds after the kill, then a second's fade
-        if (age > JPATH_KILL_HOLD + JPATH_KILL_FADE)
+        fade = JPath_Fade(upto, kf, JPATH_KILL_HOLD, JPATH_KILL_FADE);
+        if (fade <= 0)
             continue;
-        if (age > JPATH_KILL_HOLD)
-            fade = 1 - (age - JPATH_KILL_HOLD) / JPATH_KILL_FADE;
         for (j = kf; j >= 0 && j >= kf - 15; j--)
             if (s[j].flags & MVP_SHOT) {
                 shot = j;
@@ -331,9 +347,14 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
-        // his shots, as the bullets went - the round's others' too
-        if (jpath_look->integer && (s[i].flags & MVP_SHOT))
-            JPath_Shot(t, i, a, dim ? 150 : alpha, depth);
+        // his shots, as the bullets went - the round's others' too - each
+        // whole two seconds, then a second's fade
+        if (jpath_look->integer && (s[i].flags & MVP_SHOT)) {
+            float fade = JPath_Fade(upto, i, JPATH_SHOT_HOLD, JPATH_SHOT_FADE);
+
+            if (fade > 0)
+                JPath_Shot(t, i, a, (dim ? 150 : alpha) * fade, depth);
+        }
         VectorCopy(b, a);
     }
     // the stretch being run, and its head - where he looks right now
