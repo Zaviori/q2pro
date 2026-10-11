@@ -146,7 +146,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours; \"collection/\" the collection itself\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod paths [demo] - the players' round-start routes out of an .mvd2 in demos/, from a menu\n");
-		gi.cprintf(ent, PRINT_HIGH, " jmod path <#> [ghost|pov] - route # of the listed player: drawn on the map, or its ghost\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod path <#> [ghost|pov|train] - route # of the listed player, followed from his view; ghost: third person; train: a drill beside its ghost\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod pathmap - every listed route on the map, numbered to click on; again or Escape puts them away\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod pathspawn <#> - the listed player's routes from spawnpoint #; shift+fire on a spawn marker does the same\n");
 
@@ -588,6 +588,7 @@ static void JmpSpawnNow(edict_t *ent)
 	// for a round's start at a spawnpoint, not for a place of one's own
 	if (client->resp.jmp_spawn_spot == JMP_SPOT_STORED || client->resp.jmp_spawn_spot >= JMP_SPOT_JUMPS) {
 		Cmd_Recall_f(ent);
+		JmpPath_Spawned(ent);
 		if (client->resp.jmp_spawn_repeat > 0)
 			JmpSpawnAt(ent, client->resp.jmp_spawn_repeat);
 		return;
@@ -605,6 +606,7 @@ static void JmpSpawnNow(edict_t *ent)
 		return;
 	}
 	jmodTeleport(ent, spot);
+	JmpPath_Spawned(ent);
 
 	// a take begins here: recall brings him back for another go
 	if (JmpIsRecording(ent))
@@ -833,6 +835,10 @@ static void JmpSpotName(int number, char *buf, size_t size, qboolean shortname)
 
 	if (number >= JMP_SPOT_JUMPS) {
 		Q_strncpyz(buf, JmpStartName(number), size);
+		return;
+	}
+	if (number == JMP_SPOT_STORED) {
+		Q_strncpyz(buf, "The route's start", size);
 		return;
 	}
 	if (number < 0) {
@@ -3263,6 +3269,21 @@ void Jmp_PlayTake(edict_t *ent, jmp_take_t *take, qboolean pov)
 	st->play = *take;
 	memset(take, 0, sizeof(*take));
 	JmpPlayStart(ent, pov);
+}
+
+// a drill from a place: stored as "jmod store" keeps one, so recall and
+// respawn come back to it, and the delay and the repeat asked from the
+// spawn menu, which spawns him there with them
+void Jmp_AskDrill(edict_t *ent, const vec3_t origin, float pitch, float yaw)
+{
+	gclient_t *client = ent->client;
+
+	VectorCopy(origin, client->resp.jmp_teleport_origin);
+	VectorSet(client->resp.jmp_teleport_v_angle, pitch, yaw, 0);
+	client->resp.jmp_teleport_ducked = false;
+	client->jmp_menu_pick = JMP_SPOT_STORED;
+	client->jmp_menu_rec = false;
+	JmpMenuShow(ent, 1, -1);
 }
 
 // to a stored jump's start, as a spawn: stored, so recall and respawn

@@ -28,7 +28,7 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_FIRST		3
 #define JMP_PATH_SECS		6		// shown past ACTION!, by default
 #define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
-#define JMP_PATH_GHOST_HOLD_MS	1500	// the ghosts stand at their ends this long, then set off again
+#define JMP_PATH_GHOST_HOLD_MS	1000	// the ghosts stand at their ends this long, then set off again (JMP_PLAY_TAIL_MS: in step with a followed ghost)
 #define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rounds' opponents
 #define JMP_PATH_SKULL		"models/objects/gibs/skull/tris.md2"	// where a ghost's player died
 
@@ -63,8 +63,10 @@ typedef struct {
 	edict_t	*skulls[JMP_PATH_GHOSTS];	// a skull where the ghost's player died, when he did inside the window
 	int		ghost_count;
 	float	ghost_t0;				// level.time they set off
+	float	ghost_ms;				// where the run was last frame: back to 0 is a new run
 	int		ghost_lca;				// LIGHTS, CAMERA, ACTION! said this run: 0 to 3
 	int		solo;					// a route picked alone, as an index into routes; -1 none
+	int		train;					// the route drilled: its ghost dim, off again at each spawn; -1 none
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -109,6 +111,7 @@ static jmp_path_t *JmpPath(edict_t *ent)
 		st->player = -1;
 		st->sel = -1;
 		st->solo = -1;
+		st->train = -1;
 	}
 	return st;
 }
@@ -289,6 +292,9 @@ static const char *JmpPathPlayerName(jmp_path_t *st)
 }
 
 static int JmpPathSpawn(const vec3_t origin);
+static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st);
+static void JmpPathMarkers(edict_t *ent, jmp_path_t *st);
+static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own);
 static int JmpPathSkin(jmp_path_t *st, const mvp_trail_t *t, int which);
 
 // the routes shown: all of them, or those from the spawnpoint picked
@@ -326,6 +332,7 @@ static void JmpPathRoutes(jmp_path_t *st)
 	st->vis_count = 0;
 	st->spawn_filter = 0;
 	st->solo = -1;
+	st->train = -1;
 	st->sel = -1;
 	if (!st->demo || st->player < 0)
 		return;
@@ -506,18 +513,90 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 	}
 }
 
-static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
+/*
+A route alone: its line with the others of its round round it, the
+round's opponents running, and the player's ghost followed - from his
+own eyes, fire for third person and back (Jmp_PlayThink) - in step with
+them. Escape ends the following (Jmp_PlayEscape) and leaves the route
+up; Escape again brings the set it was picked from back.
+*/
+static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 {
 	jmp_take_t take;
 
 	if (k < 0 || k >= st->route_count)
 		return;
-	if (st->over) {
-		st->sel = k;
-		JmpPathStuffPlay(ent, st, k);
-	}
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	st->solo = k;
+	st->train = -1;
+	JmpPathFilter(st);
+	st->over = true;
+	st->sel = k;
+	st->click_ms = 0;
+	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s: fire for third person and back, Escape to let go; Escape again brings the others back\n",
+		st->demo->rounds[st->demo->trails[st->routes[k]].round].number, JmpPathPlayerName(st));
+	JmpPathStuffPlay(ent, st, k);
+	JmpPathMarkersClear(ent, st);
+	JmpPathMarkers(ent, st);
+	JmpPathGhostsSpawn(ent, st, false);
 	JmpPathTake(st, k, &take);
 	Jmp_PlayTake(ent, &take, pov);
+}
+
+static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
+{
+	JmpPathSolo(ent, st, k, pov);
+}
+
+/*
+A route to drill (shift+fire on its number, or jmod path <#> train):
+the route drawn, its ghost dim beside you and off again every time you
+spawn, and the spawn menu asking how long until you spawn at its start
+and how often again; no opponents. Escape ends the drill.
+*/
+static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
+{
+	const mvp_trail_t *t;
+	const mvp_sample_t *m;
+	vec3_t origin;
+	int n;
+
+	if (k < 0 || k >= st->route_count)
+		return;
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	Jmp_PlayEscape(ent);		// a ghost being followed lets go
+	st->solo = k;
+	st->train = k;
+	JmpPathFilter(st);
+	st->over = true;
+	st->sel = k;
+	st->click_ms = 0;
+	JmpPathStuffPlay(ent, st, k);
+	JmpPathMarkersClear(ent, st);
+	JmpPathMarkers(ent, st);
+	JmpPathGhostsSpawn(ent, st, true);
+
+	t = &st->demo->trails[st->routes[k]];
+	n = min(t->count, st->frames + 1);
+	MvdPath_Origin(&st->demo->samples[t->first], origin);
+	m = &st->demo->samples[t->first + min(2, n - 1)];	// the LIGHTS frame has the angles zeroed
+	gi.cprintf(ent, PRINT_HIGH, "Drilling route %d of %s: the ghost sets off whenever you spawn. Escape ends it\n",
+		st->demo->rounds[t->round].number, JmpPathPlayerName(st));
+	Jmp_AskDrill(ent, origin, SHORT2ANGLE(m->pitch), SHORT2ANGLE(m->yaw));
+}
+
+// a jmod spawn landed: a drill's ghost sets off with it
+void JmpPath_Spawned(edict_t *ent)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (st->train < 0 || !st->ghost_count)
+		return;
+	st->ghost_t0 = level.time;
+	st->ghost_ms = -1;
+	st->ghost_lca = 0;
 }
 
 /*
@@ -566,8 +645,8 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 }
 
 // a ghost down trail k, at its start; a skull where he died, hidden
-// until the ghost gets there
-static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k)
+// until the ghost gets there. Dim: one to run beside, not to watch
+static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 {
 	const mvp_trail_t *t = &st->demo->trails[k];
 	edict_t *ghost, *skull;
@@ -584,6 +663,8 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k)
 	slot = JmpPathSkin(st, t, 1 + i);
 	ghost->s.skinnum = slot >= 0 ? slot : ent - g_edicts - 1;
 	ghost->s.renderfx = RF_TRANSLUCENT;
+	if (dim)
+		ghost->x.alpha = 0.3f;
 	MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
 	VectorCopy(ghost->s.origin, ghost->s.old_origin);
 	gi.linkentity(ghost);
@@ -608,23 +689,25 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k)
 	st->ghost_count++;
 }
 
-// one per route shown; with a route alone, the opponents of its round too
-static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
+// one per route shown - unless the one route shown is followed as the
+// watcher's own ghost - and with a route alone, the opponents of its round
+static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 {
 	int i, k;
 
 	JmpPathGhostsClear(st);
-	for (i = 0; i < st->vis_count; i++)
-		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]]);
+	for (i = 0; own && i < st->vis_count; i++)
+		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]], st->train >= 0);
 	for (i = 0; st->solo >= 0 && i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
 		const mvp_round_t *r = &st->demo->rounds[t->round];
 
 		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
-			if (st->demo->trails[k].team != t->team)
-				JmpPathGhostAdd(ent, st, k);
+			if (st->train < 0 && st->demo->trails[k].team != t->team)
+				JmpPathGhostAdd(ent, st, k, false);
 	}
 	st->ghost_t0 = level.time;
+	st->ghost_ms = -1;
 	st->ghost_lca = 0;
 }
 
@@ -654,6 +737,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 {
 	float ms, period, frac, pitch, yaw;
 	int i, k, n, whole;
+	qboolean restarted;
 
 	if (!st->ghost_count || !st->demo)
 		return;
@@ -661,8 +745,12 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 	ms = fmodf((level.time - st->ghost_t0) * 1000, period);
 	whole = (int)(ms / 100);
 	frac = ms / 100 - whole;
-	if (whole == 0 && ms < 100)
-		st->ghost_lca = 0;		// off again
+	// off again: the clock went back round (a frame may land past the
+	// first tenth, which a test on it missed, and the run went silent)
+	if (ms < st->ghost_ms)
+		st->ghost_lca = 0;
+	restarted = ms < st->ghost_ms;
+	st->ghost_ms = ms;
 	JmpPathGhostsLca(ent, st, ms);
 
 	for (i = 0; i < st->ghost_count; i++) {
@@ -697,7 +785,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		yaw = SHORT2ANGLE(a->yaw);
 		VectorSet(ghost->s.angles, pitch / 3, yaw, 0);
 		ghost->s.frame = a->anim;
-		if (whole == 0 && ms < 100)
+		if (restarted)
 			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
 		gi.linkentity(ghost);
 	}
@@ -737,8 +825,8 @@ static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 		Ghud_SetColor(ent, st->tip[i], 255, 255, 255, i ? 170 : 255);
 	}
 	if (on) {
-		Ghud_SetText(ent, st->tip[0], "click: this route, with the others of its round");
-		Ghud_SetText(ent, st->tip[1], "double click: watch its ghost");
+		Ghud_SetText(ent, st->tip[0], "click: follow this route from the player's view");
+		Ghud_SetText(ent, st->tip[1], "shift + click: drill it beside its ghost");
 	}
 }
 
@@ -855,8 +943,10 @@ static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 	st->over = on;
 	st->sel = -1;
 	st->click_ms = 0;
-	if (!on)
+	if (!on) {
 		JmpPathGhostsClear(st);
+		st->train = -1;
+	}
 	if (on) {
 		JmpPathStuffShow(ent, st);
 		if (st->spawn_filter)
@@ -871,25 +961,10 @@ static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 	JmpPathMarkers(ent, st);
 }
 
-// one route alone, the others of its round round it, its ghost and the
-// opponents' running; Escape brings the set it was picked from back
+// a click on a route's number: the route alone, followed from the player's view
 static void JmpPathOne(edict_t *ent, jmp_path_t *st, int k)
 {
-	if (k < 0 || k >= st->route_count)
-		return;
-	if (ent->client->layout == LAYOUT_MENU)
-		PMenu_Close(ent);
-	st->solo = k;
-	JmpPathFilter(st);
-	st->over = true;
-	st->sel = k;
-	st->click_ms = 0;
-	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s alone; Escape brings the others back\n",
-		st->demo->rounds[st->demo->trails[st->routes[k]].round].number, JmpPathPlayerName(st));
-	JmpPathStuffPlay(ent, st, k);
-	JmpPathMarkersClear(ent, st);
-	JmpPathMarkers(ent, st);
-	JmpPathGhostsSpawn(ent, st);
+	JmpPathSolo(ent, st, k, true);
 }
 
 // with the overview up the markers are buttons: a click draws that
@@ -905,9 +980,16 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 	st->fire_held = fire;
 	if (!st->over || client->layout == LAYOUT_MENU || (ent->svflags & SVF_NOCLIENT))
 		return false;
-	// shift is the spawn markers' click: the routes from that spawn
-	if (ucmd->impulse == IMPULSE_SHIFT || client->jmp_shift)
+	// shift on a route's number drills it; on a spawn marker it is the
+	// routes from that spawn, which is Jmp_MenuFire's
+	if (ucmd->impulse == IMPULSE_SHIFT || client->jmp_shift) {
+		if (pressed && k >= 0) {
+			client->latched_buttons &= ~BUTTON_ATTACK;
+			JmpPathTrain(ent, st, k);
+			return true;
+		}
 		return false;
+	}
 
 	if (st->click_ms > 0) {
 		st->click_ms -= ucmd->msec;
@@ -939,6 +1021,10 @@ qboolean JmpPath_Escape(edict_t *ent)
 
 	if (!st->over)
 		return false;
+	if (st->train >= 0) {
+		st->train = -1;
+		Cmd_SpawnCancel_f(ent);
+	}
 	if (st->solo >= 0) {
 		// back to the set the route was picked from
 		st->solo = -1;
@@ -946,7 +1032,7 @@ qboolean JmpPath_Escape(edict_t *ent)
 		JmpPathOver(ent, st, false);
 		JmpPathOver(ent, st, true);
 		if (st->over && st->spawn_filter)
-			JmpPathGhostsSpawn(ent, st);
+			JmpPathGhostsSpawn(ent, st, true);
 		return true;
 	}
 	JmpPathOver(ent, st, false);
@@ -1058,12 +1144,13 @@ qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
 		return false;
 	st->spawn_filter = spot;
 	st->solo = -1;
+	st->train = -1;
 	JmpPathFilter(st);
 	if (st->over)
 		JmpPathOver(ent, st, false);
 	JmpPathOver(ent, st, true);
 	if (st->over)
-		JmpPathGhostsSpawn(ent, st);
+		JmpPathGhostsSpawn(ent, st, true);
 	return true;
 }
 
@@ -1470,7 +1557,7 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 			JmpPathOver(ent, st, false);
 		JmpPathOver(ent, st, true);
 		if (st->over && k)
-			JmpPathGhostsSpawn(ent, st);
+			JmpPathGhostsSpawn(ent, st, true);
 		return;
 	}
 	if (!Q_stricmp(cmd, "path")) {
@@ -1482,7 +1569,9 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 		}
 		k = st->vis[k];
 		arg = gi.argc() > 3 ? gi.argv(3) : "";
-		if (!Q_stricmp(arg, "ghost"))
+		if (!Q_stricmp(arg, "train"))
+			JmpPathTrain(ent, st, k);
+		else if (!Q_stricmp(arg, "ghost"))
 			JmpPathGhost(ent, st, k, false);
 		else if (!Q_stricmp(arg, "pov"))
 			JmpPathGhost(ent, st, k, true);
