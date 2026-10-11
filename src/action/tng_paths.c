@@ -26,6 +26,8 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_SECS		6		// shown past ACTION!, by default
 #define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
 #define JMP_PATH_GHOST_HOLD_MS	1500	// the ghosts stand at their ends this long, then set off again
+#define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rounds' opponents
+#define JMP_PATH_SKULL		"models/objects/gibs/skull/tris.md2"	// where a ghost's player died
 
 typedef struct {
 	char	map[MAX_QPATH];			// the demo is of this map; another map drops it
@@ -41,10 +43,13 @@ typedef struct {
 	int		vis_count;
 	int		spawn_filter;			// a spawnpoint's number, 0 all
 	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
-	edict_t	*ghosts[JMP_PATH_MAX];	// a ghost running each route shown from the spawn picked
+	edict_t	*ghosts[JMP_PATH_GHOSTS];	// a ghost running each route shown, and the opponents of its round
+	int		ghost_trail[JMP_PATH_GHOSTS];	// index into demo->trails
+	edict_t	*skulls[JMP_PATH_GHOSTS];	// a skull where the ghost's player died, when he did inside the window
 	int		ghost_count;
 	float	ghost_t0;				// level.time they set off
 	int		ghost_lca;				// LIGHTS, CAMERA, ACTION! said this run: 0 to 3
+	int		solo;					// a route picked alone, as an index into routes; -1 none
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -89,6 +94,7 @@ static jmp_path_t *JmpPath(edict_t *ent)
 		Q_strncpyz(st->map, level.mapname, sizeof(st->map));
 		st->player = -1;
 		st->sel = -1;
+		st->solo = -1;
 	}
 	return st;
 }
@@ -277,6 +283,10 @@ static void JmpPathFilter(jmp_path_t *st)
 	int k;
 
 	st->vis_count = 0;
+	if (st->solo >= 0 && st->solo < st->route_count) {
+		st->vis[st->vis_count++] = st->solo;
+		return;
+	}
 	for (k = 0; k < st->route_count; k++)
 		if (!st->spawn_filter || st->spawn[k] == st->spawn_filter)
 			st->vis[st->vis_count++] = k;
@@ -301,6 +311,7 @@ static void JmpPathRoutes(jmp_path_t *st)
 	st->route_count = 0;
 	st->vis_count = 0;
 	st->spawn_filter = 0;
+	st->solo = -1;
 	st->sel = -1;
 	if (!st->demo || st->player < 0)
 		return;
@@ -512,7 +523,7 @@ player model takes its skin from a player skin configstring, so each
 ghost gets a slot of its own above the real clients. Slot 0 is for the
 followed ghost (Jmp_PlayTake), the rest for the spawn's.
 */
-#define JMP_PATH_SKIN_SLOTS	(JMP_PATH_MAX + 1)
+#define JMP_PATH_SKIN_SLOTS	(JMP_PATH_GHOSTS + 1)
 
 // the slot set for the trail, -1 when there is none to spare
 static int JmpPathSkin(jmp_path_t *st, const mvp_trail_t *t, int which)
@@ -530,34 +541,74 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 {
 	int i;
 
-	for (i = 0; i < st->ghost_count; i++)
+	for (i = 0; i < st->ghost_count; i++) {
 		if (st->ghosts[i] && st->ghosts[i]->inuse && !strcmp(st->ghosts[i]->classname, "jmp_path_ghost"))
 			G_FreeEdict(st->ghosts[i]);
+		if (st->skulls[i] && st->skulls[i]->inuse && !strcmp(st->skulls[i]->classname, "jmp_path_skull"))
+			G_FreeEdict(st->skulls[i]);
+		st->skulls[i] = NULL;
+	}
 	st->ghost_count = 0;
 }
 
-// one per route shown, at its start
+// a ghost down trail k, at its start; a skull where he died, hidden
+// until the ghost gets there
+static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k)
+{
+	const mvp_trail_t *t = &st->demo->trails[k];
+	edict_t *ghost, *skull;
+	int i = st->ghost_count, slot;
+
+	if (i >= JMP_PATH_GHOSTS)
+		return;
+	ghost = G_Spawn();
+	ghost->classname = "jmp_path_ghost";
+	ghost->owner = ent;
+	ghost->movetype = MOVETYPE_NONE;
+	ghost->solid = SOLID_NOT;
+	ghost->s.modelindex = 255;
+	slot = JmpPathSkin(st, t, 1 + i);
+	ghost->s.skinnum = slot >= 0 ? slot : ent - g_edicts - 1;
+	ghost->s.renderfx = RF_TRANSLUCENT;
+	MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
+	VectorCopy(ghost->s.origin, ghost->s.old_origin);
+	gi.linkentity(ghost);
+	st->ghosts[i] = ghost;
+	st->ghost_trail[i] = k;
+	st->skulls[i] = NULL;
+
+	if (t->died && t->count <= st->frames + 1) {
+		skull = G_Spawn();
+		skull->classname = "jmp_path_skull";
+		skull->owner = ent;
+		skull->movetype = MOVETYPE_NONE;
+		skull->solid = SOLID_NOT;
+		skull->s.modelindex = gi.modelindex(JMP_PATH_SKULL);
+		skull->svflags |= SVF_NOCLIENT;
+		MvdPath_Origin(&st->demo->samples[t->first + t->count - 1], skull->s.origin);
+		skull->s.origin[2] += 4;
+		VectorCopy(skull->s.origin, skull->s.old_origin);
+		gi.linkentity(skull);
+		st->skulls[i] = skull;
+	}
+	st->ghost_count++;
+}
+
+// one per route shown, then the opponents of each route's round
 static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 {
-	int i, slot;
+	int i, k;
 
 	JmpPathGhostsClear(st);
+	for (i = 0; i < st->vis_count; i++)
+		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]]);
 	for (i = 0; i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
-		edict_t *ghost = G_Spawn();
+		const mvp_round_t *r = &st->demo->rounds[t->round];
 
-		ghost->classname = "jmp_path_ghost";
-		ghost->owner = ent;
-		ghost->movetype = MOVETYPE_NONE;
-		ghost->solid = SOLID_NOT;
-		ghost->s.modelindex = 255;
-		slot = JmpPathSkin(st, t, 1 + i);
-		ghost->s.skinnum = slot >= 0 ? slot : ent - g_edicts - 1;
-		ghost->s.renderfx = RF_TRANSLUCENT;
-		MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
-		VectorCopy(ghost->s.origin, ghost->s.old_origin);
-		gi.linkentity(ghost);
-		st->ghosts[st->ghost_count++] = ghost;
+		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
+			if (st->demo->trails[k].team != t->team)
+				JmpPathGhostAdd(ent, st, k);
 	}
 	st->ghost_t0 = level.time;
 	st->ghost_lca = 0;
@@ -600,16 +651,26 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		st->ghost_lca = 0;		// off again
 	JmpPathGhostsLca(ent, st, ms);
 
-	for (i = 0; i < st->ghost_count && i < st->vis_count; i++) {
-		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
+	for (i = 0; i < st->ghost_count; i++) {
+		const mvp_trail_t *t = &st->demo->trails[st->ghost_trail[i]];
 		const mvp_sample_t *a, *b;
-		edict_t *ghost = st->ghosts[i];
+		edict_t *ghost = st->ghosts[i], *skull = st->skulls[i];
 		vec3_t oa, ob;
+		qboolean dead;
 
 		if (!ghost || !ghost->inuse)
 			continue;
 		n = min(t->count, st->frames + 1);
 		k = min(whole, n - 1);
+		// at his death the ghost goes and the skull stays, until the next run
+		dead = skull && whole >= n - 1;
+		if (dead != ((ghost->svflags & SVF_NOCLIENT) != 0)) {
+			ghost->svflags ^= SVF_NOCLIENT;
+			if (skull && skull->inuse) {
+				skull->svflags = dead ? (skull->svflags & ~SVF_NOCLIENT) : (skull->svflags | SVF_NOCLIENT);
+				gi.linkentity(skull);
+			}
+		}
 		a = &st->demo->samples[t->first + k];
 		b = &st->demo->samples[t->first + min(k + 1, n - 1)];
 		MvdPath_Origin(a, oa);
@@ -796,20 +857,25 @@ static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 	JmpPathMarkers(ent, st);
 }
 
-// one route drawn, the others of its round round it
+// one route alone, the others of its round round it, its ghost and the
+// opponents' running; Escape brings the set it was picked from back
 static void JmpPathOne(edict_t *ent, jmp_path_t *st, int k)
 {
 	if (k < 0 || k >= st->route_count)
 		return;
-	if (!st->over) {
-		if (ent->client->layout == LAYOUT_MENU)
-			PMenu_Close(ent);
-		st->over = true;
-		gi.cprintf(ent, PRINT_HIGH, "Route %d of %s on the map; Escape puts it away\n", k + 1, JmpPathPlayerName(st));
-	}
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	st->solo = k;
+	JmpPathFilter(st);
+	st->over = true;
 	st->sel = k;
+	st->click_ms = 0;
+	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s alone; Escape brings the others back\n",
+		st->demo->rounds[st->demo->trails[st->routes[k]].round].number, JmpPathPlayerName(st));
 	JmpPathStuffPlay(ent, st, k);
+	JmpPathMarkersClear(ent, st);
 	JmpPathMarkers(ent, st);
+	JmpPathGhostsSpawn(ent, st);
 }
 
 // with the overview up the markers are buttons: a click draws that
@@ -859,6 +925,16 @@ qboolean JmpPath_Escape(edict_t *ent)
 
 	if (!st->over)
 		return false;
+	if (st->solo >= 0) {
+		// back to the set the route was picked from
+		st->solo = -1;
+		JmpPathFilter(st);
+		JmpPathOver(ent, st, false);
+		JmpPathOver(ent, st, true);
+		if (st->over && st->spawn_filter)
+			JmpPathGhostsSpawn(ent, st);
+		return true;
+	}
 	JmpPathOver(ent, st, false);
 	return true;
 }
@@ -967,6 +1043,7 @@ qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
 	if (!st->spawn_mode || !st->route_count || spot <= 0 || spot >= JMP_SPOT_JUMPS)
 		return false;
 	st->spawn_filter = spot;
+	st->solo = -1;
 	JmpPathFilter(st);
 	if (st->over)
 		JmpPathOver(ent, st, false);
@@ -1019,6 +1096,7 @@ static void JmpPathMenuAllSpawns(edict_t *ent, pmenu_t *p)
 	jmp_path_t *st = JmpPath(ent);
 
 	st->spawn_filter = 0;
+	st->solo = -1;
 	JmpPathFilter(st);
 	st->top = 0;
 	JmpPathShow(ent, JMP_MENU_PATH_ROUTES, -1);
@@ -1227,6 +1305,8 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 	int k;
 
 	if (!Q_stricmp(cmd, "pathmap")) {
+		st->solo = -1;
+		JmpPathFilter(st);
 		JmpPathOver(ent, st, !st->over);
 		return;
 	}
@@ -1243,6 +1323,7 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 		}
 		st->spawn_mode = true;
 		st->spawn_filter = k;
+		st->solo = -1;
 		JmpPathFilter(st);
 		if (st->over)
 			JmpPathOver(ent, st, false);
