@@ -347,6 +347,13 @@ static void CL_Record_f(void)
                                MIN_PACKETLEN,
                                MAX_MSGLEN);
 
+    // a local jump mod game is practice: nothing in it is worth a demo,
+    // and a config that records every map start would fill demos/ with them
+    if (sv_running->integer && Cvar_VariableInteger("jump")) {
+        Com_Printf("Not recording: a jump mod game.\n");
+        return;
+    }
+
     while ((c = Cmd_ParseOptions(o_record)) != -1) {
         switch (c) {
         case 'h':
