@@ -203,7 +203,6 @@ static void JPath_Shot(const mvp_trail_t *t, int i, const vec3_t at, int alpha, 
     }
     if (got) {
         R_AddDebugLine(eye, hit, MakeColor(60, 255, 80, alpha), 0, depth);
-        R_AddDebugPoint(hit, 8, MakeColor(60, 255, 80, alpha), 0, depth);
     } else {
         R_AddDebugLine(eye, wall, MakeColor(255, 60, 60, alpha * 0.35f), 0, depth);
     }
