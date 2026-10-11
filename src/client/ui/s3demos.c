@@ -416,19 +416,22 @@ static void S3_UrlEncode(const char *s, char *out, size_t size)
     out[n] = 0;
 }
 
-// a ...T...Z stamp as a time
+// a ...T...Z stamp as a time: days since 1970 by the civil calendar,
+// as timegm would have it, which mingw has not
 static time_t S3_Stamp(const char *s)
 {
-    struct tm tm;
-    int n;
+    int y, m, d, hh, mm, ss;
+    int64_t era, yoe, doy, doe, days;
 
-    memset(&tm, 0, sizeof(tm));
-    n = sscanf(s, "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
-    if (n != 6)
+    if (sscanf(s, "%d-%d-%dT%d:%d:%d", &y, &m, &d, &hh, &mm, &ss) != 6)
         return 0;
-    tm.tm_year -= 1900;
-    tm.tm_mon -= 1;
-    return timegm(&tm);
+    y -= m <= 2;
+    era = (y >= 0 ? y : y - 399) / 400;
+    yoe = y - era * 400;
+    doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    days = era * 146097 + doe - 719468;
+    return (time_t)(days * 86400 + hh * 3600 + mm * 60 + ss);
 }
 
 // between <tag> and </tag> after from, cut to fit; NULL when there is none
