@@ -1903,9 +1903,10 @@ way, to try it.
 // the HUD: an element per key, in bit order, then three lines of text
 #define JMP_HUD_INFO	JMP_KEYS
 #define JMP_HUD_DESC	(JMP_KEYS + 1)
-#define JMP_HUD_HINT	(JMP_KEYS + 2)
-#define JMP_HUD_MVD		(JMP_KEYS + 3)	// the badge over the keys: a demo's take has none to show
-#define JMP_HUD_COUNT	(JMP_KEYS + 4)
+#define JMP_HUD_HINT	(JMP_KEYS + 2)	// two rows, a key each, as the status rows are
+#define JMP_HUD_HINT2	(JMP_KEYS + 3)
+#define JMP_HUD_MVD		(JMP_KEYS + 4)	// the badge over the keys: a demo's take has none to show
+#define JMP_HUD_COUNT	(JMP_KEYS + 5)
 
 static const struct {
 	char *label;
@@ -2031,9 +2032,13 @@ static void JmpStatus(edict_t *ent)
 		Q_strncpyz(rows[3], "Esc: remove markers", sizeof(rows[3]));
 	}
 
+	// the rows with text, packed: a state may leave one out
 	for (i = 0; i < JMP_STATUS_ROWS; i++)
-		if (rows[i][0])
-			n = i + 1;
+		if (rows[i][0]) {
+			if (n != i)
+				memcpy(rows[n], rows[i], sizeof(rows[0]));
+			n++;
+		}
 	if (!n) {
 		if (client->resp.jmp_status_on)
 			for (i = 0; i < JMP_STATUS_ROWS; i++)
@@ -3105,9 +3110,8 @@ static void Cmd_JumpDelete_f(edict_t *ent)
 //
 static void JmpHudHint(edict_t *ent, jmp_state_t *st)
 {
-	Ghud_SetText(ent, st->hud[JMP_HUD_HINT], st->pov
-		? "player's view - fire: third person, Esc: stop"
-		: "third person - fire: player's view, Esc: stop");
+	Ghud_SetText(ent, st->hud[JMP_HUD_HINT], st->pov ? "Fire: third person" : "Fire: the player's view");
+	Ghud_SetText(ent, st->hud[JMP_HUD_HINT2], "Esc: stop");
 }
 
 static void JmpHudKeys(edict_t *ent, jmp_state_t *st, int keys, qboolean all)
@@ -3154,8 +3158,8 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 			Ghud_SetPosition(ent, el, jmp_hud_keys[i].x, jmp_hud_keys[i].y);
 			Ghud_SetText(ent, el, jmp_hud_keys[i].label);
 		} else {
-			Ghud_SetPosition(ent, el, 0, -60 + 10 * (i - JMP_HUD_INFO));
-			Ghud_SetColor(ent, el, 255, 255, 255, i == JMP_HUD_HINT ? 140 : 255);
+			Ghud_SetPosition(ent, el, 0, -22 - 12 * (JMP_HUD_HINT2 - i));
+			Ghud_SetColor(ent, el, 255, 255, 255, i == JMP_HUD_INFO ? 255 : 200);
 		}
 	}
 

@@ -643,8 +643,8 @@ qboolean JmpPath_Status(edict_t *ent, char rows[][64], const char *spawn)
 				st->vis_count, st->vis_count == 1 ? "" : "s", st->spawn_filter);
 		else
 			Q_snprintf(rows[0], size, "All %d of %.16s's routes on the map", st->vis_count, name);
-		Q_strncpyz(rows[1], "Click at a number to follow the route", size);
-		Q_strncpyz(rows[2], "Shift + click on a marker to drill it", size);
+		Q_strncpyz(rows[1], "Click at a number: follow the route", size);
+		Q_strncpyz(rows[2], "Shift + click on a marker: drill it", size);
 		Q_strncpyz(rows[3], "Esc: remove markers and stop", size);
 		return true;
 	}
