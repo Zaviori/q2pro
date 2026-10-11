@@ -643,7 +643,7 @@ qboolean JmpPath_Status(edict_t *ent, char *row0, char *row1, size_t size, const
 				st->vis_count, st->vis_count == 1 ? "" : "s", st->spawn_filter);
 		else
 			Q_snprintf(row0, size, "All %d of %.16s's routes on the map", st->vis_count, name);
-		Q_strncpyz(row1, "fire a number: follow it   shift: drill it   Escape: down", size);
+		Q_strncpyz(row1, "click at a number to follow the route   shift: drill   Esc: down", size);
 		return true;
 	}
 	if (st->spawn_mode && ent->client->resp.jmp_markers && ent->client->layout != LAYOUT_MENU) {
