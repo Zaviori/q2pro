@@ -890,7 +890,7 @@ static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 		"Click: follow this route from the player's view",
 		"Fire while following: third person and back",
 		"Shift + click: drill it beside its ghost",
-		"Shift + alt + click: drill it with the round's others",
+		"Shift + alt + click: drill it with the other players' ghosts",
 		"Esc: back to the routes",
 	};
 
