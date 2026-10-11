@@ -1964,9 +1964,9 @@ static qboolean JmpWrite(jmp_take_t *t)
 	for (i = 0; i < t->count; i++) {
 		jmp_sample_t *s = &t->samples[i];
 
-		fprintf(f, "%d %.3f %.3f %.3f %.2f %.2f %d %d %d %d\n", s->ms,
+		fprintf(f, "%d %.3f %.3f %.3f %.2f %.2f %d %d %d %d %d\n", s->ms,
 			s->origin[0], s->origin[1], s->origin[2], s->pitch, s->yaw,
-			s->frame, s->keys, s->viewheight, s->speed);
+			s->frame, s->keys, s->viewheight, s->speed, s->weapon);
 	}
 	return fclose(f) == 0;
 }
@@ -2018,11 +2018,13 @@ static qboolean JmpRead(const char *pack, const char *name, jmp_take_t *t, qbool
 	t->samples = gi.TagMalloc(count * sizeof(jmp_sample_t), TAG_GAME);
 	for (i = 0; i < count && fgets(line, sizeof(line), f); i++) {
 		jmp_sample_t *s = &t->samples[i];
-		int frame, keys, viewheight, speed;
+		int frame, keys, viewheight, speed, weapon = 0, n;
 
-		if (sscanf(line, "%d %f %f %f %f %f %d %d %d %d", &s->ms,
+		// the weapon is the eleventh field, which an older file lacks
+		n = sscanf(line, "%d %f %f %f %f %f %d %d %d %d %d", &s->ms,
 			&s->origin[0], &s->origin[1], &s->origin[2], &s->pitch, &s->yaw,
-			&frame, &keys, &viewheight, &speed) != 10)
+			&frame, &keys, &viewheight, &speed, &weapon);
+		if (n < 10)
 			break;
 		if (s->ms < (i ? s[-1].ms : 0))
 			break;
@@ -2030,6 +2032,7 @@ static qboolean JmpRead(const char *pack, const char *name, jmp_take_t *t, qbool
 		s->keys = keys;
 		s->viewheight = viewheight;
 		s->speed = speed;
+		s->weapon = weapon;
 	}
 	fclose(f);
 
@@ -2410,6 +2413,7 @@ void Jmp_RecordCmd(edict_t *ent, usercmd_t *ucmd)
 	s->speed = min(VectorLength(ent->velocity), 32000);
 	s->keys = st->rec_keys;
 	s->viewheight = ent->viewheight;
+	s->weapon = ent->s.modelindex2 == 255 ? (ent->s.skinnum >> 8) & 255 : 0;
 	st->rec_keys = 0;
 }
 
@@ -3014,7 +3018,7 @@ static void JmpPlayStart(edict_t *ent, qboolean pov)
 	st->held = BUTTON_ATTACK;	// a key still down from before is not a press
 	st->play_layout = true;
 
-	// the player model in the watcher's skin, without a weapon
+	// the player model in the watcher's skin, the weapon as recorded
 	ghost = st->ghost = G_Spawn();
 	ghost->classname = "jmp_ghost";
 	ghost->owner = ent;
@@ -3125,6 +3129,8 @@ void Jmp_PlayFrame(edict_t *ent)
 	VectorCopy(origin, ghost->s.origin);
 	VectorSet(ghost->s.angles, pitch / 3, yaw, 0);
 	ghost->s.frame = a->frame;
+	ghost->s.skinnum = (ghost->s.skinnum & 255) | (a->weapon << 8);
+	ghost->s.modelindex2 = a->weapon ? 255 : 0;
 	gi.linkentity(ghost);
 
 	if (st->pov) {

@@ -484,6 +484,7 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 		s->yaw = SHORT2ANGLE(m->yaw);
 		s->frame = m->anim;
 		s->viewheight = m->viewheight;
+		s->weapon = m->weapon;
 		s->keys = 0;
 		s->speed = 0;
 		if (i + 1 >= n)
@@ -785,6 +786,8 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		yaw = SHORT2ANGLE(a->yaw);
 		VectorSet(ghost->s.angles, pitch / 3, yaw, 0);
 		ghost->s.frame = a->anim;
+		ghost->s.skinnum = (ghost->s.skinnum & 255) | (a->weapon << 8);
+		ghost->s.modelindex2 = a->weapon ? 255 : 0;
 		if (restarted)
 			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
 		gi.linkentity(ghost);

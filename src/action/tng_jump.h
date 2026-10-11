@@ -39,6 +39,7 @@ typedef struct {
 	short	speed;
 	byte	keys;		// held at any time since the sample before
 	signed char	viewheight;
+	byte	weapon;		// the weapon model held (the mod's vwep index), 0 for none
 } jmp_sample_t;
 
 typedef struct {
