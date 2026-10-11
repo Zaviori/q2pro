@@ -820,7 +820,7 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, q
 	Ghud_SetFlags(ent, st->names[i], GHF_3DPOS);
 	Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
 	Ghud_SetTextFlags(ent, st->names[i], UI_CENTER);
-	Ghud_SetInt(ent, st->names[i], (-8 & 0xff) | 0x200);
+	Ghud_SetInt(ent, st->names[i], (-8 & 0xff) | 0x200 | 0x400);	// small, plain, never faded
 	Ghud_SetColor(ent, st->names[i], 255, 255, 255, dim ? 120 : 220);
 	Ghud_SetText(ent, st->names[i], (char *)t->name);
 	st->names_on = true;
