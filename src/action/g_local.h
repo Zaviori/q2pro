@@ -2110,7 +2110,7 @@ typedef struct
   int jmp_ghud_key;					// what they show, to redo them only on a change
   int jmp_ghud_size[JMP_POINTS_MAX];	// each ring's size as last sent
   int jmp_ghud_made;				// level.framenum they were made at; a map change frees them
-  int jmp_tip[5];					// the tooltip under the crosshair while one is aimed at: a hint a row
+  int jmp_tip[6];					// the tooltip under the crosshair while one is aimed at: a hint a row
   qboolean jmp_tip_on;
   int jmp_status[4];				// rows at the bottom: what the jump mod is doing, then a key a row
   qboolean jmp_status_on;
