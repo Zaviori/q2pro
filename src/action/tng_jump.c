@@ -2023,7 +2023,7 @@ static void JmpStatus(edict_t *ent)
 {
 	gclient_t *client = ent->client;
 	jmp_state_t *st = JmpState(ent);
-	char row0[64] = "", row1[64] = "", spawn[64] = "", secs[16];
+	char row0[64] = "", row1[64] = "", row2[64] = "", spawn[64] = "", secs[16];
 	int i;
 
 	if (client->resp.jmp_spawn_frame) {
@@ -2042,7 +2042,7 @@ static void JmpStatus(edict_t *ent)
 		Q_snprintf(row0, sizeof(row0), "Recording a jump: %s s", secs);
 		Q_strncpyz(row1, spawn[0] ? "the countdown - Escape: stop the take"
 			: "Escape: stop and keep the take   jmod recall: another go", sizeof(row1));
-	} else if (JmpPath_Status(ent, row0, row1, sizeof(row0), spawn)) {
+	} else if (JmpPath_Status(ent, row0, row1, row2, sizeof(row0), spawn)) {
 		// the pathing's: routes, ghosts, a drill, the spawn pick
 	} else if (spawn[0]) {
 		Q_strncpyz(row0, spawn, sizeof(row0));
@@ -2054,24 +2054,26 @@ static void JmpStatus(edict_t *ent)
 
 	if (!row0[0] && !row1[0]) {
 		if (client->resp.jmp_status_on)
-			for (i = 0; i < 2; i++)
+			for (i = 0; i < 3; i++)
 				Ghud_RemoveElement(ent, client->resp.jmp_status[i]);
 		client->resp.jmp_status_on = false;
 		return;
 	}
 	if (!client->resp.jmp_status_on) {
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < 3; i++) {
 			client->resp.jmp_status[i] = Ghud_NewElement(ent, GHT_TEXT);
 			Ghud_SetAnchor(ent, client->resp.jmp_status[i], 0.5f, 1);
-			Ghud_SetPosition(ent, client->resp.jmp_status[i], 0, -34 + 12 * i);
+			Ghud_SetPosition(ent, client->resp.jmp_status[i], 0, -46 + 12 * i);
 			Ghud_SetTextFlags(ent, client->resp.jmp_status[i], UI_CENTER);
 			Ghud_SetColor(ent, client->resp.jmp_status[i], 255, 255, 255, i ? 200 : 255);
 		}
 		client->resp.jmp_status_on = true;
 	}
-	// the server sends a line only when it changes
+	// the server sends a line only when it changes; the third is for a
+	// state with more keys than a line holds
 	Ghud_SetText(ent, client->resp.jmp_status[0], row0);
 	Ghud_SetText(ent, client->resp.jmp_status[1], row1);
+	Ghud_SetText(ent, client->resp.jmp_status[2], row2);
 }
 
 // Escape while a take records: the take ends and is kept, its menu up
