@@ -20,7 +20,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "shared/list.h"
 #include <assert.h>
 
-#define MAX_DEBUG_LINES     TESS_MAX_VERTICES
+#define MAX_DEBUG_LINES     65536   // a demo's routes over whole rounds run to tens of thousands
 #define MAX_DEBUG_TEXTS     1024
 
 typedef struct {
@@ -428,8 +428,6 @@ static void GL_DrawDebugLines(void)
     if (gl_config.caps & QGL_CAP_LINE_SMOOTH)
         qglEnable(GL_LINE_SMOOTH);
 
-    static_assert(q_countof(debug_lines) <= q_countof(tess.vertices) / 8, "Too many debug lines");
-
     dst_vert = tess.vertices;
     numverts = 0;
     LIST_FOR_EACH_SAFE(debug_line_t, l, next, &debug_lines_active, entry) {
@@ -439,7 +437,9 @@ static void GL_DrawDebugLines(void)
             continue;
         }
 
-        if (bits != l->bits) {
+        // a batch at the state's change, or full: more lines than the
+        // tess holds are drawn in several
+        if (bits != l->bits || numverts + 2 > q_countof(tess.vertices) / 4) {
             if (numverts) {
                 GL_LockArrays(numverts);
                 qglDrawArrays(GL_LINES, 0, numverts);
