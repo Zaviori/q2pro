@@ -1237,6 +1237,22 @@ const char *Jmp_MarkerPic(void)
 }
 
 
+// the MVD badge (action/pics/mvd.png) where the server has it; NULL else
+const char *Jmp_MvdPic(void)
+{
+	cvar_t *game_cvar = gi.cvar("game", "action", 0);
+	char path[MAX_QPATH];
+	FILE *f;
+
+	Q_snprintf(path, sizeof(path), "%s/pics/mvd.png",
+		*game_cvar->string ? game_cvar->string : GAMEVERSION);
+	f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fclose(f);
+	return "mvd";
+}
+
 // what is marked: the map's spawnpoints, then the listed jumps' starts
 typedef struct {
 	vec3_t	origin;
@@ -1886,7 +1902,8 @@ way, to try it.
 #define JMP_HUD_INFO	JMP_KEYS
 #define JMP_HUD_DESC	(JMP_KEYS + 1)
 #define JMP_HUD_HINT	(JMP_KEYS + 2)
-#define JMP_HUD_COUNT	(JMP_KEYS + 3)
+#define JMP_HUD_MVD		(JMP_KEYS + 3)	// the badge over the keys: a demo's take has none to show
+#define JMP_HUD_COUNT	(JMP_KEYS + 4)
 
 static const struct {
 	char *label;
@@ -3099,6 +3116,20 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 	int i, el;
 
 	for (i = 0; i < JMP_HUD_COUNT; i++) {
+		if (i == JMP_HUD_MVD) {
+			// the badge, over the keyboard, when the take is a demo's
+			const char *pic = Jmp_MvdPic();
+
+			el = st->hud[i] = Ghud_NewElement(ent, GHT_IMG);
+			Ghud_SetAnchor(ent, el, 0.5f, 1);
+			Ghud_SetPosition(ent, el, 24 - JMP_MVD_PX / 2, -82 - JMP_MVD_PX / 2);
+			Ghud_SetSize(ent, el, JMP_MVD_PX, JMP_MVD_PX);
+			if (t->mvd && pic)
+				Ghud_SetInt(ent, el, gi.imageindex((char *)pic));
+			else
+				Ghud_SetFlags(ent, el, GHF_HIDE);
+			continue;
+		}
 		el = st->hud[i] = Ghud_NewElement(ent, GHT_TEXT);
 		Ghud_SetAnchor(ent, el, 0.5f, 1);
 		Ghud_SetTextFlags(ent, el, UI_CENTER);
@@ -3112,9 +3143,14 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 	}
 
 	JmpSecs(t->ms, secs, sizeof(secs));
-	// a ghud line holds MAX_QPATH: 62 at the longest
-	Q_snprintf(text, sizeof(text), "%.14s%s%.14s%s%.10s - %d fps - %ss", t->pack, t->pack[0] ? "/" : "",
-		t->name, t->name[0] ? " by " : "", t->author, t->fps, secs);
+	// a ghud line holds MAX_QPATH: 62 at the longest; a demo's take has
+	// no fps worth a word, its samples are the server's ten a second
+	if (t->mvd)
+		Q_snprintf(text, sizeof(text), "%.14s%s%.14s%s%.10s - from the demo - %ss", t->pack, t->pack[0] ? "/" : "",
+			t->name, t->name[0] ? " by " : "", t->author, secs);
+	else
+		Q_snprintf(text, sizeof(text), "%.14s%s%.14s%s%.10s - %d fps - %ss", t->pack, t->pack[0] ? "/" : "",
+			t->name, t->name[0] ? " by " : "", t->author, t->fps, secs);
 	Ghud_SetText(ent, st->hud[JMP_HUD_INFO], text);
 	Ghud_SetText(ent, st->hud[JMP_HUD_DESC], t->desc);
 	JmpHudHint(ent, st);
