@@ -1342,14 +1342,16 @@ static void S3_Draw(menuFrameWork_t *self)
     }
     S3_Rest();
 
-    Menu_Draw(self);
+    // the players under the demo the cursor is on
+    m_s3.list.note = NULL;
     if (m_s3.list.numItems) {
         e = m_s3.list.items[m_s3.list.curvalue];
         if (e->players[0] && strcmp(e->players, S3_NONE))
-            MenuList_DrawNote(&m_s3.list, e->players);
+            m_s3.list.note = e->players;
         else if (m_s3.peeking && !strcmp(m_s3.peek_key, e->key))
-            MenuList_DrawNote(&m_s3.list, "looking who is in it...");
+            m_s3.list.note = "looking who is in it...";
     }
+    Menu_Draw(self);
     if (uis.width >= 640)
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT, UI_RIGHT, m_s3.status);
     if (*m_s3.filter)
