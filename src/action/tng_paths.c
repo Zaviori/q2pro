@@ -32,7 +32,7 @@ the trails by index and comes to the same ones.
 typedef struct {
 	char	map[MAX_QPATH];			// the demo is of this map; another map drops it
 	mvp_demo_t	*demo;
-	char	demo_name[MAX_QPATH];	// its file in demos/
+	char	demo_name[MAX_OSPATH];	// its file in demos/: a server demo's name is longer than MAX_QPATH
 	int		player;					// index into demo->players, -1 none
 	int		frames;					// samples shown: to ACTION! and jmod_path_secs past it
 	int		routes[JMP_PATH_MAX];	// the player's unique trails, and the rounds each folds
@@ -72,7 +72,7 @@ typedef struct {
 static jmp_path_t jmp_paths[MAX_CLIENTS];
 
 typedef struct {
-	char	name[MAX_QPATH];
+	char	name[MAX_OSPATH];
 	time_t	mtime;
 } jmp_path_demo_t;
 
@@ -115,7 +115,7 @@ static qboolean JmpPathSafeName(const char *name)
 {
 	size_t len = strlen(name);
 
-	if (!len || len >= MAX_QPATH || strstr(name, ".."))
+	if (!len || len >= MAX_OSPATH - 32 || strstr(name, ".."))
 		return false;
 	for (; *name; name++)
 		if (*name <= ' ' || *name == '/' || *name == '\\' || *name == '"' || *name == ';' || *name == '$')
@@ -125,10 +125,10 @@ static qboolean JmpPathSafeName(const char *name)
 
 static qboolean JmpPathHasMap(const char *name)
 {
-	char lower[MAX_QPATH], map[MAX_QPATH];
+	char lower[MAX_OSPATH], map[MAX_QPATH];
 	int i;
 
-	for (i = 0; name[i] && i < MAX_QPATH - 1; i++)
+	for (i = 0; name[i] && i < MAX_OSPATH - 1; i++)
 		lower[i] = Q_tolower(name[i]);
 	lower[i] = 0;
 	for (i = 0; level.mapname[i] && i < MAX_QPATH - 1; i++)
@@ -187,7 +187,7 @@ them up to the map - else the name without its extension, cut to fit.
 */
 static void JmpPathDemoLabel(const char *name, char *buf, size_t size)
 {
-	char plain[MAX_QPATH];
+	char plain[MAX_OSPATH];
 	const char *p, *date = NULL, *rest, *map;
 	size_t len = strlen(name), n;
 
@@ -946,7 +946,7 @@ static void JmpPathAutoOpen(edict_t *ent)
 {
 	static cvar_t *jmod_paths_open;
 	jmp_path_t *st = JmpPath(ent);
-	char name[MAX_QPATH];
+	char name[MAX_OSPATH];
 
 	if (!jmod_paths_open)
 		jmod_paths_open = gi.cvar("jmod_paths_open", "", 0);
