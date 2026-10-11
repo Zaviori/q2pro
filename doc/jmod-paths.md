@@ -19,9 +19,14 @@ pick **View player pathing...**, or type `jmod paths`.
    the console form, 0 for every spawn) and sends a ghost down each of
    them, all setting off together from LIGHTS - "LIGHTS... CAMERA...
    ACTION!" sounding as they go, ACTION! where the demo had it - and
-   running in a loop with a short hold at the end; you keep control, and a plain fire on the
-   marker spawns you there to run beside them. `jmod pathmap` draws them
-   all; Escape takes the lines and ghosts down.
+running in a loop with a short hold at the end, the opponents of each
+   route's round running as ghosts in their team's colours alongside,
+   and a skull left where a ghost's player died; you keep control, and a
+   plain fire on the marker spawns you there to run beside them. Fire on
+   a route's number leaves that route alone with its ghost and its
+   round's opponents; Escape brings the spawn's set back, and Escape
+   again takes the lines and ghosts down. `jmod pathmap` draws every
+   route without ghosts.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
    route, taken three times). The row names the location they reached
