@@ -3003,7 +3003,8 @@ static void JmpHudMake(edict_t *ent, jmp_state_t *st)
 	}
 
 	JmpSecs(t->ms, secs, sizeof(secs));
-	Q_snprintf(text, sizeof(text), "%s%s%s%s%.15s - %d fps - %s s", t->pack, t->pack[0] ? "/" : "",
+	// a ghud line holds MAX_QPATH: 62 at the longest
+	Q_snprintf(text, sizeof(text), "%.14s%s%.14s%s%.10s - %d fps - %ss", t->pack, t->pack[0] ? "/" : "",
 		t->name, t->name[0] ? " by " : "", t->author, t->fps, secs);
 	Ghud_SetText(ent, st->hud[JMP_HUD_INFO], text);
 	Ghud_SetText(ent, st->hud[JMP_HUD_DESC], t->desc);
