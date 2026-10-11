@@ -790,7 +790,7 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 	if (!st->over || client->layout == LAYOUT_MENU || (ent->svflags & SVF_NOCLIENT))
 		return false;
 	// shift is the spawn markers' click: the routes from that spawn
-	if (ucmd->impulse == IMPULSE_SHIFT)
+	if (ucmd->impulse == IMPULSE_SHIFT || client->jmp_shift)
 		return false;
 
 	if (st->click_ms > 0) {

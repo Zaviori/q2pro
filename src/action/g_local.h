@@ -2187,6 +2187,7 @@ struct gclient_s
 	qboolean	jmp_menu_rec;	// the spawnpoint list is asking where to record a jump from
 	int			jmp_menu_aim;	// the marker aimed at, as a spawn's number; 0 none
 	qboolean	jmp_fire_held;	// fire as last seen, to act on a press
+	qboolean	jmp_shift;		// shift is down on the client, with a layout up (jmod shiftkey)
 	int			jmp_click_spot;	// a click on a marker waiting to see if it is a double one,
 	int			jmp_click_ms;	// and for how long yet
 	qboolean	jmp_blank;		// the empty layout "jmod markers" keeps up has been sent
