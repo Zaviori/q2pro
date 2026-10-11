@@ -29,6 +29,7 @@
 // low byte (signed) and flags above it
 #define GHUD_TEXT_SIZE(val)		((signed char)((val) & 0xff))
 #define GHUD_TEXT_OUTLINE		0x100	// outlined letters, to read over anything
+#define GHUD_TEXT_PLAIN			0x200	// a label in the world not bold: a name over a head
 
 typedef struct
 {
