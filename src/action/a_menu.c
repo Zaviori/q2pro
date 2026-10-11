@@ -68,13 +68,14 @@ void PMenu_Close (edict_t * ent)
 
 void PMenu_Update (edict_t * ent)
 {
-	char string[1024];
+	char string[MAX_NET_STRING];	// the client takes this much of a layout
 	int i, len;
 	pmenu_t *p;
 	int x;
 	pmenuhnd_t *hnd;
 	char *t;
 	qboolean alt = false, note;
+	int shift;
 
 	if (ent->client->layout != LAYOUT_MENU)
 		return;
@@ -83,6 +84,18 @@ void PMenu_Update (edict_t * ent)
 
 	strcpy(string, "xv 32 yv 8 ");
 	len = strlen(string);
+
+	// a menu with a long row stands further left as a whole: the virtual
+	// screen is 320 wide and the rows begin at 64, which leaves 32
+	// conchars; from the edge a row of 40 fits
+	shift = 0;
+	for (i = 0, p = hnd->entries; i < hnd->num; i++, p++) {
+		if (!p->text)
+			continue;
+		len = strlen(p->text) - (*p->text == PMENU_NOTE || *p->text == '*');
+		if (p->align == PMENU_ALIGN_LEFT && 64 + len * 8 > 320)
+			shift = max(shift, min(64, (int)(64 + len * 8 - 320)));
+	}
 
 	for (i = 0, p = hnd->entries; i < hnd->num; i++, p++)
 	{
@@ -110,6 +123,7 @@ void PMenu_Update (edict_t * ent)
 			x = 64 + (196 - strlen (t) * 8);
 		else
 			x = 64;
+		x -= shift;
 
 		Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d ",
 			32 + i * 8, x - ((hnd->cur == i) ? 8 : 0));
