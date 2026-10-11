@@ -46,7 +46,7 @@ static void JPath_Clear(void)
 
 static bool JPath_Load(const char *name)
 {
-    char path[MAX_QPATH], err[128];
+    char path[MAX_OSPATH], err[128];
     void *data;
     int len;
 
