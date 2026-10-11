@@ -25,6 +25,11 @@
 #define GHU_BLANK	0x0100
 #define GHU_FORCE	0x1000
 
+// a text's val, unused by the ghud: ours, the font size's offset in the
+// low byte (signed) and flags above it
+#define GHUD_TEXT_SIZE(val)		((signed char)((val) & 0xff))
+#define GHUD_TEXT_OUTLINE		0x100	// outlined letters, to read over anything
+
 typedef struct
 {
 	byte	type;
