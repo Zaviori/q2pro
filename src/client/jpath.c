@@ -18,7 +18,7 @@ here. A route is green at LIGHTS, red by ACTION!, and darkens past it.
 #include "client.h"
 #include "shared/mvdpath.h"
 
-#define JPATH_HOLD_MS       1500    // a played route is held whole this long before it runs again
+#define JPATH_HOLD_MS       1000    // a played route is held whole this long before it runs again (the ghosts' JMP_PATH_GHOST_HOLD_MS)
 #define JPATH_MAX           64      // trails drawn at once
 
 typedef struct {
@@ -106,6 +106,12 @@ static void JPath_Cmd_f(void)
     }
     if (!strcmp(sub, "hl")) {
         jpath.hl = Cmd_Argc() > 2 ? atoi(Cmd_Argv(2)) : -1;
+        return;
+    }
+    // the game's ghosts set off again: the line with them, so the two
+    // clocks cannot drift apart
+    if (!strcmp(sub, "restart")) {
+        jpath.start = cls.realtime;
         return;
     }
     if (strcmp(sub, "show") && strcmp(sub, "play")) {
@@ -223,6 +229,7 @@ static void JPath_Cmd_c(genctx_t *ctx, int argnum)
     if (argnum == 1) {
         Prompt_AddMatch(ctx, "show");
         Prompt_AddMatch(ctx, "play");
+        Prompt_AddMatch(ctx, "restart");
         Prompt_AddMatch(ctx, "off");
     }
 }
