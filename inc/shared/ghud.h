@@ -30,6 +30,7 @@
 #define GHUD_TEXT_SIZE(val)		((signed char)((val) & 0xff))
 #define GHUD_TEXT_OUTLINE		0x100	// outlined letters, to read over anything
 #define GHUD_TEXT_PLAIN			0x200	// a label in the world not bold: a name over a head
+#define GHUD_TEXT_NOFADE		0x400	// a label in the world kept whole: no fade near, nor under the crosshair
 
 typedef struct
 {

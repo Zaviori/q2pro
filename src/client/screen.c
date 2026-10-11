@@ -3259,6 +3259,9 @@ static void SCR_DrawGhud(void)
             {
                 alpha_mult *= len / scale_dimension;
             }
+            // a name over a ghost stays whole, near or under the crosshair
+            if (element->type == GHT_TEXT && (element->val & GHUD_TEXT_NOFADE))
+                alpha_mult = 1;
 
             SCR_DrawGhudElement(element, alpha_base * alpha_mult, color_base, x, y, sizex, sizey);
         }
