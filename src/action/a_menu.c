@@ -90,11 +90,13 @@ void PMenu_Update (edict_t * ent)
 	// conchars; from the edge a row of 40 fits
 	shift = 0;
 	for (i = 0, p = hnd->entries; i < hnd->num; i++, p++) {
+		int tlen;
+
 		if (!p->text)
 			continue;
-		len = strlen(p->text) - (*p->text == PMENU_NOTE || *p->text == '*');
-		if (p->align == PMENU_ALIGN_LEFT && 64 + len * 8 > 320)
-			shift = max(shift, min(64, (int)(64 + len * 8 - 320)));
+		tlen = strlen(p->text) - (*p->text == PMENU_NOTE || *p->text == '*');
+		if (p->align == PMENU_ALIGN_LEFT && 64 + tlen * 8 > 320)
+			shift = max(shift, min(64, 64 + tlen * 8 - 320));
 	}
 
 	for (i = 0, p = hnd->entries; i < hnd->num; i++, p++)

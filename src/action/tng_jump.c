@@ -664,7 +664,7 @@ void Jmp_RunSpawn(edict_t *ent)
 	if (!client->resp.jmp_spawn_frame)
 		return;
 
-	if (ent->deadflag || client->pers.spectator) {
+	if (client->pers.spectator) {
 		client->resp.jmp_spawn_frame = 0;
 		client->resp.jmp_spawn_repeat = 0;
 		return;
@@ -673,6 +673,9 @@ void Jmp_RunSpawn(edict_t *ent)
 	left = client->resp.jmp_spawn_frame - level.framenum;
 	if (left <= 0) {
 		client->resp.jmp_spawn_frame = 0;
+		// dead - a fall on the way - he comes back for the next go all the same
+		if (ent->deadflag)
+			respawn(ent);
 		JmpSpawnNow(ent);
 		return;
 	}
