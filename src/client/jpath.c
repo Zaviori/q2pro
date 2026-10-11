@@ -275,7 +275,7 @@ static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float l
         R_AddDebugLine(eye, him, MakeColor(255, 170, 0, 230), 0, depth);
         R_AddDebugPoint(him, 10, MakeColor(255, 170, 0, 230), 0, depth);
         if (jpath_icon_count < JPATH_ICONS_MAX) {
-            LerpVector(eye, him, 0.5f, mid);
+            LerpVector(eye, him, 0.12f, mid);   // by the shooter's end
             VectorCopy(mid, jpath_icons[jpath_icon_count].org);
             jpath_icons[jpath_icon_count].pic = JPath_WeaponIcon(s[shot].weapon);
             jpath_icon_count++;
@@ -319,9 +319,9 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
-        // his shots, as the bullets went
-        if (jpath_look->integer && (s[i].flags & MVP_SHOT) && !dim)
-            JPath_Shot(t, i, a, alpha, depth);
+        // his shots, as the bullets went - the round's others' too
+        if (jpath_look->integer && (s[i].flags & MVP_SHOT))
+            JPath_Shot(t, i, a, dim ? 150 : alpha, depth);
         VectorCopy(b, a);
     }
     // the stretch being run, and its head - where he looks right now
@@ -331,8 +331,8 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         LerpVector(a, b, upto - whole, head);
         R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         R_AddDebugPoint(head, 16, dim ? dim : MakeColor(255, 255, 255, 255), 0, depth);
-        if (jpath_look->integer && (s[i].flags & MVP_SHOT) && !dim)
-            JPath_Shot(t, i, head, 255, depth);
+        if (jpath_look->integer && (s[i].flags & MVP_SHOT))
+            JPath_Shot(t, i, head, dim ? 150 : 255, depth);
     }
 }
 
@@ -377,9 +377,9 @@ void JPath_AddToScene(void)
     for (i = 0; i < jpath.other_count; i++) {
         const mvp_trail_t *o = &jpath.demo->trails[jpath.others[i]];
         const mvp_trail_t *t = jpath.count ? &jpath.demo->trails[jpath.trails[0]] : NULL;
-        uint32_t dim = t && o->team == t->team ? MakeColor(90, 170, 255, 110) : MakeColor(220, 220, 220, 90);
+        uint32_t dim = t && o->team == t->team ? MakeColor(90, 170, 255, 190) : MakeColor(230, 230, 230, 170);
 
-        JPath_Lines(o, upto, 110, 1, dim, depth, jpath_lift->value);
+        JPath_Lines(o, upto, 170, 1, dim, depth, jpath_lift->value);
     }
     // the one aimed at lit and drawn twice, a little higher, for a thick
     // line; the rest dimmed while it is
