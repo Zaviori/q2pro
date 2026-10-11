@@ -42,9 +42,12 @@ static cvar_t *jpath_kills;         // 1: the kill shots kept, a ray with the we
 static cvar_t *jpath_cut;           // seconds after a kill or a death a running path is taken down
 
 #define JPATH_ICONS_MAX     256
+#define JPATH_KILL_HOLD     50      // frames a kill ray stays whole: five seconds
+#define JPATH_KILL_FADE     10      // and fades out over: one
 static struct {
     vec3_t      org;
     qhandle_t   pic;
+    float       alpha;
 } jpath_icons[JPATH_ICONS_MAX];     // the kill rays' icons, projected and drawn in 2D after the scene
 static int jpath_icon_count;
 static cvar_t *jpath_lift;          // units the lines float over the player's origin
@@ -251,9 +254,15 @@ static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float l
         int kf = t->kills[c], shot = -1;
         const mvp_trail_t *o = NULL;
         vec3_t eye, him, mid;
+        float age = upto - kf, fade = 1;
 
         if (kf >= t->count || kf > upto)
             continue;
+        // whole for five seconds after the kill, then a second's fade
+        if (age > JPATH_KILL_HOLD + JPATH_KILL_FADE)
+            continue;
+        if (age > JPATH_KILL_HOLD)
+            fade = 1 - (age - JPATH_KILL_HOLD) / JPATH_KILL_FADE;
         for (j = kf; j >= 0 && j >= kf - 15; j--)
             if (s[j].flags & MVP_SHOT) {
                 shot = j;
@@ -272,12 +281,13 @@ static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float l
         eye[2] += s[shot].viewheight + lift;
         MvdPath_Origin(&jpath.demo->samples[o->first + min(shot, o->count - 1)], him);
         him[2] += 4 + lift;
-        R_AddDebugLine(eye, him, MakeColor(255, 170, 0, 230), 0, depth);
-        R_AddDebugPoint(him, 10, MakeColor(255, 170, 0, 230), 0, depth);
+        R_AddDebugLine(eye, him, MakeColor(255, 170, 0, 230 * fade), 0, depth);
+        R_AddDebugPoint(him, 10, MakeColor(255, 170, 0, 230 * fade), 0, depth);
         if (jpath_icon_count < JPATH_ICONS_MAX) {
             LerpVector(eye, him, 0.12f, mid);   // by the shooter's end
             VectorCopy(mid, jpath_icons[jpath_icon_count].org);
             jpath_icons[jpath_icon_count].pic = JPath_WeaponIcon(s[shot].weapon);
+            jpath_icons[jpath_icon_count].alpha = fade;
             jpath_icon_count++;
         }
     }
@@ -348,8 +358,10 @@ void JPath_Draw2D(void)
 
         if (!jpath_icons[i].pic || !SCR_ProjectPoint(jpath_icons[i].org, &x, &y))
             continue;
+        R_SetAlpha(jpath_icons[i].alpha);
         R_DrawStretchPic(x - 12, y - 12, 24, 24, jpath_icons[i].pic);
     }
+    R_ClearColor();
     jpath_icon_count = 0;
 }
 
