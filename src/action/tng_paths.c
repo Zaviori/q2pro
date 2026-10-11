@@ -594,7 +594,7 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k)
 	st->ghost_count++;
 }
 
-// one per route shown, then the opponents of each route's round
+// one per route shown; with a route alone, the opponents of its round too
 static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 {
 	int i, k;
@@ -602,7 +602,7 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 	JmpPathGhostsClear(st);
 	for (i = 0; i < st->vis_count; i++)
 		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]]);
-	for (i = 0; i < st->vis_count; i++) {
+	for (i = 0; st->solo >= 0 && i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
 		const mvp_round_t *r = &st->demo->rounds[t->round];
 
