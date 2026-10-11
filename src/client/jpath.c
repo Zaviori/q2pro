@@ -38,6 +38,15 @@ static jpath_t jpath;
 
 static cvar_t *jpath_depth;         // 1: the walls hide the lines, as anything else
 static cvar_t *jpath_look;          // 1: his shots drawn as the bullets went - red to the wall, green to the player hit
+static cvar_t *jpath_kills;         // 1: the kill shots kept, a ray with the weapon's icon, after the paths go
+static cvar_t *jpath_cut;           // seconds after a kill or a death a running path is taken down
+
+#define JPATH_ICONS_MAX     256
+static struct {
+    vec3_t      org;
+    qhandle_t   pic;
+} jpath_icons[JPATH_ICONS_MAX];     // the kill rays' icons, projected and drawn in 2D after the scene
+static int jpath_icon_count;
 static cvar_t *jpath_lift;          // units the lines float over the player's origin
 
 static void JPath_Clear(void)
@@ -208,16 +217,102 @@ static void JPath_Shot(const mvp_trail_t *t, int i, const vec3_t at, int alpha, 
     }
 }
 
+/*
+The kill shots: the killer's last shot at or before the kill, a ray from
+his eye to the man he killed, kept up after the paths go - jpath_kills -
+with the weapon's icon on its middle, drawn in 2D after the scene.
+*/
+static qhandle_t JPath_WeaponIcon(int weapon)
+{
+    static qhandle_t pics[MAX_CLIENTWEAPONMODELS];
+    char name[MAX_QPATH];
+    size_t len;
+
+    if (weapon <= 0 || weapon >= cl.numWeaponModels)
+        return 0;
+    if (!pics[weapon]) {
+        // the vwep's name is the icon's: w_mp5.md2, w_mp5
+        Q_strlcpy(name, cl.weaponModels[weapon], sizeof(name));
+        len = strlen(name);
+        if (len > 4 && !Q_stricmp(name + len - 4, ".md2"))
+            name[len - 4] = 0;
+        pics[weapon] = R_RegisterPic(name);
+    }
+    return pics[weapon];
+}
+
+static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float lift)
+{
+    const mvp_sample_t *s = &jpath.demo->samples[t->first];
+    const mvp_round_t *r = &jpath.demo->rounds[t->round];
+    int c, j, k;
+
+    for (c = 0; c < t->kill_count; c++) {
+        int kf = t->kills[c], shot = -1;
+        const mvp_trail_t *o = NULL;
+        vec3_t eye, him, mid;
+
+        if (kf >= t->count || kf > upto)
+            continue;
+        for (j = kf; j >= 0 && j >= kf - 15; j--)
+            if (s[j].flags & MVP_SHOT) {
+                shot = j;
+                break;
+            }
+        if (shot < 0)
+            shot = kf;
+        for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
+            if (jpath.demo->trails[k].slot == t->kill_victims[c]) {
+                o = &jpath.demo->trails[k];
+                break;
+            }
+        if (!o || !o->count)
+            continue;
+        MvdPath_Origin(&s[shot], eye);
+        eye[2] += s[shot].viewheight + lift;
+        MvdPath_Origin(&jpath.demo->samples[o->first + min(shot, o->count - 1)], him);
+        him[2] += 4 + lift;
+        R_AddDebugLine(eye, him, MakeColor(255, 170, 0, 230), 0, depth);
+        R_AddDebugPoint(him, 10, MakeColor(255, 170, 0, 230), 0, depth);
+        if (jpath_icon_count < JPATH_ICONS_MAX) {
+            LerpVector(eye, him, 0.5f, mid);
+            VectorCopy(mid, jpath_icons[jpath_icon_count].org);
+            jpath_icons[jpath_icon_count].pic = JPath_WeaponIcon(s[shot].weapon);
+            jpath_icon_count++;
+        }
+    }
+}
+
+// a running path goes jpath_cut seconds after its man's kill or death:
+// the sample it is drawn from, or -1 for none of it
+static int JPath_From(const mvp_trail_t *t, float upto)
+{
+    int c, from = 0, cut = jpath_cut->value * 10;
+
+    if (!jpath.playing)
+        return 0;
+    if (t->died && t->count - 1 + cut <= upto)
+        return -1;
+    for (c = 0; c < t->kill_count; c++)
+        if (t->kills[c] + cut <= upto && t->kills[c] > from)
+            from = t->kills[c];
+    return from;
+}
+
 static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float bright, uint32_t dim, bool depth, float lift)
 {
     const mvp_sample_t *s = &jpath.demo->samples[t->first];
     vec3_t a, b, head;
-    int i, n = min(t->count, jpath.frames + 1), whole = (int)upto;
+    int i, n = min(t->count, jpath.frames + 1), whole = (int)upto, from = JPath_From(t, upto);
 
-    MvdPath_Origin(&s[0], a);
+    if (jpath_kills->integer)
+        JPath_KillRays(t, upto, depth, lift);
+    if (from < 0 || from >= n)
+        return;
+    MvdPath_Origin(&s[from], a);
     a[2] += lift;
-    R_AddDebugPoint(a, 12, dim ? dim : JPath_Color(0, alpha, bright), 0, depth);
-    for (i = 0; i + 1 < n && i < whole; i++) {
+    R_AddDebugPoint(a, 12, dim ? dim : JPath_Color(from, alpha, bright), 0, depth);
+    for (i = from; i + 1 < n && i < whole; i++) {
         MvdPath_Origin(&s[i + 1], b);
         b[2] += lift;
         R_AddDebugLine(a, b, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
@@ -239,6 +334,21 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         if (jpath_look->integer && (s[i].flags & MVP_SHOT) && !dim)
             JPath_Shot(t, i, head, 255, depth);
     }
+}
+
+// the kill rays' weapon icons, where their middles fall on the screen
+void JPath_Draw2D(void)
+{
+    int i;
+
+    for (i = 0; i < jpath_icon_count; i++) {
+        float x, y;
+
+        if (!jpath_icons[i].pic || !SCR_ProjectPoint(jpath_icons[i].org, &x, &y))
+            continue;
+        R_DrawStretchPic(x - 12, y - 12, 24, 24, jpath_icons[i].pic);
+    }
+    jpath_icon_count = 0;
 }
 
 void JPath_AddToScene(void)
@@ -309,6 +419,8 @@ void JPath_Init(void)
 {
     jpath_depth = Cvar_Get("jpath_depth", "0", 0);   // through the walls, as the ghosts are drawn
     jpath_look = Cvar_Get("jpath_look", "0", 0);
+    jpath_kills = Cvar_Get("jpath_kills", "1", 0);
+    jpath_cut = Cvar_Get("jpath_cut", "3", 0);
     jpath_lift = Cvar_Get("jpath_lift", "0", 0);
     Cmd_Register(c_jpath);
 }

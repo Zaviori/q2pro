@@ -54,6 +54,7 @@ typedef struct {
 	int		player;					// index into demo->players, -1 none
 	int		frames;					// samples shown: to ACTION! and jmod_path_secs past it
 	int		run_frames;				// samples the ghosts and the lines run to: frames, or what alt+fire's question answered
+	int		loop_frames;			// the loop's length: the longest trail among the ghosts, within run_frames
 	int		ask_route;				// the route alt+fire asked the question for
 	int		routes[JMP_PATH_MAX];	// the player's unique trails, and the rounds each folds
 	int		dups[JMP_PATH_MAX];
@@ -469,7 +470,13 @@ static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k, qboolean other
 	char cmd[MAX_STRING_CHARS], num[16];
 	int i, n = 0;
 
-	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, st->run_frames, st->routes[k]);
+	// run as long as the longest trail drawn, within the span: a loop
+	// that waited the whole span out stood still for minutes
+	int frames = min(t->count - 1, st->run_frames);
+
+	for (i = r->trail_first; others && i < r->trail_first + r->trail_count; i++)
+		frames = max(frames, min(st->demo->trails[i].count - 1, st->run_frames));
+	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, max(frames, 1), st->routes[k]);
 	for (i = r->trail_first; others && i < r->trail_first + r->trail_count; i++) {
 		if (i == st->routes[k])
 			continue;
@@ -896,6 +903,10 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 			if (k != st->routes[st->vis[i]])
 				JmpPathGhostAdd(ent, st, k, false, true);
 	}
+	// the loop as long as the longest trail among them, within the span
+	st->loop_frames = 1;
+	for (i = 0; i < st->ghost_count; i++)
+		st->loop_frames = max(st->loop_frames, min(st->demo->trails[st->ghost_trail[i]].count - 1, st->run_frames));
 	st->ghost_t0 = level.time;
 	st->ghost_ms = -1;
 	st->ghost_lca = 0;
@@ -969,7 +980,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 
 	if (!st->ghost_count || !st->demo)
 		return;
-	period = st->run_frames * 100 + JMP_PATH_GHOST_HOLD_MS;
+	period = max(st->loop_frames, 1) * 100 + JMP_PATH_GHOST_HOLD_MS;
 	ms = fmodf((level.time - st->ghost_t0) * 1000, period);
 	whole = (int)(ms / 100);
 	frac = ms / 100 - whole;

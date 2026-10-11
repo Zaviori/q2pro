@@ -18,6 +18,7 @@ records; an extended-limits demo is refused rather than misparsed.
 #define MVP_ACTION_FRAMES   41      // LIGHTS to ACTION!, the same on every server
 #define MVP_AFTER_FRAMES    3000    // kept past ACTION!: the whole round, up to 5 minutes at 10 frames a second
 #define MVP_MIN_SAMPLES     12      // shorter trails - died in the countdown - are dropped
+#define MVP_KILLS_MAX       8       // kills noted on a trail
 
 typedef struct {
     short   origin[3];      // eighths of a unit, as the demo has them
@@ -38,6 +39,9 @@ typedef struct {
     int     first;          // its samples: index into samples, and how many
     int     count;
     bool    died;           // cut short: the player died inside the window
+    short   kills[MVP_KILLS_MAX];   // his kills: the sample (frame from LIGHTS) of each
+    byte    kill_victims[MVP_KILLS_MAX];    // and the slot of each man killed
+    int     kill_count;
 } mvp_trail_t;
 
 typedef struct {
