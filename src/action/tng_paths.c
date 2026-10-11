@@ -140,6 +140,8 @@ static jmp_path_t *JmpPath(edict_t *ent)
 // the whole round is parsed; jmod_path_secs is how much of it past
 // ACTION! is shown and run, up to the whole of it (MVP_AFTER_FRAMES)
 static const int jmp_path_secs_steps[] = { 3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300 };
+// alt+fire's question on a round: coarser, the round's end last
+static const int jmp_path_round_steps[] = { 15, 30, 45, 60, MVP_AFTER_FRAMES / 10 };
 
 static int JmpPathFrames(void)
 {
@@ -1743,12 +1745,12 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		// alt+fire on a route: how much of the round to run
 		const mvp_trail_t *t = &st->demo->trails[st->routes[Q_clip(st->ask_route, 0, max(st->route_count - 1, 0))]];
 		int now = (st->run_frames - MVP_ACTION_FRAMES) / 10;
-		int count = sizeof(jmp_path_secs_steps) / sizeof(jmp_path_secs_steps[0]);
+		int count = sizeof(jmp_path_round_steps) / sizeof(jmp_path_round_steps[0]);
 
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Round %d, the whole round", st->demo->rounds[t->round].number);
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "How much of it?");
 		for (i = 0; i < count; i++) {
-			int secs = jmp_path_secs_steps[i];
+			int secs = jmp_path_round_steps[i];
 
 			Jmp_MenuRow(ent, JMP_PATH_FIRST + i, PMENU_ALIGN_LEFT, secs, JmpPathPickSecs,
 				secs >= MVP_AFTER_FRAMES / 10 ? "To the round's end" : "To %d s past ACTION!", secs);
