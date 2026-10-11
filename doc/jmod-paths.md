@@ -26,13 +26,19 @@ pick **View player pathing...**, or type `jmod paths`.
    the console form, 0 for every spawn) and sends a ghost down each of
    them, all setting off together from LIGHTS - "LIGHTS... CAMERA...
    ACTION!" sounding as they go, ACTION! where the demo had it - and
-running in a loop with a short hold at the end, with a skull left where
-   a ghost's player died; you keep control, and a plain fire on the
-   marker spawns you there to run beside them. Fire on a route's number
-   leaves that route alone with its ghost, and that round's opponents
-   running as ghosts in their team's colours; Escape brings the spawn's
-   set back, and Escape again takes the lines and ghosts down. `jmod pathmap` draws every
-   route without ghosts.
+   running in a loop with a short hold at the end, with a skull left
+   where a ghost's player died; you keep control, and a plain fire on
+   the marker spawns you there to run beside them. Fire on a route's
+   number leaves that route alone and follows its ghost from the
+   player's own view (fire for third person and back), with that round's
+   opponents running as ghosts in their team's colours; Escape lets go
+   of the ghost, Escape again brings the spawn's set back, and once more
+   takes the lines and ghosts down. Shift+fire on a route's number
+   **drills** it: the route stays drawn, its ghost runs dim beside you
+   and sets off again every time you spawn, and the spawn menu asks how
+   long until you spawn at the route's start and how often again (`jmod
+   path <#> train` from the console); Escape ends the drill. `jmod
+   pathmap` draws every route without ghosts.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
    route, taken three times). The row names the location they reached
