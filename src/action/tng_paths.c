@@ -660,8 +660,32 @@ qboolean JmpPath_Escape(edict_t *ent)
 	return true;
 }
 
+// jmod_paths_open: a demo's name the client set before the map, for the
+// pathing menu to open on as soon as he is in - the demo browser's way
+// into a map's routes. Read once, then cleared.
+static void JmpPathAutoOpen(edict_t *ent)
+{
+	static cvar_t *jmod_paths_open;
+	jmp_path_t *st = JmpPath(ent);
+	char name[MAX_QPATH];
+
+	if (!jmod_paths_open)
+		jmod_paths_open = gi.cvar("jmod_paths_open", "", 0);
+	if (!jmod_paths_open->string[0] || level.framenum < 10)
+		return;
+	if (ent->deadflag || ent->client->pers.spectator || ent->client->layout == LAYOUT_MENU)
+		return;
+	Q_strncpyz(name, jmod_paths_open->string, sizeof(name));
+	gi.cvar_set("jmod_paths_open", "");
+	if (!JmpPathLoad(ent, st, name))
+		return;
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+}
+
 void JmpPath_Frame(edict_t *ent)
 {
+	JmpPathAutoOpen(ent);
 	JmpPathMarkers(ent, JmpPath(ent));
 }
 
