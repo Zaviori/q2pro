@@ -45,6 +45,7 @@ client_src = [
   'src/client/entities.c',
   'src/client/input.c',
   'src/client/keys.c',
+  'src/client/jpath.c',
   'src/client/locs.c',
   'src/client/main.c',
   'src/client/newfx.c',
@@ -67,6 +68,7 @@ client_src = [
   'src/server/send.c',
   'src/server/user.c',
   'src/server/world.c',
+  'src/shared/mvdpath.c',
   'src/shared/m_flash.c',
 ]
 
@@ -211,8 +213,10 @@ action_src = [
   'src/action/tng_ini.c',
   'src/action/tng_irc.c',
   'src/action/tng_jump.c',
+  'src/action/tng_paths.c',
   'src/common/fuzzy.c',
   'src/action/tng_stats.c',
+  'src/shared/mvdpath.c',
   'src/shared/shared.c'
 ]
 
@@ -615,9 +619,9 @@ if get_option('tests')
   config.set10('USE_TESTS', true)
 endif
 
-if get_option('debug')
-  refresh_src += 'src/refresh/debug.c'
-endif
+# the debug lines are drawn in every build: the jump mod's player pathing
+# draws the players' routes with them (src/client/jpath.c)
+refresh_src += 'src/refresh/debug.c'
 
 if get_option('game-abi-hack').require(x86 and cc.get_id() == 'gcc' and cc.has_argument('-mstackrealign')).allowed()
   config.set10('USE_GAME_ABI_HACK', true)
