@@ -1357,9 +1357,10 @@ static void JmpPathPaging(edict_t *ent, jmp_path_t *st, int row, int n, int size
 }
 
 /*
-A row of up to 40 characters is drawn whole (PMenu_Update shifts a long
-one left); the formats keep under that with %.Ns on the names, and the
-buffer (jmp_menu_text) cuts the rest.
+A row of up to 40 conchars is drawn whole (PMenu_Update shifts a long
+one left), and the TrueType layout font fits a third more in the same
+span: the demo rows run to 52, which the font shows whole and conchars
+cut at the screen's edge; the buffer (jmp_menu_text) cuts the rest.
 */
 static void JmpPathShow(edict_t *ent, int step, int cur)
 {
@@ -1394,14 +1395,14 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		row = JMP_PATH_FIRST + 2;
 		if (st->demo) {
 			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.31s", label);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.44s", label);
 			if (cur < 0)
 				cur = row;
 			row += 2;
 		}
 		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
 			JmpPathDemoLabel(jmp_path_demos[i].name, label, sizeof(label));
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickDemo, "%.39s", label);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickDemo, "%.52s", label);
 			if (cur < 0)
 				cur = row;
 		}
@@ -1417,7 +1418,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		row = JMP_PATH_FIRST;
 		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
 			JmpPathDemoLabel(jmp_path_demos[st->found[i].demo].name, label, sizeof(label));
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickFound, "%-22.22s %.16s", label, st->found[i].name);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickFound, "%-30.30s %.16s", label, st->found[i].name);
 			if (cur < 0)
 				cur = row;
 		}
@@ -1429,7 +1430,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		JmpPathDemoLabel(st->demo_name, label, sizeof(label));
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.38s", label);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.50s", label);
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%d rounds. Whose routes?", st->demo->round_count);
 		row = JMP_PATH_FIRST + 1;
 		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
