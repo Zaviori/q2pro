@@ -59,7 +59,7 @@ mkdir -p "$SHAREDIR/fonts"
 cp -f "$SRCDIR"/action/fonts/*.ttf "$SRCDIR/action/fonts/OFL.txt" "$SHAREDIR/fonts/"
 # jmod's spawnpoint marker; the game falls back to a crosshair ring without it
 mkdir -p "$SHAREDIR/pics"
-cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SHAREDIR/pics/"
+cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SRCDIR/action/pics/mvd.png" "$SHAREDIR/pics/"
 
 echo "Staged in $SHAREDIR:"
 ls -l "$SHAREDIR/gamex86_64x.dll" "$SHAREDIR/q2prox.exe" "$SHAREDIR/install-windows.bat" \
