@@ -845,13 +845,57 @@ const char jmp_menu_line[] = "\x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x
 static void JmpMenuShow(edict_t *ent, int step, int cur);
 static void JmpJumpsShow(edict_t *ent, int step, int cur);
 
+/*
+The jump menus wear the vote menu's frame: the title, a blank, the
+subtitle, a bar, a blank, the entries, a blank, then a bar and two lines
+of help.
+A builder numbers its rows as it always has - 0 the title, 2 the
+subtitle, 3 on the entries, JMP_MENU_ROWS-1 the last - and Jmp_MenuRow
+puts each on the frame's row; Jmp_MenuRowOf is the way back from a row
+the client picked.
+*/
+int Jmp_MenuRowAt(int row)
+{
+	return row <= 2 ? row : row + 2;
+}
+
+int Jmp_MenuRowOf(edict_t *ent, const pmenu_t *p)
+{
+	int m = p - ent->client->jmp_menu;
+
+	return m <= 2 ? m : m - 2;
+}
+
+void Jmp_MenuFrame(edict_t *ent)
+{
+	pmenu_t *menu = ent->client->jmp_menu;
+	int i;
+
+	for (i = 0; i < JMP_MENU_FRAME; i++) {
+		menu[i].text = NULL;
+		menu[i].align = PMENU_ALIGN_LEFT;
+		menu[i].arg = NULL;
+		menu[i].SelectFunc = NULL;
+	}
+	menu[3].text = (char *)jmp_menu_line;
+	menu[3].align = PMENU_ALIGN_CENTER;
+	menu[JMP_MENU_FRAME - 3].text = (char *)jmp_menu_line;
+	menu[JMP_MENU_FRAME - 3].align = PMENU_ALIGN_CENTER;
+	menu[JMP_MENU_FRAME - 2].text = "Use arrows to move cursor";
+	menu[JMP_MENU_FRAME - 2].align = PMENU_ALIGN_CENTER;
+	menu[JMP_MENU_FRAME - 1].text = "ENTER to select, TAB to exit";
+	menu[JMP_MENU_FRAME - 1].align = PMENU_ALIGN_CENTER;
+}
+
 void Jmp_MenuRow(edict_t *ent, int row, int align, intptr_t arg,
 	void (*func)(edict_t *, pmenu_t *), const char *fmt, ...)
 {
 	gclient_t *client = ent->client;
-	pmenu_t *p = &client->jmp_menu[row];
+	pmenu_t *p;
 	va_list argptr;
 
+	row = Jmp_MenuRowAt(row);
+	p = &client->jmp_menu[row];
 	p->text = NULL;
 	if (fmt) {
 		va_start(argptr, fmt);
@@ -948,7 +992,7 @@ static void JmpMenuPage(edict_t *ent, pmenu_t *p)
 	gclient_t *client = ent->client;
 
 	client->jmp_menu_top = max(client->jmp_menu_top + (int)(intptr_t)p->arg, 0);
-	JmpMenuShow(ent, 0, p - client->jmp_menu);
+	JmpMenuShow(ent, 0, Jmp_MenuRowOf(ent, p));
 }
 
 static void JmpMenuStop(edict_t *ent, pmenu_t *p)
@@ -999,7 +1043,7 @@ static void JmpMenuPickPack(edict_t *ent, pmenu_t *p)
 
 	if (i >= 0 && i < n)
 		JmpStartsToggle(ent, packs[i]);
-	JmpMenuShow(ent, 0, p - ent->client->jmp_menu);
+	JmpMenuShow(ent, 0, Jmp_MenuRowOf(ent, p));
 }
 
 /*
@@ -1116,13 +1160,10 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 {
 	gclient_t *client = ent->client;
 	char name[32], secs[32];
-	int i;
 
 	jmp_name_ent = ent;
 
-	for (i = 0; i < JMP_MENU_ROWS; i++)
-		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
-	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+	Jmp_MenuFrame(ent);
 
 	client->jmp_menu_step = step;
 	if (step == 0) {
@@ -1148,7 +1189,7 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
-	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+	PMenu_Open(ent, client->jmp_menu, cur < 0 ? cur : Jmp_MenuRowAt(cur), JMP_MENU_FRAME);
 }
 
 /*
@@ -1291,7 +1332,7 @@ static void JmpTip(edict_t *ent, qboolean on)
 
 		Ghud_SetText(ent, client->resp.jmp_tip[0], paths ? "click: spawn here   double click: delay, repeat   ctrl + click: another player"
 			: "click: spawn here   double click: delay, repeat");
-		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? paths : "shift + click: record a jump from here");
+		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? (char *)paths : "shift + click: record a jump from here");
 	}
 }
 
@@ -3493,7 +3534,7 @@ static void JmpJumpsPage(edict_t *ent, pmenu_t *p)
 	jmp_state_t *st = JmpState(ent);
 
 	st->menu_top = max(st->menu_top + (int)(intptr_t)p->arg, 0);
-	JmpJumpsShow(ent, JMP_MENU_JUMPS, p - ent->client->jmp_menu);
+	JmpJumpsShow(ent, JMP_MENU_JUMPS, Jmp_MenuRowOf(ent, p));
 }
 
 static void JmpJumpsWatch(edict_t *ent, pmenu_t *p)
@@ -3553,7 +3594,7 @@ static void JmpPacksPage(edict_t *ent, pmenu_t *p)
 	jmp_state_t *st = JmpState(ent);
 
 	st->packs_top = max(st->packs_top + (int)(intptr_t)p->arg, 0);
-	JmpJumpsShow(ent, JMP_MENU_PACKS, p - ent->client->jmp_menu);
+	JmpJumpsShow(ent, JMP_MENU_PACKS, Jmp_MenuRowOf(ent, p));
 }
 
 static void JmpPackDelAsk(edict_t *ent, pmenu_t *p)
@@ -3634,7 +3675,7 @@ static void JmpSaveToPage(edict_t *ent, pmenu_t *p)
 	jmp_state_t *st = JmpState(ent);
 
 	st->save_top = max(st->save_top + (int)(intptr_t)p->arg, 0);
-	JmpJumpsShow(ent, JMP_MENU_SAVETO, p - ent->client->jmp_menu);
+	JmpJumpsShow(ent, JMP_MENU_SAVETO, Jmp_MenuRowOf(ent, p));
 }
 
 static void JmpSaveToCancel(edict_t *ent, pmenu_t *p)
@@ -3666,9 +3707,7 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 	char secs[16], packs[JMP_PACKS_MAX][JMP_NAME_MAX];
 	int i, j, row, lo, hi;
 
-	for (i = 0; i < JMP_MENU_ROWS; i++)
-		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
-	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+	Jmp_MenuFrame(ent);
 
 	client->jmp_menu_step = step;
 	if (step == JMP_MENU_PACKS) {
@@ -3712,20 +3751,18 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 		if (step == JMP_MENU_PACKDEL) {
 			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete this collection?");
-			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s", st->menu_pack);
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s", st->menu_pack);
 			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
 			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelYes, "Yes, delete it");
 		} else {
 			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*It is not empty!");
-			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s has", st->menu_pack);
-			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d jump%s in it,",
-				count, count == 1 ? "" : "s");
-			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "deleted with it.");
-			Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
-			Jmp_MenuRow(ent, 7, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%s has %d jump%s in it, deleted with it",
+				st->menu_pack, count, count == 1 ? "" : "s");
+			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
+			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
 		}
 		if (cur < 0)
-			cur = step == JMP_MENU_PACKDEL ? 4 : 6;
+			cur = 4;
 	} else if (step == JMP_MENU_SAVETO) {
 		// the collections a page at a time, all of them or those the search finds
 		j = JmpPacksFind(packs, JMP_PACKS_MAX, st->save_find);
@@ -3850,8 +3887,7 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		t = &jmp_list[st->menu_pick];
 		JmpSecs(t->ms, secs, sizeof(secs));
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "by %s", t->author);
-		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d fps, %s seconds", t->fps, secs);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "by %s - %d fps, %s seconds", t->author, t->fps, secs);
 		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
 		Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
 		Jmp_MenuRow(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsStart, "Spawn at its start");
@@ -3864,7 +3900,7 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
-	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+	PMenu_Open(ent, client->jmp_menu, cur < 0 ? cur : Jmp_MenuRowAt(cur), JMP_MENU_FRAME);
 	st->menu_cur = client->menu.cur;	// where the menu really put it
 }
 
@@ -3880,7 +3916,7 @@ static void JmpJumpsFrame(edict_t *ent)
 		|| client->jmp_menu_step != JMP_MENU_JUMPS || cur == st->menu_cur)
 		return;
 
-	p = cur >= 0 && cur < JMP_MENU_ROWS ? &client->jmp_menu[cur] : NULL;
+	p = cur >= 0 && cur < JMP_MENU_FRAME ? &client->jmp_menu[cur] : NULL;
 	st->menu_keep = true;
 	if (p && p->SelectFunc == JmpJumpsPick) {
 		st->menu_pick = (int)(intptr_t)p->arg;

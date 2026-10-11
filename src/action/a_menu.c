@@ -134,8 +134,8 @@ void PMenu_Update (edict_t * ent)
 		if (p->align == PMENU_ALIGN_CENTER && hnd->cur != i && !note) {
 			// a title - a centred row over a bar - a size up, and
 			// lifted off the bar (the client's "size", a no-op elsewhere)
-			qboolean title = i + 1 < hnd->num && p[1].text &&
-				(((byte)p[1].text[0] & 127) == 0x1d || ((byte)p[1].text[1] & 127) == 0x1d);
+			qboolean title = (i == 0 && alt) || (i + 1 < hnd->num && p[1].text &&
+				(((byte)p[1].text[0] & 127) == 0x1d || ((byte)p[1].text[1] & 127) == 0x1d));
 
 			Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d %s%s \"%s\"%s ",
 				32 + i * 8 - (title ? 4 : 0), 64 + 196 / 2 - 160 - shift,

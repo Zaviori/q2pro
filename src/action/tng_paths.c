@@ -1108,7 +1108,7 @@ static void JmpPathPickDemo(edict_t *ent, pmenu_t *p)
 	if (i >= jmp_path_demo_count)
 		return;
 	if (!JmpPathLoad(ent, st, jmp_path_demos[i].name)) {
-		JmpPathShow(ent, JMP_MENU_PATHS, p - ent->client->jmp_menu);
+		JmpPathShow(ent, JMP_MENU_PATHS, Jmp_MenuRowOf(ent, p));
 		return;
 	}
 	st->top = 0;
@@ -1279,7 +1279,7 @@ static void JmpPathPickFound(edict_t *ent, pmenu_t *p)
 	if (i < 0 || i >= st->found_count || st->found[i].demo >= jmp_path_demo_count)
 		return;
 	if (!JmpPathLoad(ent, st, jmp_path_demos[st->found[i].demo].name)) {
-		JmpPathShow(ent, JMP_MENU_PATH_FOUND, p - ent->client->jmp_menu);
+		JmpPathShow(ent, JMP_MENU_PATH_FOUND, Jmp_MenuRowOf(ent, p));
 		return;
 	}
 	for (k = 0; k < st->demo->player_count; k++)
@@ -1355,7 +1355,7 @@ static void JmpPathPage(edict_t *ent, pmenu_t *p)
 	jmp_path_t *st = JmpPath(ent);
 
 	st->top = max(st->top + (int)(intptr_t)p->arg, 0);
-	JmpPathShow(ent, ent->client->jmp_menu_step, p - ent->client->jmp_menu);
+	JmpPathShow(ent, ent->client->jmp_menu_step, Jmp_MenuRowOf(ent, p));
 }
 
 static void JmpPathBack(edict_t *ent, pmenu_t *p)
@@ -1393,9 +1393,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 	char label[64], desc[JMP_PATH_LOC * 2], loc[JMP_PATH_LOC];
 	int i, row, n;
 
-	for (i = 0; i < JMP_MENU_ROWS; i++)
-		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
-	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+	Jmp_MenuFrame(ent);
 
 	// a step needs what the one before it picked
 	if (step >= JMP_MENU_PATH_PLAYERS && step != JMP_MENU_PATH_FOUND && !st->demo)
@@ -1414,9 +1412,10 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %.13s", level.mapname);
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Get one from aq2world...");
-		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpPathMenuFind, "Search for player in local demos...");
-		row = JMP_PATH_FIRST + 2;
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, n ? "%d .mvd2 of it in demos/" : "none in demos/ yet", n);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Get one from aq2world...");
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpPathMenuFind, "Search for player in local demos...");
+		row = JMP_PATH_FIRST + 3;
 		if (st->demo) {
 			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.44s", label);
@@ -1432,7 +1431,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		}
 		if (!n)
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No .mvd2 of %.16s in demos/", level.mapname);
-		JmpPathPaging(ent, st, JMP_PATH_FIRST + 2 + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + 3 + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
 	} else if (step == JMP_MENU_PATH_FOUND) {
 		n = st->found_count;
 		if (st->top >= n)
@@ -1455,7 +1454,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		JmpPathDemoLabel(st->demo_name, label, sizeof(label));
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.50s", label);
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%d rounds. Whose routes?", st->demo->round_count);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%d rounds. Whose routes?", st->demo->round_count);
 		row = JMP_PATH_FIRST + 1;
 		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
 			const mvp_player_t *pl = &st->demo->players[i];
@@ -1478,7 +1477,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		else
 			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.24s: %d route%s", JmpPathPlayerName(st),
 				n, n == 1 ? "" : "s");
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "of %d rounds, to %d s past ACTION!",
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "of %d rounds, to %d s past ACTION!",
 			st->demo->players[st->player].trails, (st->frames - MVP_ACTION_FRAMES) / 10);
 		Jmp_MenuRow(ent, JMP_PATH_FIRST + 1, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All of them on the map");
 		if (st->spawn_filter)
@@ -1512,15 +1511,15 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		MvdPath_Origin(&st->demo->samples[t->first], o);
 		spawn = JmpPathSpawn(o);
 		if (spawn)
-			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.30s", spawn, JmpPathLoc(o, loc));
+			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.30s", spawn, JmpPathLoc(o, loc));
 		else
-			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.32s", JmpPathLoc(o, loc));
+			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.32s", JmpPathLoc(o, loc));
 		MvdPath_Origin(MvdPath_At(st->demo, t, MVP_ACTION_FRAMES), o);
-		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "ACTION!: %.31s", JmpPathLoc(o, loc));
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "ACTION!: %.31s", JmpPathLoc(o, loc));
 		MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), o);
-		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "%s: %.34s", t->died && t->count <= st->frames ? "died" : "then",
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, NULL, "%s: %.34s", t->died && t->count <= st->frames ? "died" : "then",
 			JmpPathLoc(o, loc));
-		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, NULL, "%d.%d seconds%s", ms / 1000, ms % 1000 / 100,
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%d.%d seconds%s", ms / 1000, ms % 1000 / 100,
 			t->died && t->count <= st->frames ? ", cut by the death" : "");
 		if (st->dups[st->pick])
 			Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, NULL, "taken the same way %d times", st->dups[st->pick] + 1);
@@ -1538,7 +1537,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 
 	if (client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
-	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+	PMenu_Open(ent, client->jmp_menu, cur < 0 ? cur : Jmp_MenuRowAt(cur), JMP_MENU_FRAME);
 }
 
 // from the jmod item menu, and "jmod paths"

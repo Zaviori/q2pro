@@ -2181,8 +2181,8 @@ struct gclient_s
 	qboolean	showinventory;	// set layout stat
 
 	pmenuhnd_t	menu;		// current menu
-	pmenu_t		jmp_menu[JMP_MENU_ROWS];	// jmod's spawnpoint menu, built per client
-	char		jmp_menu_text[JMP_MENU_ROWS][64];	// a row of up to 40 is drawn whole (PMenu_Update)
+	pmenu_t		jmp_menu[JMP_MENU_FRAME];	// jmod's menus, built per client (Jmp_MenuRow)
+	char		jmp_menu_text[JMP_MENU_FRAME][64];	// a row of up to 40 is drawn whole (PMenu_Update)
 	int			jmp_menu_top;	// its first spawnpoint on the page, from 0
 	int			jmp_menu_step;	// its step: 0 the spawnpoint, 1 the delay, 2 the repeat
 	int			jmp_menu_pick;	// the spawnpoint picked, as spawnp takes it (-1 closest)
