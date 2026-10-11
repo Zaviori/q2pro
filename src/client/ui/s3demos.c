@@ -19,6 +19,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "ui.h"
 #include "common/files.h"
 #include "common/fuzzy.h"
+#if USE_ZLIB
+#include <zlib.h>
+#endif
 
 /*
 =======================================================================
@@ -31,24 +34,36 @@ a thousand keys, so the month is the unit): the vrol pickups, the clan
 war pickups, and de.aq2.rocks. Left and Right move a month, Tab the
 source, letters filter the list as the demo browser does, and Enter
 downloads the one under the cursor into demos/ - gunzipped, so it plays
-and reads like any demo there - or plays it when it is there already.
-Only what is picked is downloaded. A listing is kept for the session
-and in s3cache/ on disk: the month being played is asked again after
-ten minutes, an older one after a day.
+and reads like any demo there - or plays it when it is there already;
+Shift+Enter starts its map in the jump mod with the pathing menu open on
+it, after the download when it is not there yet. Only what is picked is
+downloaded. A listing is kept for the session and in s3cache/ on disk:
+the month being played is asked again after ten minutes, an older one
+after a day.
+
+The players of a demo go in a box under its row, by team: read out of
+the file for one that is in demos/, and for the others out of the first
+kilobytes of the gzipped file on the bucket - the demo's first block
+carries every player's skin - fetched when the cursor has rested on the
+row a moment, and kept with the listing.
 
 =======================================================================
 */
 
 #define S3_URL          "https://aq2world.s3.amazonaws.com"
-#define S3_NS           "http://s3.amazonaws.com/doc/2006-03-01/"
 #define S3_MAX_KEYS     4096        // of a month
 #define S3_MAX_PAGES    8           // listings of a thousand a month may take
 #define S3_CACHE_DIR    "s3cache"
 #define S3_TTL_NOW      (10 * 60)   // seconds a listing of this month is good for
 #define S3_TTL_PAST     (24 * 60 * 60)
-#define S3_PAGES_KEPT   16          // months kept in memory
-#define S3_EXTRASIZE    q_offsetof(s3entry_t, text)
+#define S3_PAGES_KEPT   8           // months kept in memory
 #define S3_KEY_MAX      192         // a key with its directory: longer than MAX_QPATH
+#define S3_PLAYERS_MAX  256         // the players' note
+#define S3_PEEK_BYTES   (48 << 10)  // of the gzipped file: the first block is in there
+#define S3_PEEK_OUT     (256 << 10) // what they unpack to, at most
+#define S3_PEEK_REST_MS 400         // the cursor rests this long before a peek
+#define S3_NONE         "-"         // the players of a demo that has none to read
+#define S3_EXTRASIZE    q_offsetof(s3entry_t, text)
 
 // a directory of the bucket: keys are <root>/<stem>_<YYYY-MM-DD>_... for
 // the stemmed ones; de.aq2.rocks drops <YYYY-MM-DD>_<HHMMSS>_... and,
@@ -73,6 +88,7 @@ typedef struct {
     char    key[S3_KEY_MAX];
     int64_t size;
     time_t  stamp;                  // LastModified
+    char    players[S3_PLAYERS_MAX]; // by team, a line each; "" not looked at yet, S3_NONE none
 } s3raw_t;
 
 // a month's listing, as fetched
@@ -83,6 +99,7 @@ typedef struct {
     int     count;
     s3raw_t *raw;
     unsigned used;                  // for the eviction
+    bool    dirty;                  // players came in since it was written
 } s3page_t;
 
 // a row
@@ -90,8 +107,12 @@ typedef struct {
     int64_t size;
     time_t  stamp;
     bool    have;                   // in demos/ already
+    int     raw;                    // its index in the page
     char    key[S3_KEY_MAX];
     char    local[S3_KEY_MAX];      // its name in demos/
+    char    map[MAX_QPATH];
+    char    players[S3_PLAYERS_MAX];
+    uint32_t color;                 // MLF_COLOR: right before the text
     char    text[1];                // the columns
 } s3entry_t;
 
@@ -112,10 +133,10 @@ typedef struct {
     char            filter[MAX_QPATH];
     void            **all;          // every row of the month; the list shows those the filter lets through
     int             numAll;
-    int             widest_teams, widest_map;
+    int             widest_map;
     char            title[64];
     char            status[64];
-    char            note[128];      // the bottom left: the filter, a download, an error
+    char            note[160];      // the bottom left: a download, an error
 
     // the listing under way
     bool            listing;
@@ -129,7 +150,15 @@ typedef struct {
     bool            fetching;
     char            fetch_key[S3_KEY_MAX];
     char            fetch_local[S3_KEY_MAX];
+    char            fetch_map[MAX_QPATH];
+    bool            fetch_launch;   // and then its map in the jump mod
     unsigned        fetch_shown;
+
+    // the peek under way, and the cursor's rest
+    bool            peeking;
+    char            peek_key[S3_KEY_MAX];
+    s3entry_t       *rest_on;
+    unsigned        rest_since;
 
     s3page_t        pages[S3_PAGES_KEPT];
     unsigned        used;
@@ -141,6 +170,7 @@ static cvar_t   *ui_s3demos_url;
 
 static void S3_BuildList(void);
 static void S3_ListStart(void);
+static void S3_PageWrite(s3page_t *page);
 
 /*
 =======================================================================
@@ -165,11 +195,18 @@ static void S3_LocalName(const char *key, char *buf, size_t size)
         buf[len - 3] = 0;
 }
 
-static bool S3_Have(const char *local)
+// the name it is in demos/ under, "" when it is not there: the bot's
+// mirror on the laptop prefixes its copies with hl_
+static const char *S3_HaveAs(const char *local)
 {
-    // the bot's mirror on the laptop prefixes its copies with hl_
-    return !os_access(va("%s/demos/%s", fs_gamedir, local), F_OK)
-        || !os_access(va("%s/demos/hl_%s", fs_gamedir, local), F_OK);
+    static char name[S3_KEY_MAX + 4];
+
+    if (!os_access(va("%s/demos/%s", fs_gamedir, local), F_OK))
+        return local;
+    Q_snprintf(name, sizeof(name), "hl_%s", local);
+    if (!os_access(va("%s/demos/%s", fs_gamedir, name), F_OK))
+        return name;
+    return "";
 }
 
 static bool S3_IsDigits(const char *s, int n)
@@ -265,29 +302,44 @@ static void S3_CachePath(int source, const char *month, char *buf, size_t size)
     Q_snprintf(buf, size, "%s/%s/%s-%s.txt", fs_gamedir, S3_CACHE_DIR, s3_sources[source].name, month);
 }
 
-static time_t S3_Ttl(const char *month)
+static s3page_t *S3_PageSlot(int source, const char *month, s3page_t **oldest)
 {
-    return strcmp(month, m_s3.month) || !m_s3.listing ? S3_TTL_PAST : S3_TTL_NOW;
+    s3page_t *page = NULL;
+    int i;
+
+    *oldest = NULL;
+    for (i = 0; i < S3_PAGES_KEPT; i++) {
+        s3page_t *pg = &m_s3.pages[i];
+
+        if (pg->raw && pg->source == source && !strcmp(pg->month, month))
+            page = pg;
+        if (!*oldest || pg->used < (*oldest)->used)
+            *oldest = pg;
+    }
+    return page;
+}
+
+static void S3_PageFree(s3page_t *page)
+{
+    if (page->dirty)
+        S3_PageWrite(page);
+    Z_Free(page->raw);
+    page->raw = NULL;
+    page->count = 0;
 }
 
 // the month's listing from this session, or the disk; NULL when stale or absent
 static s3page_t *S3_PageFind(int source, const char *month, bool fresh)
 {
     time_t now = time(NULL), ttl;
-    char path[MAX_OSPATH], line[MAX_STRING_CHARS], stamp[32];
-    s3page_t *page = NULL, *oldest = NULL;
+    char path[MAX_OSPATH], line[MAX_STRING_CHARS * 2], stamp[32];
+    s3page_t *page, *oldest;
+    s3raw_t *raw;
     FILE *f;
-    int i, count = 0;
+    int count = 0;
     long long fetched = 0, size;
 
-    for (i = 0; i < S3_PAGES_KEPT; i++) {
-        s3page_t *pg = &m_s3.pages[i];
-
-        if (pg->raw && pg->source == source && !strcmp(pg->month, month))
-            page = pg;
-        if (!oldest || pg->used < oldest->used)
-            oldest = pg;
-    }
+    page = S3_PageSlot(source, month, &oldest);
 
     // this month is asked again after a while, an old one after a day
     ttl = strncmp(month, m_s3.month, 7) ? S3_TTL_PAST : S3_TTL_NOW;
@@ -296,8 +348,7 @@ static s3page_t *S3_PageFind(int source, const char *month, bool fresh)
             page->used = ++m_s3.used;
             return page;
         }
-        Z_Free(page->raw);
-        page->raw = NULL;
+        S3_PageFree(page);
         return NULL;
     }
 
@@ -311,68 +362,108 @@ static s3page_t *S3_PageFind(int source, const char *month, bool fresh)
         fclose(f);
         return NULL;
     }
-    page = oldest;
-    Z_Free(page->raw);
-    page->raw = UI_Malloc(sizeof(*page->raw) * S3_MAX_KEYS);
+    raw = UI_Malloc(sizeof(*raw) * S3_MAX_KEYS);
     while (count < S3_MAX_KEYS && fgets(line, sizeof(line), f)) {
-        s3raw_t *r = &page->raw[count];
-        char *nl = strchr(line, '\n');
+        s3raw_t *r = &raw[count];
+        char *nl = strchr(line, '\n'), *t1, *t2, *t3, *p;
 
         if (nl)
             *nl = 0;
-        if (sscanf(line, "%lld %31s", &size, stamp) != 2)
-            continue;
-        if (!(nl = strchr(line, ' ')) || !(nl = strchr(nl + 1, ' ')))
-            continue;
-        Q_strlcpy(r->key, nl + 1, sizeof(r->key));
-        r->size = size;
-        r->stamp = atoll(stamp);
-        count++;
+        memset(r, 0, sizeof(*r));
+        t1 = strchr(line, '\t');
+        if (t1) {
+            // size <tab> stamp <tab> players (the lines as |) <tab> key
+            *t1++ = 0;
+            t2 = strchr(t1, '\t');
+            if (!t2)
+                continue;
+            *t2++ = 0;
+            t3 = strchr(t2, '\t');
+            if (!t3)
+                continue;
+            *t3++ = 0;
+            r->size = atoll(line);
+            r->stamp = atoll(t1);
+            Q_strlcpy(r->players, t2, sizeof(r->players));
+            for (p = r->players; *p; p++)
+                if (*p == '|')
+                    *p = '\n';
+            Q_strlcpy(r->key, t3, sizeof(r->key));
+        } else {
+            // the first form: size stamp key
+            if (sscanf(line, "%lld %31s", &size, stamp) != 2)
+                continue;
+            if (!(nl = strchr(line, ' ')) || !(nl = strchr(nl + 1, ' ')))
+                continue;
+            Q_strlcpy(r->key, nl + 1, sizeof(r->key));
+            r->size = size;
+            r->stamp = atoll(stamp);
+        }
+        if (r->key[0])
+            count++;
     }
     fclose(f);
+
+    page = oldest;
+    if (page->raw)
+        S3_PageFree(page);
+    page->raw = UI_Malloc(sizeof(*raw) * max(count, 1));
+    memcpy(page->raw, raw, sizeof(*raw) * count);
+    Z_Free(raw);
     page->source = source;
     Q_strlcpy(page->month, month, sizeof(page->month));
     page->fetched = fetched;
     page->count = count;
     page->used = ++m_s3.used;
+    page->dirty = false;
     return page;
 }
 
-static s3page_t *S3_PageStore(int source, const char *month, s3raw_t *raw, int count)
+static void S3_PageWrite(s3page_t *page)
 {
-    char path[MAX_OSPATH];
-    s3page_t *page = NULL, *oldest = NULL;
+    char path[MAX_OSPATH], players[S3_PLAYERS_MAX], *p;
     FILE *f;
     int i;
 
-    for (i = 0; i < S3_PAGES_KEPT; i++) {
-        s3page_t *pg = &m_s3.pages[i];
+    page->dirty = false;
+    S3_CachePath(page->source, page->month, path, sizeof(path));
+    if (FS_CreatePath(path))
+        return;
+    f = fopen(path, "w");
+    if (!f)
+        return;
+    fprintf(f, "fetched %lld\n", (long long)page->fetched);
+    for (i = 0; i < page->count; i++) {
+        const s3raw_t *r = &page->raw[i];
 
-        if (pg->raw && pg->source == source && !strcmp(pg->month, month))
-            page = pg;
-        if (!oldest || pg->used < oldest->used)
-            oldest = pg;
+        Q_strlcpy(players, r->players, sizeof(players));
+        for (p = players; *p; p++)
+            if (*p == '\n')
+                *p = '|';
+        fprintf(f, "%lld\t%lld\t%s\t%s\n", (long long)r->size, (long long)r->stamp, players, r->key);
     }
+    fclose(f);
+}
+
+// a listing just fetched: into the pages, shrunk to its count, and to disk
+static s3page_t *S3_PageStore(int source, const char *month, s3raw_t *raw, int count)
+{
+    s3page_t *page, *oldest;
+
+    page = S3_PageSlot(source, month, &oldest);
     if (!page)
         page = oldest;
-    Z_Free(page->raw);
-    page->raw = raw;
+    if (page->raw)
+        S3_PageFree(page);
+    page->raw = UI_Malloc(sizeof(*raw) * max(count, 1));
+    memcpy(page->raw, raw, sizeof(*raw) * count);
+    Z_Free(raw);
     page->count = count;
     page->source = source;
     Q_strlcpy(page->month, month, sizeof(page->month));
     page->fetched = time(NULL);
     page->used = ++m_s3.used;
-
-    S3_CachePath(source, month, path, sizeof(path));
-    if (FS_CreatePath(path))
-        return page;
-    f = fopen(path, "w");
-    if (!f)
-        return page;
-    fprintf(f, "fetched %lld\n", (long long)page->fetched);
-    for (i = 0; i < count; i++)
-        fprintf(f, "%lld %lld %s\n", (long long)raw[i].size, (long long)raw[i].stamp, raw[i].key);
-    fclose(f);
+    S3_PageWrite(page);
     return page;
 }
 
@@ -414,6 +505,14 @@ static void S3_UrlEncode(const char *s, char *out, size_t size)
         }
     }
     out[n] = 0;
+}
+
+static void S3_KeyUrl(const char *key, char *url, size_t size)
+{
+    char enc[S3_KEY_MAX * 3];
+
+    S3_UrlEncode(key, enc, sizeof(enc));
+    Q_snprintf(url, size, "%s/%s", ui_s3demos_url->string, enc);
 }
 
 // a ...T...Z stamp as a time: days since 1970 by the civil calendar,
@@ -478,6 +577,7 @@ static bool S3_ParseListing(const char *xml)
 
             // the odd character an XML escape stands for is not in a demo's name
             if (!strchr(key, '&') && (q = strrchr(key, '/')) != NULL && q[1]) {
+                memset(r, 0, sizeof(*r));
                 Q_strlcpy(r->key, key, sizeof(r->key));
                 r->size = atoll(size);
                 r->stamp = S3_Stamp(stamp);
@@ -489,16 +589,35 @@ static bool S3_ParseListing(const char *xml)
     return m_s3.token[0] != 0;
 }
 
+static void S3_ListFail(const char *err)
+{
+    Q_snprintf(m_s3.note, sizeof(m_s3.note), "listing failed: %s", err);
+    m_s3.listing = false;
+    Z_Freep(&m_s3.raw);
+    S3_BuildList();
+}
+
 static void S3_ListRequest(void)
 {
-    char prefix[2][MAX_QPATH], enc[MAX_QPATH * 3], url[MAX_STRING_CHARS];
+    char prefix[2][MAX_QPATH], enc[MAX_QPATH * 3], url[MAX_STRING_CHARS], err[128];
     int n = S3_Prefixes(m_s3.source, m_s3.month, prefix);
 
     if (m_s3.list_prefix >= n) {
-        // done: into the cache, onto the screen
+        // done: into the cache, onto the screen; what was known of the
+        // players before is carried over
+        s3page_t *old, *oldest;
         s3raw_t *raw = m_s3.raw;
-        int count = m_s3.raw_count;
+        int count = m_s3.raw_count, i, k;
 
+        old = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
+        if (old) {
+            for (i = 0; i < count; i++)
+                for (k = 0; k < old->count; k++)
+                    if (old->raw[k].players[0] && !strcmp(old->raw[k].key, raw[i].key)) {
+                        Q_strlcpy(raw[i].players, old->raw[k].players, sizeof(raw[i].players));
+                        break;
+                    }
+        }
         m_s3.raw = NULL;
         m_s3.raw_count = 0;
         m_s3.listing = false;
@@ -515,14 +634,8 @@ static void S3_ListRequest(void)
         Q_strlcat(url, enc, sizeof(url));
     }
     if (!HTTP_FetchStart(url, NULL, false)) {
-        char err[128];
-
         HTTP_FetchState(NULL, NULL, err, sizeof(err));
-        Q_snprintf(m_s3.note, sizeof(m_s3.note), "listing failed: %s", err[0] ? err : "a download is up");
-        m_s3.listing = false;
-        Z_Free(m_s3.raw);
-        m_s3.raw = NULL;
-        S3_BuildList();
+        S3_ListFail(err[0] ? err : "a download is up");
     }
 }
 
@@ -535,11 +648,7 @@ static void S3_ListGot(void)
 
     if (HTTP_FetchState(NULL, NULL, err, sizeof(err)) == FETCH_FAILED) {
         HTTP_FetchTake(NULL);
-        Q_snprintf(m_s3.note, sizeof(m_s3.note), "listing failed: %s", err);
-        m_s3.listing = false;
-        Z_Free(m_s3.raw);
-        m_s3.raw = NULL;
-        S3_BuildList();
+        S3_ListFail(err);
         return;
     }
     HTTP_FetchTake(&data);
@@ -556,6 +665,11 @@ static void S3_ListGot(void)
     S3_ListRequest();
 }
 
+static bool S3_Busy(void)
+{
+    return m_s3.listing || m_s3.fetching || m_s3.peeking;
+}
+
 // the month's listing: from the cache when it is fresh, else fetched
 static void S3_ListStart(void)
 {
@@ -565,8 +679,8 @@ static void S3_ListStart(void)
         S3_BuildList();
         return;
     }
-    if (m_s3.listing || m_s3.fetching) {
-        // the download first; the listing is asked for again when it is done
+    if (S3_Busy()) {
+        // the fetch up first; the listing is asked for again when it is done
         S3_BuildList();
         return;
     }
@@ -578,6 +692,221 @@ static void S3_ListStart(void)
     m_s3.note[0] = 0;
     S3_BuildList();
     S3_ListRequest();
+}
+
+/*
+=======================================================================
+THE PLAYERS
+
+Out of the demo's first block, which carries every player's skin: the
+file in demos/ when it is there, else the first kilobytes of the one on
+the bucket. CL_GetDemoInfo reads a file; a peek is read here, out of
+the unpacked bytes, which may stop short - the whole serverdata block
+is in the first few kilobytes.
+=======================================================================
+*/
+
+#if USE_ZLIB
+static size_t S3_Gunzip(const byte *in, size_t inlen, byte *out, size_t outsize)
+{
+    z_stream zs;
+    size_t got;
+
+    memset(&zs, 0, sizeof(zs));
+    if (inflateInit2(&zs, 15 + 16) != Z_OK)
+        return 0;
+    zs.next_in = (byte *)in;
+    zs.avail_in = inlen;
+    zs.next_out = out;
+    zs.avail_out = outsize;
+    inflate(&zs, Z_SYNC_FLUSH);     // whatever it gives: a cut stream is expected
+    got = outsize - zs.avail_out;
+    inflateEnd(&zs);
+    return got;
+}
+#endif
+
+typedef struct {
+    const byte  *d;
+    size_t      p, end;
+    bool        bad;
+} s3rd_t;
+
+static int S3_RdByte(s3rd_t *r)
+{
+    if (r->p >= r->end) {
+        r->bad = true;
+        return 0;
+    }
+    return r->d[r->p++];
+}
+
+static int S3_RdShort(s3rd_t *r)
+{
+    int lo = S3_RdByte(r), hi = S3_RdByte(r);
+    return (short)(lo | (hi << 8));
+}
+
+static int S3_RdLong(s3rd_t *r)
+{
+    int lo = S3_RdShort(r) & 0xffff, hi = S3_RdShort(r) & 0xffff;
+    return lo | (hi << 16);
+}
+
+static void S3_RdString(s3rd_t *r, char *buf, size_t size)
+{
+    size_t n = 0;
+
+    while (r->p < r->end) {
+        int c = r->d[r->p++];
+        if (!c) {
+            buf[n] = 0;
+            return;
+        }
+        if (n + 1 < size)
+            buf[n++] = c;
+    }
+    buf[n] = 0;
+    r->bad = true;
+}
+
+// the players' note out of an MVD's head, "" when it cannot be read
+static void S3_PeekParse(const byte *data, size_t len, char *players, size_t size)
+{
+    static demoInfo_t info;
+    s3rd_t r;
+    char string[MAX_QPATH], *skin;
+    int blocklen, cmd, version, flags, index;
+
+    players[0] = 0;
+    if (len < 6 || memcmp(data, "MVD2", 4))
+        return;
+    blocklen = data[4] | (data[5] << 8);
+    r.d = data;
+    r.p = 6;
+    r.end = min((size_t)6 + blocklen, len);
+    r.bad = false;
+
+    cmd = S3_RdByte(&r);
+    if ((cmd & 31) != 4 || S3_RdLong(&r) != 37)  // mvd_serverdata, PROTOCOL_VERSION_MVD
+        return;
+    version = S3_RdShort(&r) & 0xffff;
+    flags = version >= 2012 ? S3_RdShort(&r) & 0xffff : cmd >> 5;
+    if (flags & 1)              // extended limits: other configstring numbers
+        return;
+    S3_RdLong(&r);              // servercount
+    S3_RdString(&r, string, sizeof(string));    // gamedir
+    S3_RdShort(&r);             // clientNum
+
+    memset(&info, 0, sizeof(info));
+    while (!r.bad) {
+        index = S3_RdShort(&r) & 0xffff;
+        if (index == 2080)      // CS_END, old protocol
+            break;
+        S3_RdString(&r, string, sizeof(string));
+        if (index < 1312 || index >= 1312 + MAX_CLIENTS)    // CS_PLAYERSKINS
+            continue;
+        skin = strchr(string, '\\');
+        if (skin)
+            *skin++ = 0;
+        if (string[0] && info.numPlayers < MAX_CLIENTS) {
+            Q_strlcpy(info.players[info.numPlayers].name, string, MAX_CLIENT_NAME);
+            Q_strlcpy(info.players[info.numPlayers].skin, skin ? skin : "", MAX_QPATH);
+            info.numPlayers++;
+        }
+    }
+    CL_DemoPlayersNote(&info, players, size);
+}
+
+// what is known of the players, into the row and the month's page
+static void S3_SetPlayers(s3entry_t *e, const char *players)
+{
+    s3page_t *page, *oldest;
+
+    Q_strlcpy(e->players, players, sizeof(e->players));
+    page = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
+    if (page && e->raw >= 0 && e->raw < page->count && !strcmp(page->raw[e->raw].key, e->key)) {
+        Q_strlcpy(page->raw[e->raw].players, players, sizeof(page->raw[e->raw].players));
+        page->dirty = true;
+    }
+}
+
+// a demo in demos/: read there
+static void S3_LocalPlayers(s3entry_t *e)
+{
+    static demoInfo_t info;
+    char path[MAX_OSPATH], players[S3_PLAYERS_MAX];
+    const char *name = S3_HaveAs(e->local);
+
+    if (!name[0])
+        return;
+    memset(&info, 0, sizeof(info));
+    Q_snprintf(path, sizeof(path), "demos/%s", name);
+    if (!CL_GetDemoInfo(path, &info))
+        return;
+    CL_DemoPlayersNote(&info, players, sizeof(players));
+    S3_SetPlayers(e, players[0] ? players : S3_NONE);
+}
+
+static void S3_PeekStart(s3entry_t *e)
+{
+    char url[MAX_STRING_CHARS];
+
+    S3_KeyUrl(e->key, url, sizeof(url));
+    if (!HTTP_FetchStartRange(url, S3_PEEK_BYTES))
+        return;
+    m_s3.peeking = true;
+    Q_strlcpy(m_s3.peek_key, e->key, sizeof(m_s3.peek_key));
+}
+
+static void S3_PeekDone(void)
+{
+    char players[S3_PLAYERS_MAX];
+    void *data;
+    int len, i;
+    bool ok = HTTP_FetchState(NULL, NULL, NULL, 0) == FETCH_DONE;
+
+    len = HTTP_FetchTake(&data);
+    m_s3.peeking = false;
+    players[0] = 0;
+#if USE_ZLIB
+    if (ok && data && len > 0) {
+        byte *out = Z_Malloc(S3_PEEK_OUT);
+        size_t got = S3_Gunzip(data, len, out, S3_PEEK_OUT);
+
+        S3_PeekParse(out, got, players, sizeof(players));
+        Z_Free(out);
+    }
+#endif
+    HTTP_FreeFile(data);
+
+    for (i = 0; i < m_s3.numAll; i++) {
+        s3entry_t *e = m_s3.all[i];
+
+        if (!strcmp(e->key, m_s3.peek_key)) {
+            S3_SetPlayers(e, players[0] ? players : ok ? S3_NONE : "");
+            break;
+        }
+    }
+}
+
+// the cursor has rested on a row: its players, if they are not known
+static void S3_Rest(void)
+{
+    s3entry_t *e = m_s3.list.numItems ? m_s3.list.items[m_s3.list.curvalue] : NULL;
+
+    if (e != m_s3.rest_on) {
+        m_s3.rest_on = e;
+        m_s3.rest_since = uis.realtime;
+        return;
+    }
+    if (!e || e->players[0] || e->have || S3_Busy())
+        return;
+    if (uis.realtime - m_s3.rest_since < S3_PEEK_REST_MS)
+        return;
+    S3_PeekStart(e);
+    if (!m_s3.peeking)
+        S3_SetPlayers(e, S3_NONE);  // not asked again this session
 }
 
 /*
@@ -604,14 +933,25 @@ static void S3_FreeList(void)
     }
     Z_Freep(&m_s3.list.items);
     m_s3.list.numItems = 0;
+    m_s3.rest_on = NULL;
+}
+
+// by the name, or by who is in it
+static int S3_Score(const s3entry_t *e)
+{
+    int s1 = Fuzzy_Score(m_s3.filter, S3_Base(e->key)), s2 = -1;
+
+    if (e->players[0] && strcmp(e->players, S3_NONE))
+        s2 = Fuzzy_Score(m_s3.filter, e->players);
+    return max(s1, s2);
 }
 
 static int S3_ScoreCmp(const void *p1, const void *p2)
 {
     const s3entry_t *e1 = *(const s3entry_t **)p1;
     const s3entry_t *e2 = *(const s3entry_t **)p2;
-    int s1 = Fuzzy_Score(m_s3.filter, S3_Base(e1->key));
-    int s2 = Fuzzy_Score(m_s3.filter, S3_Base(e2->key));
+    int s1 = S3_Score(e1);
+    int s2 = S3_Score(e2);
 
     if (s1 != s2)
         return s2 - s1;
@@ -625,7 +965,7 @@ static void S3_ApplyFilter(void)
     for (i = 0; i < m_s3.numAll; i++) {
         s3entry_t *e = m_s3.all[i];
 
-        if (!*m_s3.filter || Fuzzy_Score(m_s3.filter, S3_Base(e->key)) >= 0)
+        if (!*m_s3.filter || S3_Score(e) >= 0)
             m_s3.list.items[n++] = e;
     }
     m_s3.list.numItems = n;
@@ -643,29 +983,40 @@ static void S3_ApplyFilter(void)
         Q_snprintf(m_s3.status, sizeof(m_s3.status), "%d demo%s", n, n == 1 ? "" : "s");
 }
 
-static s3entry_t *S3_Entry(const s3raw_t *r)
+static void S3_EntryHave(s3entry_t *e, bool have)
+{
+    char *p = e->text;
+    int k;
+
+    e->have = have;
+    e->color = have ? MakeColor(130, 255, 130, 255) : U32_WHITE;
+    // the last column, past four NULs: room for "yes" was left in it
+    for (k = 0; k < COL_HAVE; k++)
+        p += strlen(p) + 1;
+    strcpy(p, have ? "yes" : "   ");
+}
+
+static s3entry_t *S3_Entry(const s3raw_t *r, int raw)
 {
     char date[32], teams[MAX_QPATH], map[MAX_QPATH], size[16], local[S3_KEY_MAX];
     s3entry_t *e;
-    bool have;
     size_t len;
 
     S3_Parse(r->key, date, sizeof(date), teams, sizeof(teams), map, sizeof(map));
     S3_LocalName(r->key, local, sizeof(local));
-    have = S3_Have(local);
     Com_FormatSize(size, sizeof(size), r->size);
-    e = UI_FormatColumns(S3_EXTRASIZE, date, teams, map, size, have ? "yes" : "", NULL);
+    e = UI_FormatColumns(S3_EXTRASIZE, date, teams, map, size, "   ", NULL);
     e->size = r->size;
     e->stamp = r->stamp;
-    e->have = have;
+    e->raw = raw;
     Q_strlcpy(e->key, r->key, sizeof(e->key));
     Q_strlcpy(e->local, local, sizeof(e->local));
+    Q_strlcpy(e->map, map, sizeof(e->map));
+    Q_strlcpy(e->players, r->players, sizeof(e->players));
+    S3_EntryHave(e, S3_HaveAs(local)[0] != 0);
+    if (e->have && !e->players[0])
+        S3_LocalPlayers(e);
 
-    len = strlen(teams);
-    if (len > 24)
-        len = 24;
-    if (len > m_s3.widest_teams)
-        m_s3.widest_teams = len;
     len = strlen(map);
     if (len > 12)
         len = 12;
@@ -683,7 +1034,6 @@ static void S3_BuildList(void)
     int i, count = m_s3.listing ? m_s3.raw_count : page ? page->count : 0;
 
     S3_FreeList();
-    m_s3.widest_teams = 5;
     m_s3.widest_map = 3;
 
     if (raw && count > 1)
@@ -691,7 +1041,7 @@ static void S3_BuildList(void)
     m_s3.all = UI_Malloc(sizeof(void *) * (count + 1));
     m_s3.numAll = 0;
     for (i = 0; i < count; i++)
-        m_s3.all[m_s3.numAll++] = S3_Entry(&raw[i]);
+        m_s3.all[m_s3.numAll++] = S3_Entry(&raw[i], i);
     m_s3.list.items = UI_Malloc(sizeof(void *) * (count + 1));
 
     Q_snprintf(m_s3.title, sizeof(m_s3.title), "aq2world demos: %s, %s", s3_sources[m_s3.source].name, m_s3.month);
@@ -701,13 +1051,36 @@ static void S3_BuildList(void)
 
 /*
 =======================================================================
-THE DOWNLOAD
+THE DOWNLOAD, AND THE MAP
 =======================================================================
 */
 
-static menuSound_t S3_Fetch(s3entry_t *e)
+static bool S3_NameOk(const char *s)
 {
-    char enc[S3_KEY_MAX * 3], url[MAX_STRING_CHARS], path[MAX_OSPATH], err[128];
+    return !strchr(s, '"') && !strchr(s, ';') && !strstr(s, "..") && !strchr(s, '\n');
+}
+
+// the demo's map in the jump mod, the pathing menu open on the demo
+// (jmod_paths_open, read by the game as the player comes in)
+static menuSound_t S3_Launch(const char *local, const char *map)
+{
+    const char *name = S3_HaveAs(local);
+
+    if (!name[0] || !map[0] || !S3_NameOk(name) || !S3_NameOk(map)) {
+        Q_strlcpy(m_s3.note, "its map is not known from its name", sizeof(m_s3.note));
+        return QMS_BEEP;
+    }
+    // the other modes off, which the game checks before jump (as Practice Jumps does)
+    Cbuf_AddText(&cmd_buffer, va("forcemenuoff; set ltk_loadbots 0; set am 0; "
+                 "set teamplay 0; set teamdm 0; set ctf 0; set dom 0; set esp 0; "
+                 "set use_tourney 0; set deathmatch 1; set jump 1; "
+                 "set jmod_paths_open \"%s\"; map \"%s\" force\n", name, map));
+    return QMS_SILENT;
+}
+
+static menuSound_t S3_Fetch(s3entry_t *e, bool launch)
+{
+    char url[MAX_STRING_CHARS], path[MAX_OSPATH], err[128];
     size_t len = strlen(e->local);
     bool gz = strlen(S3_Base(e->key)) > len;
 
@@ -719,13 +1092,16 @@ static menuSound_t S3_Fetch(s3entry_t *e)
         Q_strlcpy(m_s3.note, "after the listing", sizeof(m_s3.note));
         return QMS_BEEP;
     }
-    if (strchr(e->local, '"') || strchr(e->local, ';') || strstr(e->local, "..")) {
+    if (m_s3.peeking) {
+        HTTP_FetchCancel();     // the download comes first
+        m_s3.peeking = false;
+    }
+    if (!S3_NameOk(e->local)) {
         Q_strlcpy(m_s3.note, "that name will not do as a file's", sizeof(m_s3.note));
         return QMS_BEEP;
     }
 
-    S3_UrlEncode(e->key, enc, sizeof(enc));
-    Q_snprintf(url, sizeof(url), "%s/%s", ui_s3demos_url->string, enc);
+    S3_KeyUrl(e->key, url, sizeof(url));
     Q_snprintf(path, sizeof(path), "demos/%s", e->local);
     if (!HTTP_FetchStart(url, path, gz)) {
         HTTP_FetchState(NULL, NULL, err, sizeof(err));
@@ -733,8 +1109,10 @@ static menuSound_t S3_Fetch(s3entry_t *e)
         return QMS_BEEP;
     }
     m_s3.fetching = true;
+    m_s3.fetch_launch = launch;
     Q_strlcpy(m_s3.fetch_key, e->key, sizeof(m_s3.fetch_key));
     Q_strlcpy(m_s3.fetch_local, e->local, sizeof(m_s3.fetch_local));
+    Q_strlcpy(m_s3.fetch_map, e->map, sizeof(m_s3.fetch_map));
     Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s...", e->local);
     return QMS_IN;
 }
@@ -743,30 +1121,26 @@ static void S3_FetchDone(void)
 {
     char err[128];
     int i;
+    bool ok = HTTP_FetchState(NULL, NULL, err, sizeof(err)) == FETCH_DONE;
 
-    if (HTTP_FetchState(NULL, NULL, err, sizeof(err)) == FETCH_DONE) {
-        Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s is in demos/: Enter plays it", m_s3.fetch_local);
-        for (i = 0; i < m_s3.numAll; i++) {
-            s3entry_t *e = m_s3.all[i];
-
-            if (!strcmp(e->key, m_s3.fetch_key) && !e->have) {
-                e->have = true;
-                // the last column, after four NULs
-                char *p = e->text;
-                int k;
-                for (k = 0; k < COL_HAVE; k++)
-                    p += strlen(p) + 1;
-                if (strlen(p) >= 3)
-                    strcpy(p, "yes");
-                else
-                    *p = '*';   // no room: a mark
-            }
-        }
-    } else {
-        Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s: download failed: %s", m_s3.fetch_local, err);
-    }
     HTTP_FetchTake(NULL);
     m_s3.fetching = false;
+    if (!ok) {
+        Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s: download failed: %s", m_s3.fetch_local, err);
+        return;
+    }
+    Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s is in demos/: Enter plays it", m_s3.fetch_local);
+    for (i = 0; i < m_s3.numAll; i++) {
+        s3entry_t *e = m_s3.all[i];
+
+        if (!strcmp(e->key, m_s3.fetch_key)) {
+            S3_EntryHave(e, true);
+            if (!e->players[0] || !strcmp(e->players, S3_NONE))
+                S3_LocalPlayers(e);
+        }
+    }
+    if (m_s3.fetch_launch)
+        S3_Launch(m_s3.fetch_local, m_s3.fetch_map);
 }
 
 /*
@@ -807,25 +1181,43 @@ static menuSound_t S3_Change(menuCommon_t *self)
         return QMS_BEEP;
     }
     e = m_s3.list.items[m_s3.list.curvalue];
-    m_s3.menu.status = e->have ? "Press Enter to play the demo" : "Press Enter to download the demo";
+    m_s3.menu.status = e->have ? "Enter plays the demo; Shift+Enter its map in the jump mod, with its routes"
+        : "Enter downloads the demo; Shift+Enter downloads it and starts its map in the jump mod";
     return QMS_SILENT;
 }
 
 static menuSound_t S3_Activate(menuCommon_t *self)
 {
     s3entry_t *e;
+    const char *name;
 
     if (!m_s3.list.numItems)
         return QMS_BEEP;
     e = m_s3.list.items[m_s3.list.curvalue];
     if (e->have) {
-        if (strchr(e->local, '"') || strchr(e->local, ';'))
+        name = S3_HaveAs(e->local);
+        if (!name[0] || !S3_NameOk(name))
             return QMS_BEEP;
-        Cbuf_AddText(&cmd_buffer, va("demo \"/demos/%s%s\"\n",
-            os_access(va("%s/demos/%s", fs_gamedir, e->local), F_OK) ? "hl_" : "", e->local));
+        Cbuf_AddText(&cmd_buffer, va("demo \"/demos/%s\"\n", name));
         return QMS_SILENT;
     }
-    return S3_Fetch(e);
+    return S3_Fetch(e, false);
+}
+
+static menuSound_t S3_Practice(void)
+{
+    s3entry_t *e;
+
+    if (!m_s3.list.numItems)
+        return QMS_BEEP;
+    e = m_s3.list.items[m_s3.list.curvalue];
+    if (e->have)
+        return S3_Launch(e->local, e->map);
+    if (!e->map[0]) {
+        Q_strlcpy(m_s3.note, "its map is not known from its name", sizeof(m_s3.note));
+        return QMS_BEEP;
+    }
+    return S3_Fetch(e, true);
 }
 
 static void S3_Size(menuFrameWork_t *self)
@@ -867,6 +1259,11 @@ static menuSound_t S3_Keydown(menuFrameWork_t *self, int key)
         m_s3.filter[0] = 0;
         S3_ApplyFilter();
         return QMS_SILENT;
+    case K_ENTER:
+    case K_KP_ENTER:
+        if (Key_IsDown(K_SHIFT))
+            return S3_Practice();
+        return QMS_NOTHANDLED;
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
         S3_SetMonth(m_s3.year, m_s3.mon - 1);
@@ -884,15 +1281,11 @@ static menuSound_t S3_Keydown(menuFrameWork_t *self, int key)
     case K_F5:
         // asked again, whatever the cache has
         if (!m_s3.listing && !m_s3.fetching) {
-            char path[MAX_OSPATH];
-            int i;
+            s3page_t *page, *oldest;
 
-            for (i = 0; i < S3_PAGES_KEPT; i++)
-                if (m_s3.pages[i].raw && m_s3.pages[i].source == m_s3.source
-                    && !strcmp(m_s3.pages[i].month, m_s3.month))
-                    m_s3.pages[i].fetched = 0;
-            S3_CachePath(m_s3.source, m_s3.month, path, sizeof(path));
-            remove(path);
+            page = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
+            if (page)
+                page->fetched = 0;
             S3_ListStart();
         }
         return QMS_MOVE;
@@ -917,22 +1310,25 @@ static menuSound_t S3_CharEvent(menuFrameWork_t *self, int key)
     return QMS_SILENT;
 }
 
-// each frame: a listing or a download under way is followed
+// each frame: a listing, a download or a peek under way is followed
 static void S3_Draw(menuFrameWork_t *self)
 {
     fetch_state_t state;
     int64_t got, total;
     char size[16];
+    s3entry_t *e;
 
-    if (m_s3.listing || m_s3.fetching) {
+    if (S3_Busy()) {
         state = HTTP_FetchState(&got, &total, NULL, 0);
         if (state == FETCH_DONE || state == FETCH_FAILED) {
             if (m_s3.listing)
                 S3_ListGot();
-            else
+            else if (m_s3.fetching)
                 S3_FetchDone();
+            else
+                S3_PeekDone();
             // a month asked for during the download
-            if (!m_s3.listing && !m_s3.fetching && !S3_PageFind(m_s3.source, m_s3.month, true))
+            if (!S3_Busy() && !S3_PageFind(m_s3.source, m_s3.month, true))
                 S3_ListStart();
         } else if (m_s3.fetching && uis.realtime - m_s3.fetch_shown > 200) {
             m_s3.fetch_shown = uis.realtime;
@@ -942,12 +1338,18 @@ static void S3_Draw(menuFrameWork_t *self)
                            m_s3.fetch_local, (int)(got * 100 / total), size);
             else
                 Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %s", m_s3.fetch_local, size);
-        } else if (m_s3.listing && m_s3.raw_count && m_s3.list.numItems != m_s3.raw_count) {
-            // what has come in so far, a page at a time
         }
     }
+    S3_Rest();
 
     Menu_Draw(self);
+    if (m_s3.list.numItems) {
+        e = m_s3.list.items[m_s3.list.curvalue];
+        if (e->players[0] && strcmp(e->players, S3_NONE))
+            MenuList_DrawNote(&m_s3.list, e->players);
+        else if (m_s3.peeking && !strcmp(m_s3.peek_key, e->key))
+            MenuList_DrawNote(&m_s3.list, "looking who is in it...");
+    }
     if (uis.width >= 640)
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT, UI_RIGHT, m_s3.status);
     if (*m_s3.filter)
@@ -957,7 +1359,7 @@ static void S3_Draw(menuFrameWork_t *self)
         UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR, m_s3.note);
     else
         UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
-                      "Left/Right: month   Tab: source   type to filter   F5: list again");
+                      "Left/Right: month   Tab: source   type to filter by name or player   F5: list again");
 }
 
 static void S3_Expose(menuFrameWork_t *self)
@@ -975,13 +1377,17 @@ static void S3_Expose(menuFrameWork_t *self)
 
 static void S3_Pop(menuFrameWork_t *self)
 {
-    // a download goes on; a listing is dropped
-    if (m_s3.listing) {
+    int i;
+
+    // a download goes on; a listing or a peek is dropped
+    if (m_s3.listing || m_s3.peeking) {
         HTTP_FetchCancel();
-        m_s3.listing = false;
-        Z_Free(m_s3.raw);
-        m_s3.raw = NULL;
+        m_s3.listing = m_s3.peeking = false;
+        Z_Freep(&m_s3.raw);
     }
+    for (i = 0; i < S3_PAGES_KEPT; i++)
+        if (m_s3.pages[i].raw && m_s3.pages[i].dirty)
+            S3_PageWrite(&m_s3.pages[i]);
     S3_FreeList();
 }
 
@@ -991,7 +1397,8 @@ static void S3_Free(menuFrameWork_t *self)
 
     S3_Pop(self);
     for (i = 0; i < S3_PAGES_KEPT; i++)
-        Z_Free(m_s3.pages[i].raw);
+        if (m_s3.pages[i].raw)
+            S3_PageFree(&m_s3.pages[i]);
     Z_Free(m_s3.menu.items);
     memset(&m_s3, 0, sizeof(m_s3));
 }
@@ -1021,7 +1428,7 @@ void M_Menu_S3Demos(void)
     m_s3.list.generic.change = S3_Change;
     m_s3.list.numcolumns     = COL_MAX;
     m_s3.list.extrasize      = S3_EXTRASIZE;
-    m_s3.list.mlFlags        = MLF_HEADER | MLF_SCROLLBAR;
+    m_s3.list.mlFlags        = MLF_HEADER | MLF_SCROLLBAR | MLF_COLOR;
 
     m_s3.list.columns[COL_DATE].name    = "Played";
     m_s3.list.columns[COL_DATE].uiFlags = UI_LEFT;
@@ -1038,4 +1445,3 @@ void M_Menu_S3Demos(void)
 
     List_Append(&ui_menus, &m_s3.menu.entry);
 }
-

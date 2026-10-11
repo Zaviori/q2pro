@@ -18,11 +18,17 @@ unit.
 | Tab | the next source: `pickup` (vrol), `cw-pickup` (the clan war server), `aq2world_eu` (de.aq2.rocks) |
 | letters | filter the month's list, fuzzy, by the demo's name; Backspace edits, Escape clears |
 | Enter | download the demo under the cursor; play it when it is already in `demos/` |
+| Shift+Enter | its map in the jump mod with the pathing menu open on the demo (after the download, when it is not there yet) |
 | F5 | list the month again, whatever the cache has |
 
 The columns are the time played (as the server named the file), the
 teams, the map, the size and whether it is in `demos/` already (the
-laptop's mirror prefixes its copies with `hl_`; those count). One
+laptop's mirror prefixes its copies with `hl_`; those count); a row that
+is there already is green. The players of the demo under the cursor go
+in a box under its row, by team: read out of the file when it is in
+`demos/`, else out of the first 48 KB of the gzipped file on the bucket,
+fetched once the cursor has rested on the row for 400 ms and kept with
+the listing. The filter matches them too. One
 download at a time, with its progress on the bottom line; it goes on
 if the menu is left. Only what is picked is downloaded - the listing
 itself is a few kilobytes of XML.
@@ -43,8 +49,8 @@ bucket (`https://aq2world.s3.amazonaws.com`).
   `<YYYYMMDD>-<HHMMSS>-TP-MM-<teams>-<port>-<map>` from then; the bucket
   prefix for a month follows the same layouts (`q2bot.py` on the laptop
   has the same table).
-- `HTTP_FetchStart` / `HTTP_FetchState` / `HTTP_FetchTake` /
-  `HTTP_FetchCancel` in `src/client/http.c`: one fetch on a thread of
+- `HTTP_FetchStart` / `HTTP_FetchStartRange` / `HTTP_FetchState` /
+  `HTTP_FetchTake` / `HTTP_FetchCancel` in `src/client/http.c`: one fetch on a thread of
   its own, into memory (a listing, with S3's continuation token for the
   next page) or into a file under the game directory, written as
   `.part` and moved into place whole, gunzipped on the way with zlib.

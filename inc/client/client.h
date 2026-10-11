@@ -60,9 +60,17 @@ typedef struct {
 typedef struct {
     char map[MAX_QPATH];
     char pov[MAX_CLIENT_NAME];
-    char players[MAX_STRING_CHARS];     // everybody with a skin, space separated
     bool mvd;
+    int numPlayers;                     // everybody with a skin
+    struct {
+        char name[MAX_CLIENT_NAME];
+        char skin[MAX_QPATH];
+    } players[MAX_CLIENTS];
 } demoInfo_t;
+
+// the players by skin - which is the team, in a teamplay demo - as
+// lines of "skin: name, name"; "" when there are none
+void CL_DemoPlayersNote(const demoInfo_t *info, char *buf, size_t size);
 
 typedef enum {
     ACT_MINIMIZED,
@@ -102,11 +110,13 @@ typedef enum {
 
 #if USE_CURL
 bool HTTP_FetchStart(const char *url, const char *path, bool gunzip);
+bool HTTP_FetchStartRange(const char *url, int64_t bytes);
 fetch_state_t HTTP_FetchState(int64_t *got, int64_t *total, char *err, size_t errlen);
 int HTTP_FetchTake(void **data);
 void HTTP_FetchCancel(void);
 #else
 #define HTTP_FetchStart(url, path, gunzip)          false
+#define HTTP_FetchStartRange(url, bytes)            false
 #define HTTP_FetchState(got, total, err, errlen)    FETCH_IDLE
 #define HTTP_FetchTake(data)                        0
 #define HTTP_FetchCancel()                          (void)0

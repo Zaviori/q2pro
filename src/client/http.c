@@ -407,6 +407,7 @@ static struct {
     bool        joined;
 
     char        url[MAX_STRING_CHARS];
+    char        range[32];          // "0-N" for the first bytes alone, "" the whole
     char        path[MAX_OSPATH];   // "" for memory
     char        part[MAX_OSPATH];   // written here, moved to path when whole
     bool        gunzip;
@@ -531,6 +532,8 @@ static void *fetch_func(void *arg)
     curl_easy_setopt(curl, CURLOPT_PROXY, http_proxy());
     curl_easy_setopt(curl, CURLOPT_USERAGENT, com_version->string);
     curl_easy_setopt(curl, CURLOPT_URL, fetch.url);
+    if (fetch.range[0])
+        curl_easy_setopt(curl, CURLOPT_RANGE, fetch.range);
     curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS | 0L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
@@ -607,7 +610,7 @@ game directory, made whole before it appears there, gunzipped on the
 way if asked. False when another fetch is up or curl is not.
 ===============
 */
-bool HTTP_FetchStart(const char *url, const char *path, bool gunzip)
+static bool fetch_start(const char *url, const char *path, bool gunzip, const char *range)
 {
     if (!curl_initialized || fetch_busy())
         return false;
@@ -625,6 +628,7 @@ bool HTTP_FetchStart(const char *url, const char *path, bool gunzip)
 
     Q_strlcpy(fetch.url, url, sizeof(fetch.url));
     fetch.path[0] = fetch.part[0] = 0;
+    Q_strlcpy(fetch.range, range ? range : "", sizeof(fetch.range));
     fetch.gunzip = false;
     if (path) {
         if (Q_snprintf(fetch.path, sizeof(fetch.path), "%s/%s", fs_gamedir, path) >= sizeof(fetch.path)
@@ -672,6 +676,20 @@ bool HTTP_FetchStart(const char *url, const char *path, bool gunzip)
         return false;
     }
     return true;
+}
+
+bool HTTP_FetchStart(const char *url, const char *path, bool gunzip)
+{
+    return fetch_start(url, path, gunzip, NULL);
+}
+
+// the first bytes of a URL alone, into memory: a look at a file's head
+bool HTTP_FetchStartRange(const char *url, int64_t bytes)
+{
+    char range[32];
+
+    Q_snprintf(range, sizeof(range), "0-%lld", (long long)(bytes - 1));
+    return fetch_start(url, NULL, false, range);
 }
 
 // where it is: the state, the bytes so far and in all (0 unknown), the error

@@ -1485,6 +1485,96 @@ static void MenuList_Draw(menuList_t *l)
     }
 }
 
+/*
+=================
+MenuList_DrawNote
+
+Lines of text in a box under the row the cursor is on, over the rows
+below it: what the browsers say about the demo picked. Wrapped to the
+list's width, cut at its bottom. Drawn after the list.
+=================
+*/
+void MenuList_DrawNote(menuList_t *l, const char *text)
+{
+    char line[MAX_STRING_CHARS];
+    const char *s = text, *e, *cut;
+    int x = l->generic.rect.x, y = l->generic.rect.y, bottom;
+    int width = l->generic.rect.width, cols, n, lines = 0;
+    int pad = MLIST_PRESTEP;
+
+    if (!text || !*text || l->curvalue < l->prestep || l->curvalue >= l->prestep + l->maxItems)
+        return;
+    if (l->mlFlags & MLF_HEADER)
+        y += MLIST_SPACING;
+    y += (l->curvalue - l->prestep + 1) * MLIST_SPACING;
+    bottom = l->generic.rect.y + l->generic.rect.height;
+    if (l->mlFlags & MLF_SCROLLBAR)
+        width -= MLIST_SCROLLBAR_WIDTH;
+    cols = (width - 2 * pad) / CONCHAR_WIDTH;
+    if (cols < 8)
+        return;
+
+    // how many lines it comes to, wrapped
+    for (s = text; *s; ) {
+        e = strchr(s, '\n');
+        n = e ? e - s : strlen(s);
+        while (n > cols) {
+            // back to a space
+            for (cut = s + cols; cut > s && *cut != ' '; cut--)
+                ;
+            if (cut == s)
+                cut = s + cols;
+            lines++;
+            n -= cut - s;
+            s = cut;
+            while (*s == ' ' && n) {
+                s++;
+                n--;
+            }
+        }
+        lines++;
+        s += n;
+        if (*s == '\n')
+            s++;
+    }
+    if (y + lines * CONCHAR_HEIGHT + 2 * pad > bottom)
+        lines = (bottom - y - 2 * pad) / CONCHAR_HEIGHT;
+    if (lines <= 0)
+        return;
+
+    R_DrawFill32(x, y, width, lines * CONCHAR_HEIGHT + 2 * pad, MakeColor(0, 0, 0, 210));
+    y += pad;
+    for (s = text; *s && lines > 0; ) {
+        e = strchr(s, '\n');
+        n = e ? e - s : strlen(s);
+        while (n > cols && lines > 0) {
+            for (cut = s + cols; cut > s && *cut != ' '; cut--)
+                ;
+            if (cut == s)
+                cut = s + cols;
+            Q_snprintf(line, sizeof(line), "%.*s", (int)(cut - s), s);
+            UI_DrawString(x + pad, y, UI_LEFT, line);
+            y += CONCHAR_HEIGHT;
+            lines--;
+            n -= cut - s;
+            s = cut;
+            while (*s == ' ' && n) {
+                s++;
+                n--;
+            }
+        }
+        if (lines <= 0)
+            break;
+        Q_snprintf(line, sizeof(line), "%.*s", n, s);
+        UI_DrawString(x + pad, y, UI_LEFT, line);
+        y += CONCHAR_HEIGHT;
+        lines--;
+        s += n;
+        if (*s == '\n')
+            s++;
+    }
+}
+
 void MenuList_Sort(menuList_t *l, int offset, int (*cmpfunc)(const void *, const void *))
 {
     void *n;
