@@ -204,10 +204,13 @@ static void JmpPathDemoLabel(const char *name, char *buf, size_t size)
 	Q_snprintf(buf, size, "%.10s %.2s:%.2s %.*s", date, date + 11, date + 13, (int)n, rest);
 }
 
+#define JMP_PATH_LOC	128		// a location's description, as placedata_t has it
+
+// the place's name, or its coordinates on a map without a location file
 static const char *JmpPathLoc(const vec3_t origin, char *buf)
 {
 	if (!GetLocationAt(origin, buf))
-		Q_snprintf(buf, 64, "%.0f %.0f", origin[0], origin[1]);
+		Q_snprintf(buf, JMP_PATH_LOC, "%.0f %.0f", origin[0], origin[1]);
 	return buf;
 }
 
@@ -231,7 +234,7 @@ static int JmpPathSpawn(const vec3_t origin)
 static void JmpPathDesc(jmp_path_t *st, int k, char *buf, size_t size)
 {
 	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
-	char from[64], via[64], to[64];
+	char from[JMP_PATH_LOC], via[JMP_PATH_LOC], to[JMP_PATH_LOC];
 	vec3_t o;
 
 	MvdPath_Origin(&st->demo->samples[t->first], o);
@@ -778,7 +781,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 {
 	jmp_path_t *st = JmpPath(ent);
 	gclient_t *client = ent->client;
-	char label[64], desc[64], loc[64];
+	char label[64], desc[JMP_PATH_LOC * 2], loc[JMP_PATH_LOC];
 	int i, row, n;
 
 	for (i = 0; i < JMP_MENU_ROWS; i++)
