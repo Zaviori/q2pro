@@ -740,18 +740,18 @@ layout is up - the markers keep an empty one up for this.
 */
 static void CL_SendShiftKey(void)
 {
-    static bool sent, sent_ctrl;
+    static bool sent, sent_alt;
     bool layout = (cl.frame.ps.stats[STAT_LAYOUTS] & 1) != 0;
     bool shift = Key_IsDown(K_SHIFT) && layout;
-    bool ctrl = Key_IsDown(K_CTRL) && layout;
+    bool alt = Key_IsDown(K_ALT) && layout;
 
     if (shift != sent) {
         sent = shift;
         CL_ClientCommand(va("jmod shiftkey %d", shift));
     }
-    if (ctrl != sent_ctrl) {
-        sent_ctrl = ctrl;
-        CL_ClientCommand(va("jmod ctrlkey %d", ctrl));
+    if (alt != sent_alt) {
+        sent_alt = alt;
+        CL_ClientCommand(va("jmod altkey %d", alt));
     }
 }
 
