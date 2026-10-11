@@ -51,6 +51,7 @@ enum {
 
 enum {
     svc_layout = 4,
+    svc_muzzleflash = 1,
     svc_sound = 9,
     svc_print,
     svc_stufftext,
@@ -199,6 +200,7 @@ typedef struct {
     short       frame;
     int         skinnum;    // the weapon held is its high byte (the mod's vwep)
     byte        model2;     // 255 while a weapon is held
+    bool        shot;       // a muzzle flash of his in this block
 } es_t;
 
 typedef struct {
@@ -441,6 +443,7 @@ static void sample(const parser_t *ps, int slot, mvp_sample_t *s)
     s->anim = ps->es[slot + 1].frame;
     s->viewheight = p->viewheight;
     s->weapon = ps->es[slot + 1].model2 == 255 ? (ps->es[slot + 1].skinnum >> 8) & 255 : 0;
+    s->flags = ps->es[slot + 1].shot ? MVP_SHOT : 0;
 }
 
 // the open round's trails into the demo, the short ones dropped
@@ -623,6 +626,8 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
     bool framed = false;
 
     ps->lights = ps->action = false;
+    for (index = 0; index <= MAX_CLIENTS; index++)
+        ps->es[index].shot = false;     // the block's flashes come before its frame
     while (r->p < r->end && !r->bad) {
         cmd = rd_byte(r);
         op = cmd & 31;
@@ -680,6 +685,14 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
             length = rd_byte(r) | (extra << 8);
             if ((op - mvd_multicast_all) % 3)
                 rd_word(r);             // leafnum
+            // a muzzle flash in it is a shot: the entity's, this frame
+            // (the flash is sent on its own, a multicast to itself)
+            if (length >= 4 && r->p + 4 <= r->end && r->d[r->p] == svc_muzzleflash) {
+                int num = r->d[r->p + 1] | (r->d[r->p + 2] << 8);
+
+                if (num >= 1 && num <= MAX_CLIENTS)
+                    ps->es[num].shot = true;
+            }
             rd_skip(r, length);
             break;
         case mvd_sound:

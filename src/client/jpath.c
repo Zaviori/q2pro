@@ -148,6 +148,22 @@ static uint32_t JPath_Color(int frame, int alpha, float bright)
 }
 
 #if USE_REF
+#define JPATH_LOOK_BEFORE   5       // samples before a shot the look is drawn from: half a second
+#define JPATH_LOOK_AFTER    3       // and after it
+
+// jpath_look: a shot of his near sample i - a flash within the window;
+// *now when sample i is the shot itself
+static bool JPath_ShotNear(const mvp_sample_t *s, int n, int i, bool *now)
+{
+    int j;
+
+    *now = (s[i].flags & MVP_SHOT) != 0;
+    for (j = max(i - JPATH_LOOK_AFTER, 0); j <= i + JPATH_LOOK_BEFORE && j < n; j++)
+        if (s[j].flags & MVP_SHOT)
+            return true;
+    return false;
+}
+
 // jpath_look: where he looked from a point of the route, a 48-unit line
 // from the eye the way the view angles point
 static void JPath_Look(const mvp_sample_t *m, const vec3_t at, uint32_t color, bool depth)
@@ -178,9 +194,16 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
-        // where he looked: a short line from the eye, every half second
-        if (jpath_look->integer && i % 5 == 0)
-            JPath_Look(&s[i], a, dim ? dim : MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), depth);
+        // where he looked, round his shots: a line from the eye every
+        // sample from half a second before one to a third after, the
+        // shot's own in orange
+        if (jpath_look->integer) {
+            bool now;
+
+            if (JPath_ShotNear(s, n, i, &now))
+                JPath_Look(&s[i], a, dim ? dim : now ? MakeColor(255 * bright, 120 * bright, 0, alpha)
+                           : MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), depth);
+        }
         VectorCopy(b, a);
     }
     // the stretch being run, and its head - where he looks right now
@@ -190,8 +213,12 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         LerpVector(a, b, upto - whole, head);
         R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         R_AddDebugPoint(head, 16, dim ? dim : MakeColor(255, 255, 255, 255), 0, depth);
-        if (jpath_look->integer)
-            JPath_Look(&s[i], head, dim ? dim : MakeColor(80, 220, 255, 255), depth);
+        if (jpath_look->integer) {
+            bool now;
+
+            if (JPath_ShotNear(s, n, i, &now))
+                JPath_Look(&s[i], head, dim ? dim : now ? MakeColor(255, 120, 0, 255) : MakeColor(80, 220, 255, 255), depth);
+        }
     }
 }
 
