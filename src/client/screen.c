@@ -3355,6 +3355,26 @@ draw:
 }
 
 
+/*
+SCR_ProjectPoint: a point of the world onto the screen, as the ghud's
+labels are; false behind the eye. For the client's own marks in the
+world (the jump mod's kill rays' icons).
+*/
+bool SCR_ProjectPoint(const vec3_t org, float *sx, float *sy)
+{
+    float modelview[16], proj[16], vp[16], v[4] = { org[0], org[1], org[2], 1 }, out[4];
+
+    Matrix4x4_CM_ModelViewMatrix(modelview, cl.refdef.viewangles, cl.refdef.vieworg);
+    Matrix4x4_CM_Projection2(proj, cl.refdef.fov_x, cl.refdef.fov_y, 4);
+    Matrix4_Multiply(proj, modelview, vp);
+    Matrix4x4_CM_Transform4(vp, v, out);
+    if (out[3] < 1)
+        return false;
+    *sx = scr.hud_x + (1 + out[0] / out[3]) / 2 * scr.hud_width;
+    *sy = scr.hud_y + (1 - (1 + out[1] / out[3]) / 2) * scr.hud_height;
+    return true;
+}
+
 static void SCR_Draw2D(void)
 {
     if (scr_draw2d->integer <= 0)
@@ -3415,6 +3435,8 @@ static void SCR_Draw2D(void)
 #endif
 
     R_SetScale(1.0f);
+
+    JPath_Draw2D();     // the jump mod's marks in the world: the kill rays' weapon icons
 }
 
 static void SCR_DrawActive(void)

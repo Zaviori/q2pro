@@ -221,6 +221,10 @@ typedef struct {
     // the round is committed whole
     int         team[MAX_CLIENTS];  // 0 or 1; -1 not in play at its LIGHTS
     bool        alive[MAX_CLIENTS];
+    short       kills[MAX_CLIENTS][MVP_KILLS_MAX];  // this round's, by the killer's slot
+    byte        kill_victims[MAX_CLIENTS][MVP_KILLS_MAX];
+    int         kill_count[MAX_CLIENTS];
+    char        prints[2048];       // the prints of this block and the one before: the obituaries
     mvp_sample_t *buf;              // MAX_CLIENTS * WINDOW_FRAMES
     int         bufcount[MAX_CLIENTS];
 
@@ -446,6 +450,32 @@ static void sample(const parser_t *ps, int slot, mvp_sample_t *s)
     s->flags = ps->es[slot + 1].shot ? MVP_SHOT : 0;
 }
 
+// a player of the round just died: the obituary printed names his
+// killer - the longest other name of the round in the recent prints,
+// the victim's own aside - who gets the kill at this frame
+static void note_death(parser_t *ps, int victim)
+{
+    int slot, killer = -1;
+    size_t best = 0;
+
+    if (ps->open < 0)
+        return;
+    for (slot = 0; slot < MAX_CLIENTS; slot++) {
+        size_t len = strlen(ps->names[slot]);
+
+        if (slot == victim || ps->team[slot] < 0 || !len || len <= best)
+            continue;
+        if (strstr(ps->prints, ps->names[slot])) {
+            killer = slot;
+            best = len;
+        }
+    }
+    if (killer >= 0 && ps->kill_count[killer] < MVP_KILLS_MAX) {
+        ps->kill_victims[killer][ps->kill_count[killer]] = victim;
+        ps->kills[killer][ps->kill_count[killer]++] = ps->frame - ps->demo->rounds[ps->open].lights_f;
+    }
+}
+
 // the open round's trails into the demo, the short ones dropped
 static bool close_round(parser_t *ps)
 {
@@ -478,6 +508,9 @@ static bool close_round(parser_t *ps)
         t->first = demo->sample_count;
         t->count = ps->bufcount[slot];
         t->died = !ps->alive[slot];
+        t->kill_count = ps->kill_count[slot];
+        memcpy(t->kills, ps->kills[slot], sizeof(t->kills));
+        memcpy(t->kill_victims, ps->kill_victims[slot], sizeof(t->kill_victims));
         memcpy(&demo->samples[demo->sample_count], &ps->buf[slot * WINDOW_FRAMES],
                t->count * sizeof(*demo->samples));
         demo->sample_count += t->count;
@@ -510,6 +543,7 @@ static bool open_round(parser_t *ps)
         ps->team[slot] = -1;
         ps->bufcount[slot] = 0;
         ps->alive[slot] = false;
+        ps->kill_count[slot] = 0;
         if (!in_play(ps, slot))
             continue;
         // the team by the skin: the first skin met is team 0, the other 1
@@ -540,6 +574,8 @@ static void sample_frame(parser_t *ps)
         if (ps->team[slot] < 0 || !ps->alive[slot])
             continue;
         if (!in_play(ps, slot) || ps->bufcount[slot] >= WINDOW_FRAMES) {
+            if (ps->alive[slot] && !in_play(ps, slot))
+                note_death(ps, slot);
             ps->alive[slot] = false;
             continue;
         }
@@ -587,7 +623,12 @@ static void parse_unicast(parser_t *ps, rd_t *r, int length)
             break;
         case svc_print:
             rd_byte(&sub);
-            rd_string(&sub, NULL, 0);
+            rd_string(&sub, text, sizeof(text));
+            // the obituaries come this way too, a print to each client
+            if (strlen(ps->prints) + strlen(text) + 2 < sizeof(ps->prints) && !strstr(ps->prints, text)) {
+                Q_strlcat(ps->prints, text, sizeof(ps->prints));
+                Q_strlcat(ps->prints, "\n", sizeof(ps->prints));
+            }
             break;
         case svc_layout:
         case svc_stufftext:
@@ -628,6 +669,23 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
     ps->lights = ps->action = false;
     for (index = 0; index <= MAX_CLIENTS; index++)
         ps->es[index].shot = false;     // the block's flashes come before its frame
+    // the prints: this block's on top of the last one's (an obituary may
+    // land a block off its death), older ones gone
+    {
+        char *nl = strchr(ps->prints, '\n');
+        size_t keep = 0;
+
+        // the last block's lines are those after the marker kept at [0]
+        if (ps->prints[0] == '\x01' && nl)
+            keep = strlen(nl + 1);
+        if (keep && keep < sizeof(ps->prints) - 2)
+            memmove(ps->prints + 1, nl + 1, keep + 1);
+        else
+            ps->prints[1] = 0;
+        ps->prints[0] = '\x01';
+        if (keep)
+            Q_strlcat(ps->prints, "\n", sizeof(ps->prints));
+    }
     while (r->p < r->end && !r->bad) {
         cmd = rd_byte(r);
         op = cmd & 31;
@@ -708,7 +766,12 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
             break;
         case mvd_print:
             rd_byte(r);
-            rd_string(r, NULL, 0);
+            rd_string(r, text, sizeof(text));
+            // kept for the deaths of this block: the obituary names the killer
+            if (strlen(ps->prints) + strlen(text) + 2 < sizeof(ps->prints)) {
+                Q_strlcat(ps->prints, text, sizeof(ps->prints));
+                Q_strlcat(ps->prints, "\n", sizeof(ps->prints));
+            }
             break;
         default:
 #ifdef MVP_DEBUG

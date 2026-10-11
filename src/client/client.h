@@ -1012,6 +1012,8 @@ void LOC_AddLocationsToScene(void);
 //
 void JPath_Init(void);
 void JPath_AddToScene(void);
+void JPath_Draw2D(void);
+bool SCR_ProjectPoint(const vec3_t org, float *sx, float *sy);
 
 
 //

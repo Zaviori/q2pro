@@ -87,7 +87,13 @@ its name tag. The whole round is read, to five minutes. `jmod_path_secs` (6) is 
 many seconds of it past ACTION! a route is shown and run; the routes
 menu's "Shown to N s past ACTION!" row steps it up with Enter, through
 3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180 and the round's end, and the
-routes are folded afresh over the new span. On the client `jpath_look 1`
+routes are folded afresh over the new span. The ghosts and the lines loop as long as the longest of them runs, then
+a second's hold. While they run, a player's path is taken down
+`jpath_cut` (3) seconds after a kill of his or his death - it starts
+afresh from the kill - and his kill shots stay: a ray from his eye to
+the man he killed with the weapon's icon on it, `jpath_kills 0` to drop
+them. The parser takes a kill from the obituary printed at a death, the
+killer being the other name of the round in it. On the client `jpath_look 1`
 draws the player's shots as the bullets went: a line from the eye the
 way he looked, faint red to the wall it hit, green to the player it
 hit, with a dot on him. The parser takes a shot from the muzzle flash
