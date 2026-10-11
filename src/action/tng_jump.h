@@ -75,6 +75,7 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
 void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
 qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
+qboolean JmpPath_SpawnCtrl(edict_t *ent);
 void JmpPath_Spawned(edict_t *ent);
 void Jmp_AskDrill(edict_t *ent, const vec3_t origin, float pitch, float yaw);
 void JmpPath_FindAnswer(edict_t *ent, const char *text);
