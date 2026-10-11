@@ -1347,9 +1347,10 @@ void Jmp_TipRows(edict_t *ent, int *els, qboolean on)
 		}
 		els[i] = Ghud_NewElement(ent, GHT_TEXT);
 		Ghud_SetAnchor(ent, els[i], 0.5f, 0.5f);
-		Ghud_SetPosition(ent, els[i], 0, 22 + 10 * i);
+		Ghud_SetPosition(ent, els[i], 0, 22 + 12 * i);
 		Ghud_SetTextFlags(ent, els[i], UI_CENTER);
-		Ghud_SetColor(ent, els[i], 255, 255, 255, i ? 190 : 255);
+		Ghud_SetInt(ent, els[i], 2);	// the client draws a text's val as a size step
+		Ghud_SetColor(ent, els[i], 255, 255, 255, 255);
 	}
 }
 
