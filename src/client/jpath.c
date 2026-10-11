@@ -148,6 +148,20 @@ static uint32_t JPath_Color(int frame, int alpha, float bright)
 }
 
 #if USE_REF
+// jpath_look: where he looked from a point of the route, a 48-unit line
+// from the eye the way the view angles point
+static void JPath_Look(const mvp_sample_t *m, const vec3_t at, uint32_t color, bool depth)
+{
+    vec3_t angles = { SHORT2ANGLE(m->pitch), SHORT2ANGLE(m->yaw), 0 }, fwd, eye, tip;
+
+    AngleVectors(angles, fwd, NULL, NULL);
+    VectorCopy(at, eye);
+    eye[2] += m->viewheight;
+    VectorMA(eye, 48, fwd, tip);
+    R_AddDebugLine(eye, tip, color, 0, depth);
+    R_AddDebugPoint(tip, 6, color, 0, depth);
+}
+
 static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float bright, uint32_t dim, bool depth, float lift)
 {
     const mvp_sample_t *s = &jpath.demo->samples[t->first];
@@ -165,24 +179,19 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
         // where he looked: a short line from the eye, every half second
-        if (jpath_look->integer && i % 5 == 0 && !dim) {
-            vec3_t angles = { SHORT2ANGLE(s[i].pitch), SHORT2ANGLE(s[i].yaw), 0 }, fwd, eye, tip;
-
-            AngleVectors(angles, fwd, NULL, NULL);
-            VectorCopy(a, eye);
-            eye[2] += s[i].viewheight;
-            VectorMA(eye, 48, fwd, tip);
-            R_AddDebugLine(eye, tip, MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), 0, depth);
-        }
+        if (jpath_look->integer && i % 5 == 0)
+            JPath_Look(&s[i], a, dim ? dim : MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), depth);
         VectorCopy(b, a);
     }
-    // the stretch being run, and its head
+    // the stretch being run, and its head - where he looks right now
     if (i + 1 < n && upto > whole) {
         MvdPath_Origin(&s[i + 1], b);
         b[2] += lift;
         LerpVector(a, b, upto - whole, head);
         R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         R_AddDebugPoint(head, 16, dim ? dim : MakeColor(255, 255, 255, 255), 0, depth);
+        if (jpath_look->integer)
+            JPath_Look(&s[i], head, dim ? dim : MakeColor(80, 220, 255, 255), depth);
     }
 }
 
