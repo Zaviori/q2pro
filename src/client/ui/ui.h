@@ -345,6 +345,7 @@ menuSound_t     Menu_AdjustCursor(menuFrameWork_t *menu, int dir);
 menuCommon_t    *Menu_ItemAtCursor(menuFrameWork_t *menu);
 menuCommon_t    *Menu_HitTest(menuFrameWork_t *menu);
 void        MenuList_Init(menuList_t *l);
+void        MenuList_DrawNote(menuList_t *l, const char *text);
 void        MenuList_SetValue(menuList_t *l, int value);
 void        MenuList_Sort(menuList_t *l, int offset,
                           int (*cmpfunc)(const void *, const void *));
