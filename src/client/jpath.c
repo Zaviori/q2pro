@@ -37,7 +37,7 @@ typedef struct {
 static jpath_t jpath;
 
 static cvar_t *jpath_depth;         // 1: the walls hide the lines, as anything else
-static cvar_t *jpath_look;          // 1: where the player looked, a short line off the route every half second
+static cvar_t *jpath_look;          // 1: his shots drawn as the bullets went - red to the wall, green to the player hit
 static cvar_t *jpath_lift;          // units the lines float over the player's origin
 
 static void JPath_Clear(void)
@@ -148,34 +148,65 @@ static uint32_t JPath_Color(int frame, int alpha, float bright)
 }
 
 #if USE_REF
-#define JPATH_LOOK_BEFORE   5       // samples before a shot the look is drawn from: half a second
-#define JPATH_LOOK_AFTER    3       // and after it
+/*
+jpath_look: a shot drawn as the bullet went - from the eye the way he
+looked, to the wall it hit, faint red, or to the player it hit, green.
+The world is traced here; a hit is a player of the round within a
+body's reach of the line at that frame. The demo has no trace of its
+own, so a near miss on the line's edge may show either way.
+*/
+#define JPATH_SHOT_RANGE    8192
+#define JPATH_HIT_RADIUS    20      // a body's: the bounding box is 16 wide, a little more for the frame's lag
+#define JPATH_HIT_LOW       (-30)   // from the origin: the box is -24 to 32, and a little more
+#define JPATH_HIT_HIGH      34
 
-// jpath_look: a shot of his near sample i - a flash within the window;
-// *now when sample i is the shot itself
-static bool JPath_ShotNear(const mvp_sample_t *s, int n, int i, bool *now)
+static void JPath_Shot(const mvp_trail_t *t, int i, const vec3_t at, int alpha, bool depth)
 {
-    int j;
-
-    *now = (s[i].flags & MVP_SHOT) != 0;
-    for (j = max(i - JPATH_LOOK_AFTER, 0); j <= i + JPATH_LOOK_BEFORE && j < n; j++)
-        if (s[j].flags & MVP_SHOT)
-            return true;
-    return false;
-}
-
-// jpath_look: where he looked from a point of the route, a 48-unit line
-// from the eye the way the view angles point
-static void JPath_Look(const mvp_sample_t *m, const vec3_t at, uint32_t color, bool depth)
-{
-    vec3_t angles = { SHORT2ANGLE(m->pitch), SHORT2ANGLE(m->yaw), 0 }, fwd, eye, tip;
+    const mvp_sample_t *m = &jpath.demo->samples[t->first + i];
+    const mvp_round_t *r = &jpath.demo->rounds[t->round];
+    vec3_t angles = { SHORT2ANGLE(m->pitch), SHORT2ANGLE(m->yaw), 0 }, fwd, eye, far, wall, hit;
+    trace_t tr;
+    float len, best = 0;
+    bool got = false;
+    int k;
 
     AngleVectors(angles, fwd, NULL, NULL);
     VectorCopy(at, eye);
     eye[2] += m->viewheight;
-    VectorMA(eye, 48, fwd, tip);
-    R_AddDebugLine(eye, tip, color, 0, depth);
-    R_AddDebugPoint(tip, 6, color, 0, depth);
+    VectorMA(eye, JPATH_SHOT_RANGE, fwd, far);
+    CM_BoxTrace(&tr, eye, far, vec3_origin, vec3_origin, cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
+    VectorCopy(tr.endpos, wall);
+    len = Distance(eye, wall);
+
+    // the round's others where they stood that frame: the nearest on the line
+    for (k = r->trail_first; k < r->trail_first + r->trail_count; k++) {
+        const mvp_trail_t *o = &jpath.demo->trails[k];
+        vec3_t c, d, p;
+        float along, dz;
+
+        if (o == t || i >= o->count)
+            continue;
+        MvdPath_Origin(&jpath.demo->samples[o->first + i], c);
+        VectorSubtract(c, eye, d);
+        along = DotProduct(d, fwd);
+        if (along <= 0 || along > len || (got && along >= best))
+            continue;
+        VectorMA(eye, along, fwd, p);
+        dz = c[2] - p[2];
+        if (dz < JPATH_HIT_LOW || dz > JPATH_HIT_HIGH)
+            continue;
+        if ((c[0] - p[0]) * (c[0] - p[0]) + (c[1] - p[1]) * (c[1] - p[1]) > JPATH_HIT_RADIUS * JPATH_HIT_RADIUS)
+            continue;
+        got = true;
+        best = along;
+        VectorCopy(p, hit);
+    }
+    if (got) {
+        R_AddDebugLine(eye, hit, MakeColor(60, 255, 80, alpha), 0, depth);
+        R_AddDebugPoint(hit, 8, MakeColor(60, 255, 80, alpha), 0, depth);
+    } else {
+        R_AddDebugLine(eye, wall, MakeColor(255, 60, 60, alpha * 0.35f), 0, depth);
+    }
 }
 
 static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float bright, uint32_t dim, bool depth, float lift)
@@ -194,16 +225,9 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
-        // where he looked, round his shots: a line from the eye every
-        // sample from half a second before one to a third after, the
-        // shot's own in orange
-        if (jpath_look->integer) {
-            bool now;
-
-            if (JPath_ShotNear(s, n, i, &now))
-                JPath_Look(&s[i], a, dim ? dim : now ? MakeColor(255 * bright, 120 * bright, 0, alpha)
-                           : MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), depth);
-        }
+        // his shots, as the bullets went
+        if (jpath_look->integer && (s[i].flags & MVP_SHOT) && !dim)
+            JPath_Shot(t, i, a, alpha, depth);
         VectorCopy(b, a);
     }
     // the stretch being run, and its head - where he looks right now
@@ -213,12 +237,8 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         LerpVector(a, b, upto - whole, head);
         R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         R_AddDebugPoint(head, 16, dim ? dim : MakeColor(255, 255, 255, 255), 0, depth);
-        if (jpath_look->integer) {
-            bool now;
-
-            if (JPath_ShotNear(s, n, i, &now))
-                JPath_Look(&s[i], head, dim ? dim : now ? MakeColor(255, 120, 0, 255) : MakeColor(80, 220, 255, 255), depth);
-        }
+        if (jpath_look->integer && (s[i].flags & MVP_SHOT) && !dim)
+            JPath_Shot(t, i, head, 255, depth);
     }
 }
 

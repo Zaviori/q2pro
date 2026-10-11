@@ -87,10 +87,12 @@ many seconds of it past ACTION! a route is shown and run; the routes
 menu's "Shown to N s past ACTION!" row steps it up with Enter, through
 3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180 and the round's end, and the
 routes are folded afresh over the new span. On the client `jpath_look 1`
-draws where the player looked round his shots: a short line from the
-eye at every sample from half a second before a shot to a third of a
-second after, the shot's own in orange. The parser takes a shot from
-the muzzle flash the server sent. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
+draws the player's shots as the bullets went: a line from the eye the
+way he looked, faint red to the wall it hit, green to the player it
+hit, with a dot on him. The parser takes a shot from the muzzle flash
+the server sent; the client traces the world itself and counts a hit
+where one of the round's others stood within a body's reach of the
+line that frame, so a shot on the edge may show either way. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
 the ghosts set off to. On the client, `jpath_lift` raises the lines off the floor.
 
 ## How it is built
