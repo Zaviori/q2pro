@@ -2317,13 +2317,42 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
 
     if (left && !strchr(s, '\n')) {
         int cx = x, len = (int)strlen(s);
+        const char *gap2 = NULL;
         if (lay_flow.on && y == lay_flow.y && x >= lay_flow.cend &&
             x - lay_flow.cend <= 2 * CONCHAR_WIDTH) {
             int gap = (x - lay_flow.cend) / CONCHAR_WIDTH;
             x = lay_flow.tend + gap * R_MeasureText(TEXT_SHADOW, size, " ", 1);
         }
-        lay_flow.tend = SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, flags, size, c,
-                                         NULL, s, len);
+        // a run of two or more spaces is a column the mod lined up with
+        // conchars (a menu's "(jmod spawnc)" hints): what follows one
+        // keeps its conchars cell, the text before it flowing as text
+        for (const char *p = s; p[0] && p[1]; p++)
+            if (p[0] == ' ' && p[1] == ' ') {
+                gap2 = p;
+                break;
+            }
+        if (gap2) {
+            const char *seg = s;
+            int sx = x;
+            while (*seg) {
+                const char *run = NULL, *q;
+                for (q = seg; q[0] && q[1]; q++)
+                    if (q[0] == ' ' && q[1] == ' ') {
+                        run = q;
+                        break;
+                    }
+                size_t n = run ? (size_t)(run - seg) : strlen(seg);
+                lay_flow.tend = SCR_DrawTextGrid(sx, y, CONCHAR_HEIGHT, flags, size, c, NULL, seg, n);
+                if (!run)
+                    break;
+                for (seg = run; *seg == ' '; seg++)
+                    ;
+                sx = cx + (int)(seg - s) * CONCHAR_WIDTH;
+            }
+        } else {
+            lay_flow.tend = SCR_DrawTextGrid(x, y, CONCHAR_HEIGHT, flags, size, c,
+                                             NULL, s, len);
+        }
         lay_flow.cend = cx + len * CONCHAR_WIDTH;
         lay_flow.y = y;
         lay_flow.on = true;
