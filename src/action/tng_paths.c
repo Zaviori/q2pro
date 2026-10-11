@@ -987,6 +987,9 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 		}
 		return false;
 	}
+	// ctrl on a spawn marker asks for another player: Jmp_MenuFire's too
+	if (client->jmp_ctrl)
+		return false;
 
 	if (st->click_ms > 0) {
 		st->click_ms -= ucmd->msec;
@@ -1004,8 +1007,10 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 		}
 	}
 
+	// off the route markers the click is the spawn markers' (a plain fire
+	// on one spawns there, to run beside the ghosts)
 	if (!pressed || k < 0)
-		return true;
+		return false;
 	client->latched_buttons &= ~BUTTON_ATTACK;
 	st->click_route = k;
 	st->click_ms = JMP_PATH_CLICK_MS;
