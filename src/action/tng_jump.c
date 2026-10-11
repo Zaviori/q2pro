@@ -1237,20 +1237,33 @@ const char *Jmp_MarkerPic(void)
 }
 
 
-// the MVD badge (action/pics/mvd.png) where the server has it; NULL else
-const char *Jmp_MvdPic(void)
+// jmod's own pic where the server has it; NULL else
+static const char *JmpOwnPic(const char *name)
 {
 	cvar_t *game_cvar = gi.cvar("game", "action", 0);
 	char path[MAX_QPATH];
 	FILE *f;
 
-	Q_snprintf(path, sizeof(path), "%s/pics/mvd.png",
-		*game_cvar->string ? game_cvar->string : GAMEVERSION);
+	Q_snprintf(path, sizeof(path), "%s/pics/%s.png",
+		*game_cvar->string ? game_cvar->string : GAMEVERSION, name);
 	f = fopen(path, "rb");
 	if (!f)
 		return NULL;
 	fclose(f);
-	return "mvd";
+	return name;
+}
+
+// the MVD badge (action/pics/mvd.png)
+const char *Jmp_MvdPic(void)
+{
+	return JmpOwnPic("mvd");
+}
+
+// the tooltips' panel (action/pics/jmod_panel.png): white, tinted and
+// faded by the ghud
+const char *Jmp_PanelPic(void)
+{
+	return JmpOwnPic("jmod_panel");
 }
 
 // what is marked: the map's spawnpoints, then the listed jumps' starts
@@ -1325,13 +1338,31 @@ static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
 }
 
 // what a click on the marker does, under the crosshair while one is aimed
-// at: four rows, a hint on each, the same rows every time
+// at: four rows, a hint on each, the same rows every time, on a grey
+// panel (els[JMP_TIP_ROWS], made first so it is drawn under them)
 #define JMP_TIP_ROWS	4
+#define JMP_TIP_W		392		// the panel: a row of 47 conchars and a margin
+#define JMP_TIP_H		58
 
 void Jmp_TipRows(edict_t *ent, int *els, qboolean on)
 {
+	const char *pic;
 	int i;
 
+	if (!on) {
+		Ghud_RemoveElement(ent, els[JMP_TIP_ROWS]);
+	} else {
+		els[JMP_TIP_ROWS] = Ghud_NewElement(ent, GHT_IMG);
+		Ghud_SetAnchor(ent, els[JMP_TIP_ROWS], 0.5f, 0.5f);
+		Ghud_SetPosition(ent, els[JMP_TIP_ROWS], -JMP_TIP_W / 2, 16);
+		Ghud_SetSize(ent, els[JMP_TIP_ROWS], JMP_TIP_W, JMP_TIP_H);
+		Ghud_SetColor(ent, els[JMP_TIP_ROWS], 70, 70, 70, 190);
+		pic = Jmp_PanelPic();
+		if (pic)
+			Ghud_SetInt(ent, els[JMP_TIP_ROWS], gi.imageindex((char *)pic));
+		else
+			Ghud_SetFlags(ent, els[JMP_TIP_ROWS], GHF_HIDE);
+	}
 	for (i = 0; i < JMP_TIP_ROWS; i++) {
 		if (!on) {
 			Ghud_RemoveElement(ent, els[i]);

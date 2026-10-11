@@ -119,6 +119,8 @@ void Cmd_GotoPC_f (edict_t *ent);
 void Jmp_RunSpawn (edict_t *ent);
 int Jmp_Spots (edict_t **spots, int max);
 const char *Jmp_MarkerPic (void);
+const char *Jmp_MvdPic(void);
+const char *Jmp_PanelPic(void);
 void Cmd_SpawnDelay_f (edict_t *ent);
 void Cmd_SpawnRepeat_f (edict_t *ent);
 void Cmd_SpawnCancel_f (edict_t *ent);
