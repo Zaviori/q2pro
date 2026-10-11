@@ -16,8 +16,11 @@ pick **View player pathing...**, or type `jmod paths`.
 2. **A player.** Everybody who played a round in it, most rounds first.
    Picking one puts the spawnpoint markers up: Shift+fire on a marker
    draws that player's routes from that spawn (`jmod pathspawn <#>` is
-   the console form, 0 for every spawn), and a plain fire still spawns
-   you there to run beside them. `jmod pathmap` draws them all.
+   the console form, 0 for every spawn) and sends a ghost down each of
+   them, all setting off together from LIGHTS and running in a loop with
+   a short hold at the end; you keep control, and a plain fire on the
+   marker spawns you there to run beside them. `jmod pathmap` draws them
+   all; Escape takes the lines and ghosts down.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
    route, taken three times). The row names the location they reached

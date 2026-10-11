@@ -25,6 +25,7 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_FIRST		3
 #define JMP_PATH_SECS		6		// shown past ACTION!, by default
 #define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
+#define JMP_PATH_GHOST_HOLD_MS	1500	// the ghosts stand at their ends this long, then set off again
 
 typedef struct {
 	char	map[MAX_QPATH];			// the demo is of this map; another map drops it
@@ -40,6 +41,9 @@ typedef struct {
 	int		vis_count;
 	int		spawn_filter;			// a spawnpoint's number, 0 all
 	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
+	edict_t	*ghosts[JMP_PATH_MAX];	// a ghost running each route shown from the spawn picked
+	int		ghost_count;
+	float	ghost_t0;				// level.time they set off
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -488,6 +492,94 @@ static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 
 /*
 ==============================================================================
+THE GHOSTS OF A SPAWN
+
+Shift+fire on a spawn marker: a ghost per route from it, all setting off
+together from LIGHTS and running their routes in a loop, the watcher
+free to spawn there and run beside them. Unlike a stored jump's playback
+(Jmp_PlayTake) they take no camera and no control.
+==============================================================================
+*/
+
+static void JmpPathGhostsClear(jmp_path_t *st)
+{
+	int i;
+
+	for (i = 0; i < st->ghost_count; i++)
+		if (st->ghosts[i] && st->ghosts[i]->inuse && !strcmp(st->ghosts[i]->classname, "jmp_path_ghost"))
+			G_FreeEdict(st->ghosts[i]);
+	st->ghost_count = 0;
+}
+
+// one per route shown, at its start
+static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
+{
+	int i;
+
+	JmpPathGhostsClear(st);
+	for (i = 0; i < st->vis_count; i++) {
+		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
+		edict_t *ghost = G_Spawn();
+
+		ghost->classname = "jmp_path_ghost";
+		ghost->owner = ent;
+		ghost->movetype = MOVETYPE_NONE;
+		ghost->solid = SOLID_NOT;
+		ghost->s.modelindex = 255;
+		ghost->s.skinnum = ent - g_edicts - 1;
+		ghost->s.renderfx = RF_TRANSLUCENT;
+		MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
+		VectorCopy(ghost->s.origin, ghost->s.old_origin);
+		gi.linkentity(ghost);
+		st->ghosts[st->ghost_count++] = ghost;
+	}
+	st->ghost_t0 = level.time;
+}
+
+// each frame: along their routes, ten samples a second, held at the
+// end a moment and off again together
+static void JmpPathGhostsFrame(jmp_path_t *st)
+{
+	float ms, period, frac, pitch, yaw;
+	int i, k, n, whole;
+
+	if (!st->ghost_count || !st->demo)
+		return;
+	period = st->frames * 100 + JMP_PATH_GHOST_HOLD_MS;
+	ms = fmodf((level.time - st->ghost_t0) * 1000, period);
+	whole = (int)(ms / 100);
+	frac = ms / 100 - whole;
+
+	for (i = 0; i < st->ghost_count && i < st->vis_count; i++) {
+		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
+		const mvp_sample_t *a, *b;
+		edict_t *ghost = st->ghosts[i];
+		vec3_t oa, ob;
+
+		if (!ghost || !ghost->inuse)
+			continue;
+		n = min(t->count, st->frames + 1);
+		k = min(whole, n - 1);
+		a = &st->demo->samples[t->first + k];
+		b = &st->demo->samples[t->first + min(k + 1, n - 1)];
+		MvdPath_Origin(a, oa);
+		MvdPath_Origin(b, ob);
+		LerpVector(oa, ob, k < n - 1 ? frac : 0, ghost->s.origin);
+		// the LIGHTS frame has the view's angles zeroed by the teleport
+		if (k == 0)
+			a = &st->demo->samples[t->first + min(2, n - 1)];
+		pitch = SHORT2ANGLE(a->pitch);
+		yaw = SHORT2ANGLE(a->yaw);
+		VectorSet(ghost->s.angles, pitch / 3, yaw, 0);
+		ghost->s.frame = a->anim;
+		if (whole == 0 && ms < 100)
+			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
+		gi.linkentity(ghost);
+	}
+}
+
+/*
+==============================================================================
 THE OVERVIEW: MARKERS AND CLICKS
 ==============================================================================
 */
@@ -628,6 +720,8 @@ static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 	st->over = on;
 	st->sel = -1;
 	st->click_ms = 0;
+	if (!on)
+		JmpPathGhostsClear(st);
 	if (on) {
 		JmpPathStuffShow(ent, st);
 		if (st->spawn_filter)
@@ -736,6 +830,7 @@ void JmpPath_Frame(edict_t *ent)
 {
 	JmpPathAutoOpen(ent);
 	JmpPathMarkers(ent, JmpPath(ent));
+	JmpPathGhostsFrame(JmpPath(ent));
 }
 
 void JmpPath_HudCleared(edict_t *ent)
@@ -750,6 +845,7 @@ void JmpPath_ClientDisconnect(edict_t *ent)
 {
 	jmp_path_t *st = &jmp_paths[ent - g_edicts - 1];
 
+	JmpPathGhostsClear(st);
 	MvdPath_Free(st->demo);
 	memset(st, 0, sizeof(*st));
 }
@@ -815,6 +911,8 @@ qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
 	if (st->over)
 		JmpPathOver(ent, st, false);
 	JmpPathOver(ent, st, true);
+	if (st->over)
+		JmpPathGhostsSpawn(ent, st);
 	return true;
 }
 
@@ -1089,6 +1187,8 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 		if (st->over)
 			JmpPathOver(ent, st, false);
 		JmpPathOver(ent, st, true);
+		if (st->over && k)
+			JmpPathGhostsSpawn(ent, st);
 		return;
 	}
 	if (!Q_stricmp(cmd, "path")) {
