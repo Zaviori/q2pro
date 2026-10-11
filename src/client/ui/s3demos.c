@@ -1263,6 +1263,7 @@ static void S3_FetchDone(void)
                 S3_LocalPlayers(e);
         }
     }
+    S3_Change(&m_s3.list.generic);      // the row's hint: it plays now
     if (m_s3.fetch_launch)
         S3_Launch(m_s3.fetch_local, m_s3.fetch_map);
 }
