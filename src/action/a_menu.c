@@ -132,8 +132,14 @@ void PMenu_Update (edict_t * ent)
 		// its conchars would be, and a row placed by its conchars start
 		// sat left of the bar under it
 		if (p->align == PMENU_ALIGN_CENTER && hnd->cur != i && !note) {
-			Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d %s \"%s\" ",
-				32 + i * 8, 64 + 196 / 2 - 160 - shift, alt ? "cstring2" : "cstring", t);
+			// a title - a centred row over a bar - a size up, and
+			// lifted off the bar (the client's "size", a no-op elsewhere)
+			qboolean title = i + 1 < hnd->num && p[1].text &&
+				(((byte)p[1].text[0] & 127) == 0x1d || ((byte)p[1].text[1] & 127) == 0x1d);
+
+			Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d %s%s \"%s\"%s ",
+				32 + i * 8 - (title ? 4 : 0), 64 + 196 / 2 - 160 - shift,
+				title ? "size 13 " : "", alt ? "cstring2" : "cstring", t, title ? " size 0" : "");
 			len = strlen(string);
 			if(len >= sizeof(string)-1)
 				break;
