@@ -82,7 +82,8 @@ The routes and the ghosts are drawn through the walls: a route runs out
 of sight in a moment otherwise. `jpath_depth 1` on the client puts the
 lines behind the walls again.
 
-The whole round is read, to five minutes. `jmod_path_secs` (6) is how
+While a ghost shoots, its weapon's HUD icon shows at the upper left of
+its name tag. The whole round is read, to five minutes. `jmod_path_secs` (6) is how
 many seconds of it past ACTION! a route is shown and run; the routes
 menu's "Shown to N s past ACTION!" row steps it up with Enter, through
 3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180 and the round's end, and the

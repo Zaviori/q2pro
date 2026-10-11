@@ -28,6 +28,9 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_FIRST		3
 #define JMP_PATH_SECS		6		// shown past ACTION!, by default
 #define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
+#define JMP_PATH_ICON_PX		18		// the shooter's weapon icon by his tag
+#define JMP_PATH_ICON_LEFT		30		// units to the watcher's left of the tag
+#define JMP_PATH_ICON_FRAMES	4		// frames it stays up from a shot: 0.4 s
 #define JMP_PATH_GHOST_HOLD_MS	1000	// the ghosts stand at their ends this long, then set off again (JMP_PLAY_TAIL_MS: in step with a followed ghost)
 #define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rest of their rounds
 #define JMP_PATH_SKULL		"models/objects/gibs/skull/tris.md2"	// where a ghost's player died
@@ -62,6 +65,8 @@ typedef struct {
 	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
 	edict_t	*ghosts[JMP_PATH_GHOSTS];	// a ghost running each route shown, and the rest of its round
 	int		names[JMP_PATH_GHOSTS];		// each ghost's name over its head, a ghud label
+	int		icons[JMP_PATH_GHOSTS];		// and his weapon's icon by it while he shoots
+	qboolean ghost_dead[JMP_PATH_GHOSTS];	// the skull up, the ghost gone
 	qboolean names_on;
 	int		ghost_trail[JMP_PATH_GHOSTS];	// index into demo->trails
 	edict_t	*skulls[JMP_PATH_GHOSTS];	// a skull where the ghost's player died, when he did inside the window
@@ -780,9 +785,12 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 	int i;
 
 	// the names: the state's client is its slot's
-	for (i = 0; st->names_on && i < st->ghost_count; i++)
+	for (i = 0; st->names_on && i < st->ghost_count; i++) {
 		if (st->names[i] >= 0)
 			Ghud_RemoveElement(g_edicts + 1 + (st - jmp_paths), st->names[i]);
+		if (st->icons[i] >= 0)
+			Ghud_RemoveElement(g_edicts + 1 + (st - jmp_paths), st->icons[i]);
+	}
 	st->names_on = false;
 	for (i = 0; i < st->ghost_count; i++) {
 		if (st->ghosts[i] && st->ghosts[i]->inuse && !strcmp(st->ghosts[i]->classname, "jmp_path_ghost"))
@@ -826,7 +834,8 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, q
 	// his name over his head, small and plain, as the stream names the
 	// players over their arrows (GHUD_TEXT_SIZE/PLAIN, the client's) -
 	// where there are others to tell him from
-	st->names[i] = -1;
+	st->names[i] = st->icons[i] = -1;
+	st->ghost_dead[i] = false;
 	if (!named)
 		goto skull;
 	st->names[i] = Ghud_NewElement(ent, GHT_TEXT);
@@ -836,6 +845,11 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, q
 	Ghud_SetInt(ent, st->names[i], (-8 & 0xff) | 0x200 | 0x400);	// small, plain, never faded
 	Ghud_SetColor(ent, st->names[i], 255, 255, 255, dim ? 120 : 220);
 	Ghud_SetText(ent, st->names[i], (char *)t->name);
+	// his weapon's icon by the name, up while he shoots
+	st->icons[i] = Ghud_NewElement(ent, GHT_IMG);
+	Ghud_SetFlags(ent, st->icons[i], GHF_3DPOS | GHF_HIDE);
+	Ghud_SetPosition3D(ent, st->icons[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 50);
+	Ghud_SetSize(ent, st->icons[i], JMP_PATH_ICON_PX, JMP_PATH_ICON_PX);
 	st->names_on = true;
 
 skull:
@@ -911,6 +925,40 @@ static void JmpPathGhostsLca(edict_t *ent, jmp_path_t *st, float ms)
 	}
 }
 
+// the shooter's weapon by his name tag: its HUD icon, up from the shot
+// for JMP_PATH_ICON_FRAMES, at the tag's upper left as the watcher sees it
+static void JmpPathShotIcon(edict_t *ent, jmp_path_t *st, int i, edict_t *ghost, const mvp_trail_t *t, int k, qboolean dead)
+{
+	static int icon_index[256];
+	const mvp_sample_t *s = &st->demo->samples[t->first];
+	vec3_t right, pos;
+	int j, weapon = 0, lo = max(k - JMP_PATH_ICON_FRAMES + 1, 0);
+
+	for (j = k; j >= lo; j--)
+		if (s[j].flags & MVP_SHOT) {
+			weapon = s[j].weapon;
+			break;
+		}
+	if (dead || !weapon) {
+		Ghud_SetFlags(ent, st->icons[i], GHF_3DPOS | GHF_HIDE);
+		return;
+	}
+	if (!icon_index[weapon]) {
+		gitem_t *item = FindItemByNum(weapon);
+
+		icon_index[weapon] = item && item->icon ? gi.imageindex(item->icon) : -1;
+	}
+	if (icon_index[weapon] < 0) {
+		Ghud_SetFlags(ent, st->icons[i], GHF_3DPOS | GHF_HIDE);
+		return;
+	}
+	AngleVectors(ent->client->v_angle, NULL, right, NULL);
+	VectorMA(ghost->s.origin, -JMP_PATH_ICON_LEFT, right, pos);
+	Ghud_SetInt(ent, st->icons[i], icon_index[weapon]);
+	Ghud_SetPosition3D(ent, st->icons[i], pos[0], pos[1], pos[2] + 50);
+	Ghud_SetFlags(ent, st->icons[i], GHF_3DPOS);
+}
+
 // each frame: along their routes, ten samples a second, held at the
 // end a moment and off again together
 static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
@@ -947,10 +995,15 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 			continue;
 		n = min(t->count, st->run_frames + 1);
 		k = min(whole, n - 1);
-		// at his death the ghost goes and the skull stays, until the next run
+		// at his death the ghost goes and the skull stays, until the next
+		// run; at the restart every ghost is gone for the one frame, to
+		// come back at its start as new - no glide back, and none of the
+		// teleport event's burst and sound
 		dead = skull && whole >= n - 1;
-		if (dead != ((ghost->svflags & SVF_NOCLIENT) != 0)) {
+		if ((dead || restarted) != ((ghost->svflags & SVF_NOCLIENT) != 0))
 			ghost->svflags ^= SVF_NOCLIENT;
+		if (dead != st->ghost_dead[i]) {
+			st->ghost_dead[i] = dead;
 			if (skull && skull->inuse) {
 				skull->svflags = dead ? (skull->svflags & ~SVF_NOCLIENT) : (skull->svflags | SVF_NOCLIENT);
 				gi.linkentity(skull);
@@ -972,11 +1025,11 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		ghost->s.frame = a->anim;
 		ghost->s.skinnum = (ghost->s.skinnum & 255) | (a->weapon << 8);
 		ghost->s.modelindex2 = a->weapon ? 255 : 0;
-		if (restarted)
-			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
 		gi.linkentity(ghost);
 		if (st->names_on && st->names[i] >= 0)
 			Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
+		if (st->names_on && st->icons[i] >= 0)
+			JmpPathShotIcon(ent, st, i, ghost, t, k, dead);
 	}
 }
 
