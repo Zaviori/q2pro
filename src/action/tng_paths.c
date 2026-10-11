@@ -1180,7 +1180,8 @@ const char *JmpPath_SpawnTip(edict_t *ent)
 
 	if (!st->spawn_mode || !st->route_count)
 		return NULL;
-	Q_snprintf(tip, sizeof(tip), "shift + click: %.16s's routes from here", JmpPathPlayerName(st));
+	// under MAX_QPATH, a ghud line's whole
+	Q_snprintf(tip, sizeof(tip), "shift+click: %.10s's routes   ctrl+click: another player", JmpPathPlayerName(st));
 	return tip;
 }
 

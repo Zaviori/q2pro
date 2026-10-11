@@ -1330,8 +1330,8 @@ static void JmpTip(edict_t *ent, qboolean on)
 	} else {
 		const char *paths = JmpPath_SpawnTip(ent);
 
-		Ghud_SetText(ent, client->resp.jmp_tip[0], paths ? "click: spawn here   double click: delay, repeat   ctrl + click: another player"
-			: "click: spawn here   double click: delay, repeat");
+		// a ghud line holds MAX_QPATH: the pathing's hints share the second
+		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: spawn here   double click: delay, repeat");
 		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? (char *)paths : "shift + click: record a jump from here");
 	}
 }
