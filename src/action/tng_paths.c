@@ -59,6 +59,8 @@ typedef struct {
 	int		spawn_filter;			// a spawnpoint's number, 0 all
 	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
 	edict_t	*ghosts[JMP_PATH_GHOSTS];	// a ghost running each route shown, and the rest of its round
+	int		names[JMP_PATH_GHOSTS];		// each ghost's name over its head, a ghud label
+	qboolean names_on;
 	int		ghost_trail[JMP_PATH_GHOSTS];	// index into demo->trails
 	edict_t	*skulls[JMP_PATH_GHOSTS];	// a skull where the ghost's player died, when he did inside the window
 	int		ghost_count;
@@ -764,6 +766,10 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 {
 	int i;
 
+	// the names: the state's client is its slot's
+	for (i = 0; st->names_on && i < st->ghost_count; i++)
+		Ghud_RemoveElement(g_edicts + 1 + (st - jmp_paths), st->names[i]);
+	st->names_on = false;
 	for (i = 0; i < st->ghost_count; i++) {
 		if (st->ghosts[i] && st->ghosts[i]->inuse && !strcmp(st->ghosts[i]->classname, "jmp_path_ghost"))
 			G_FreeEdict(st->ghosts[i]);
@@ -801,6 +807,17 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 	st->ghosts[i] = ghost;
 	st->ghost_trail[i] = k;
 	st->skulls[i] = NULL;
+
+	// his name over his head, small and plain, as the stream names the
+	// players over their arrows (GHUD_TEXT_SIZE/PLAIN, the client's)
+	st->names[i] = Ghud_NewElement(ent, GHT_TEXT);
+	Ghud_SetFlags(ent, st->names[i], GHF_3DPOS);
+	Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
+	Ghud_SetTextFlags(ent, st->names[i], UI_CENTER);
+	Ghud_SetInt(ent, st->names[i], (-8 & 0xff) | 0x200);
+	Ghud_SetColor(ent, st->names[i], 255, 255, 255, dim ? 120 : 220);
+	Ghud_SetText(ent, st->names[i], (char *)t->name);
+	st->names_on = true;
 
 	if (t->died && t->count <= st->frames + 1) {
 		skull = G_Spawn();
@@ -914,6 +931,8 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 				skull->svflags = dead ? (skull->svflags & ~SVF_NOCLIENT) : (skull->svflags | SVF_NOCLIENT);
 				gi.linkentity(skull);
 			}
+			if (st->names_on)
+				Ghud_SetFlags(ent, st->names[i], dead ? GHF_3DPOS | GHF_HIDE : GHF_3DPOS);
 		}
 		a = &st->demo->samples[t->first + k];
 		b = &st->demo->samples[t->first + min(k + 1, n - 1)];
@@ -932,6 +951,8 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		if (restarted)
 			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
 		gi.linkentity(ghost);
+		if (st->names_on)
+			Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
 	}
 }
 
@@ -1237,6 +1258,7 @@ void JmpPath_HudCleared(edict_t *ent)
 
 	st->ghud_count = 0;
 	st->tip_on = false;
+	st->names_on = false;	// the names went with the rest; made again with the next ghosts
 }
 
 void JmpPath_ClientDisconnect(edict_t *ent)
