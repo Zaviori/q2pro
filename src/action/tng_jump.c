@@ -1019,14 +1019,32 @@ static void JmpMenuPickDelay(edict_t *ent, pmenu_t *p)
 	JmpMenuShow(ent, 2, -1);
 }
 
-// step 2: the repeat, in tenths - and spawn
+static void JmpMenuSpawnGo(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+
+	PMenu_Close(ent);
+	JmpSpawn(ent, client->jmp_menu_pick, client->resp.jmp_spawn_delay, client->resp.jmp_menu_repeat);
+}
+
+// step 2: the repeat, in tenths - and spawn, unless a drill has a step more
 static void JmpMenuPickRepeat(edict_t *ent, pmenu_t *p)
 {
 	gclient_t *client = ent->client;
 
 	client->resp.jmp_menu_repeat = (int)(intptr_t)p->arg / 10.0f;
-	PMenu_Close(ent);
-	JmpSpawn(ent, client->jmp_menu_pick, client->resp.jmp_spawn_delay, client->resp.jmp_menu_repeat);
+	if (JmpPath_AskOthers(ent)) {
+		JmpMenuShow(ent, 3, -1);
+		return;
+	}
+	JmpMenuSpawnGo(ent);
+}
+
+// step 3, a drill's: the round's others drawn or not - and spawn
+static void JmpMenuPickOthers(edict_t *ent, pmenu_t *p)
+{
+	JmpPath_DrillOthers(ent, (int)(intptr_t)p->arg);
+	JmpMenuSpawnGo(ent);
 }
 
 static void JmpMenuBack(edict_t *ent, pmenu_t *p)
@@ -1174,7 +1192,7 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "Wait before spawning");
 		JmpMenuValues(ent, &cur, jmp_delays, JMP_COUNT(jmp_delays),
 			client->resp.jmp_spawn_delay, JmpMenuPickDelay, "no wait");
-	} else {
+	} else if (step == 2) {
 		JmpSpotName(client->jmp_menu_pick, name, sizeof(name), true);
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
 		if (client->resp.jmp_spawn_delay > 0) {
@@ -1185,6 +1203,19 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 		}
 		JmpMenuValues(ent, &cur, jmp_repeats, JMP_COUNT(jmp_repeats),
 			client->resp.jmp_menu_repeat, JmpMenuPickRepeat, "once, no repeat");
+	} else {
+		// a drill's last question: the round's others drawn with the route?
+		int ask = JmpPath_AskOthers(ent);
+
+		JmpSpotName(client->jmp_menu_pick, name, sizeof(name), true);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "Draw the round's others?");
+		Jmp_MenuRow(ent, JMP_MENU_CHOICE, PMENU_ALIGN_LEFT, 0, JmpMenuPickOthers, "No, the route and its ghost alone");
+		Jmp_MenuRow(ent, JMP_MENU_CHOICE + 1, PMENU_ALIGN_LEFT, 1, JmpMenuPickOthers, "Their routes, dim");
+		Jmp_MenuRow(ent, JMP_MENU_CHOICE + 2, PMENU_ALIGN_LEFT, 2, JmpMenuPickOthers, "Their routes and their ghosts");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuBack, "Back");
+		if (cur < 0)
+			cur = JMP_MENU_CHOICE + (ask ? ask - 1 : 0);
 	}
 
 	if (client->layout == LAYOUT_MENU)
