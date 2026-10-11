@@ -801,6 +801,11 @@ static void JmpPathPaging(edict_t *ent, jmp_path_t *st, int row, int n, int size
 		Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, size, JmpPathPage, "Next page");
 }
 
+/*
+A row is 31 characters (jmp_menu_text): every format here keeps under
+that, with %.Ns on the names. Windows' vsnprintf answers a cut with -1,
+which Q_vsnprintf takes for an error, and the menu took the game down.
+*/
 static void JmpPathShow(edict_t *ent, int step, int cur)
 {
 	jmp_path_t *st = JmpPath(ent);
@@ -828,7 +833,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		n = jmp_path_demo_count;
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %s", level.mapname);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Pathing demos: %.15s", level.mapname);
 		row = JMP_PATH_FIRST;
 		if (st->demo) {
 			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
@@ -844,7 +849,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 				cur = row;
 		}
 		if (!n)
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No .mvd2 of %s in demos/", level.mapname);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No demos/ .mvd2 of %.12s", level.mapname);
 		JmpPathPaging(ent, st, JMP_PATH_FIRST + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
 	} else if (step == JMP_MENU_PATH_PLAYERS) {
 		n = st->demo->player_count;
@@ -869,9 +874,9 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		n = st->route_count;
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROUTE_ROWS * JMP_PATH_ROUTE_ROWS;
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.20s: %d route%s", JmpPathPlayerName(st),
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.16s: %d route%s", JmpPathPlayerName(st),
 			n, n == 1 ? "" : "s");
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "of %d rounds, to %d s past ACTION!",
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%d rounds, to ACTION!+%ds",
 			st->demo->players[st->player].trails, (st->frames - MVP_ACTION_FRAMES) / 10);
 		Jmp_MenuRow(ent, JMP_PATH_FIRST + 1, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All of them on the map");
 		row = JMP_PATH_FIRST + 3;
@@ -898,11 +903,11 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		vec3_t o;
 		int spawn, ms = (min(t->count, st->frames + 1) - 1) * 100;
 
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.16s", st->pick + 1, r->number, t->name);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.15s", st->pick + 1, r->number, t->name);
 		MvdPath_Origin(&st->demo->samples[t->first], o);
 		spawn = JmpPathSpawn(o);
 		if (spawn)
-			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.22s", spawn, JmpPathLoc(o, loc));
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.21s", spawn, JmpPathLoc(o, loc));
 		else
 			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.23s", JmpPathLoc(o, loc));
 		MvdPath_Origin(MvdPath_At(st->demo, t, MVP_ACTION_FRAMES), o);

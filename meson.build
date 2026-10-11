@@ -343,6 +343,10 @@ if cc.get_argument_syntax() == 'gcc'
 
   if win32
     common_args += '-D__USE_MINGW_ANSI_STDIO=1'
+    # the game too: with MSVCRT's vsnprintf a cut answers -1, which
+    # Q_vsnprintf takes for an error - a menu row too long took the game
+    # down on Windows where Linux cut it quietly
+    game_args += '-D__USE_MINGW_ANSI_STDIO=1'
     common_link_args += '-Wl,--nxcompat,--dynamicbase'
 
     if cpu == 'x86_64'
