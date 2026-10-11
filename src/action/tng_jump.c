@@ -148,6 +148,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod paths [demo] - the players' round-start routes out of an .mvd2 in demos/, from a menu\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod path <#> [ghost|pov] - route # of the listed player: drawn on the map, or its ghost\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod pathmap - every listed route on the map, numbered to click on; again or Escape puts them away\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod pathspawn <#> - the listed player's routes from spawnpoint #; shift+fire on a spawn marker does the same\n");
 
 		return;
 	}
@@ -249,7 +250,7 @@ void Cmd_Jmod_f (edict_t *ent)
 		Jmp_OpenJumpMenu(ent, NULL);
 		return;
 	}
-	else if(Q_stricmp(cmd, "paths") == 0 || Q_stricmp(cmd, "path") == 0 || Q_stricmp(cmd, "pathmap") == 0)
+	else if(Q_stricmp(cmd, "paths") == 0 || Q_stricmp(cmd, "path") == 0 || Q_stricmp(cmd, "pathmap") == 0 || Q_stricmp(cmd, "pathspawn") == 0)
 	{
 		JmpPath_Cmd(ent, cmd);
 		return;
@@ -1222,8 +1223,10 @@ static void JmpTip(edict_t *ent, qboolean on)
 		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: record a jump from here");
 		Ghud_SetText(ent, client->resp.jmp_tip[1], "");
 	} else {
+		const char *paths = JmpPath_SpawnTip(ent);
+
 		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: spawn here   double click: delay, repeat");
-		Ghud_SetText(ent, client->resp.jmp_tip[1], "shift + click: record a jump from here");
+		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? paths : "shift + click: record a jump from here");
 	}
 }
 
@@ -1277,6 +1280,10 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 	if (!pressed || !list || !spot)
 		return;
 	client->latched_buttons &= ~BUTTON_ATTACK;
+
+	// with a player's routes listed, shift on a spawn marker draws his from there
+	if (ucmd->impulse == IMPULSE_SHIFT && JmpPath_SpawnPick(ent, spot))
+		return;
 
 	if ((client->jmp_menu_rec && !bare) || ucmd->impulse == IMPULSE_SHIFT) {
 		client->jmp_menu_pick = spot;

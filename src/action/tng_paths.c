@@ -35,6 +35,11 @@ typedef struct {
 	int		routes[JMP_PATH_MAX];	// the player's unique trails, and the rounds each folds
 	int		dups[JMP_PATH_MAX];
 	int		route_count;
+	int		spawn[JMP_PATH_MAX];	// the spawnpoint each starts on, from 1; 0 none near
+	int		vis[JMP_PATH_MAX];		// the routes shown, as indices into routes: all, or those from spawn_filter
+	int		vis_count;
+	int		spawn_filter;			// a spawnpoint's number, 0 all
+	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -257,15 +262,49 @@ static const char *JmpPathPlayerName(jmp_path_t *st)
 	return st->demo->players[st->player].name;
 }
 
+static int JmpPathSpawn(const vec3_t origin);
+
+// the routes shown: all of them, or those from the spawnpoint picked
+static void JmpPathFilter(jmp_path_t *st)
+{
+	int k;
+
+	st->vis_count = 0;
+	for (k = 0; k < st->route_count; k++)
+		if (!st->spawn_filter || st->spawn[k] == st->spawn_filter)
+			st->vis[st->vis_count++] = k;
+}
+
+// a route's number on the list and the markers, from 1; 0 if not shown
+static int JmpPathVisNumber(jmp_path_t *st, int k)
+{
+	int i;
+
+	for (i = 0; i < st->vis_count; i++)
+		if (st->vis[i] == k)
+			return i + 1;
+	return 0;
+}
+
 static void JmpPathRoutes(jmp_path_t *st)
 {
+	vec3_t o;
+	int k;
+
 	st->route_count = 0;
+	st->vis_count = 0;
+	st->spawn_filter = 0;
 	st->sel = -1;
 	if (!st->demo || st->player < 0)
 		return;
 	st->frames = JmpPathFrames();
 	st->route_count = MvdPath_Unique(st->demo, JmpPathPlayerName(st), st->frames,
 		st->routes, st->dups, JMP_PATH_MAX);
+	for (k = 0; k < st->route_count; k++) {
+		MvdPath_Origin(&st->demo->samples[st->demo->trails[st->routes[k]].first], o);
+		st->spawn[k] = JmpPathSpawn(o);
+	}
+	JmpPathFilter(st);
 }
 
 static qboolean JmpPathLoad(edict_t *ent, jmp_path_t *st, const char *name)
@@ -341,8 +380,8 @@ static void JmpPathStuffShow(edict_t *ent, jmp_path_t *st)
 	int k;
 
 	Q_snprintf(cmd, sizeof(cmd), "jpath show \"%s\" %d ", st->demo_name, st->frames);
-	for (k = 0; k < st->route_count; k++) {
-		Q_snprintf(num, sizeof(num), "%s%d", k ? "," : "", st->routes[k]);
+	for (k = 0; k < st->vis_count; k++) {
+		Q_snprintf(num, sizeof(num), "%s%d", k ? "," : "", st->routes[st->vis[k]]);
 		Q_strncatz(cmd, num, sizeof(cmd));
 	}
 	JmpPathStuff(ent, cmd);
@@ -497,7 +536,7 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 {
 	vec3_t origins[JMP_PATH_MAX];
 	char text[32];
-	int i, count = st->route_count, hl, key, ring;
+	int i, count = st->vis_count, hl, key, ring;
 
 	// a new map has cleared every slot, ours went with them
 	if (st->ghud_count && st->ghud_made > level.framenum)
@@ -511,11 +550,11 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 	}
 
 	for (i = 0; i < count; i++)
-		JmpPathEnd(st, i, origins[i]);
+		JmpPathEnd(st, st->vis[i], origins[i]);
 	// no aiming out of a ghost's eyes
 	st->aim = (ent->svflags & SVF_NOCLIENT) ? 0 : Jmp_AimAt(ent, origins, count);
 	JmpPathTip(ent, st, st->aim != 0);
-	hl = st->aim ? st->aim : st->sel + 1;
+	hl = st->aim ? st->aim : st->sel >= 0 ? JmpPathVisNumber(st, st->sel) : 0;
 
 	// sized by distance, as the spawn markers are: the client scales a
 	// 3D image by 300 / distance
@@ -532,7 +571,7 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 		}
 	}
 
-	key = (hl << 16) | count;
+	key = (hl << 16) | (st->spawn_filter << 8) | count;
 	if (st->ghud_count && key == st->ghud_key)
 		return;
 	st->ghud_key = key;
@@ -560,7 +599,7 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 
 	for (i = 0; i < count && 2 * i + 1 < st->ghud_count; i++) {
 		int el_ring = st->ghud[2 * i], el = st->ghud[2 * i + 1];
-		const mvp_trail_t *t = &st->demo->trails[st->routes[i]];
+		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
 
 		if (i + 1 == hl) {
 			Q_snprintf(text, sizeof(text), "> %d: round %d <", i + 1, st->demo->rounds[t->round].number);
@@ -577,8 +616,11 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 
 static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 {
-	if (on && !st->route_count) {
-		gi.cprintf(ent, PRINT_HIGH, "No routes listed: jmod paths picks a demo and a player\n");
+	if (on && !st->vis_count) {
+		if (st->route_count)
+			gi.cprintf(ent, PRINT_HIGH, "No route of %s from spawn %d\n", JmpPathPlayerName(st), st->spawn_filter);
+		else
+			gi.cprintf(ent, PRINT_HIGH, "No routes listed: jmod paths picks a demo and a player\n");
 		return;
 	}
 	if (ent->client->layout == LAYOUT_MENU)
@@ -588,8 +630,12 @@ static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
 	st->click_ms = 0;
 	if (on) {
 		JmpPathStuffShow(ent, st);
-		gi.cprintf(ent, PRINT_HIGH, "%d routes of %s on the map: fire on a number for one, twice for its ghost. Escape puts them away\n",
-			st->route_count, JmpPathPlayerName(st));
+		if (st->spawn_filter)
+			gi.cprintf(ent, PRINT_HIGH, "%d route%s of %s from spawn %d: fire on a number for one, twice for its ghost. Escape puts them away\n",
+				st->vis_count, st->vis_count == 1 ? "" : "s", JmpPathPlayerName(st), st->spawn_filter);
+		else
+			gi.cprintf(ent, PRINT_HIGH, "%d routes of %s on the map: fire on a number for one, twice for its ghost. Escape puts them away\n",
+				st->vis_count, JmpPathPlayerName(st));
 	} else {
 		JmpPathStuff(ent, "jpath off");
 	}
@@ -620,10 +666,13 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 	gclient_t *client = ent->client;
 	qboolean fire = (ucmd->buttons & BUTTON_ATTACK) != 0;
 	qboolean pressed = fire && !st->fire_held;
-	int k = st->aim - 1;
+	int k = st->aim > 0 && st->aim <= st->vis_count ? st->vis[st->aim - 1] : -1;
 
 	st->fire_held = fire;
 	if (!st->over || client->layout == LAYOUT_MENU || (ent->svflags & SVF_NOCLIENT))
+		return false;
+	// shift is the spawn markers' click: the routes from that spawn
+	if (ucmd->impulse == IMPULSE_SHIFT)
 		return false;
 
 	if (st->click_ms > 0) {
@@ -731,6 +780,56 @@ static void JmpPathPickDemo(edict_t *ent, pmenu_t *p)
 	JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
 }
 
+/*
+A player picked: the spawn markers come up, and shift+fire on one draws
+the routes he took from that spawn (JmpPath_SpawnPick, from
+Jmp_MenuFire); a plain fire spawns there as ever, to run beside them.
+*/
+static void JmpPathSpawnMode(edict_t *ent, jmp_path_t *st)
+{
+	int k, spawns = 0, seen[JMP_SPOTS_MAX + 1] = { 0 };
+
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	if (st->over)
+		JmpPathOver(ent, st, false);
+	st->spawn_mode = true;
+	ent->client->resp.jmp_markers = true;
+	for (k = 0; k < st->route_count; k++)
+		if (st->spawn[k] > 0 && st->spawn[k] <= JMP_SPOTS_MAX && !seen[st->spawn[k]]++)
+			spawns++;
+	gi.cprintf(ent, PRINT_HIGH, "%s: %d route%s from %d spawn%s. Shift+fire on a spawn marker draws the ones from it; jmod pathmap draws them all\n",
+		JmpPathPlayerName(st), st->route_count, st->route_count == 1 ? "" : "s", spawns, spawns == 1 ? "" : "s");
+}
+
+// shift+fire on spawn marker spot while a player is picked: his routes
+// from there. False when it is not the pathing's click to take.
+qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (!st->spawn_mode || !st->route_count || spot <= 0 || spot >= JMP_SPOT_JUMPS)
+		return false;
+	st->spawn_filter = spot;
+	JmpPathFilter(st);
+	if (st->over)
+		JmpPathOver(ent, st, false);
+	JmpPathOver(ent, st, true);
+	return true;
+}
+
+// the spawn markers' tooltip while a player is picked
+const char *JmpPath_SpawnTip(edict_t *ent)
+{
+	jmp_path_t *st = JmpPath(ent);
+	static char tip[64];
+
+	if (!st->spawn_mode || !st->route_count)
+		return NULL;
+	Q_snprintf(tip, sizeof(tip), "shift + click: %.16s's routes from here", JmpPathPlayerName(st));
+	return tip;
+}
+
 static void JmpPathPickPlayer(edict_t *ent, pmenu_t *p)
 {
 	jmp_path_t *st = JmpPath(ent);
@@ -741,7 +840,7 @@ static void JmpPathPickPlayer(edict_t *ent, pmenu_t *p)
 	st->player = i;
 	JmpPathRoutes(st);
 	st->top = 0;
-	JmpPathShow(ent, JMP_MENU_PATH_ROUTES, -1);
+	JmpPathSpawnMode(ent, st);
 }
 
 static void JmpPathPickRoute(edict_t *ent, pmenu_t *p)
@@ -755,6 +854,16 @@ static void JmpPathPickRoute(edict_t *ent, pmenu_t *p)
 static void JmpPathMenuOver(edict_t *ent, pmenu_t *p)
 {
 	JmpPathOver(ent, JmpPath(ent), true);
+}
+
+static void JmpPathMenuAllSpawns(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	st->spawn_filter = 0;
+	JmpPathFilter(st);
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_ROUTES, -1);
 }
 
 static void JmpPathMenuOne(edict_t *ent, pmenu_t *p)
@@ -871,29 +980,36 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "Nobody played a round in it");
 		JmpPathPaging(ent, st, JMP_PATH_FIRST + 1 + JMP_PATH_ROWS + 1, n, JMP_PATH_ROWS);
 	} else if (step == JMP_MENU_PATH_ROUTES) {
-		n = st->route_count;
+		n = st->vis_count;
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROUTE_ROWS * JMP_PATH_ROUTE_ROWS;
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.24s: %d route%s", JmpPathPlayerName(st),
-			n, n == 1 ? "" : "s");
+		if (st->spawn_filter)
+			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.20s: %d from spawn %d", JmpPathPlayerName(st),
+				n, st->spawn_filter);
+		else
+			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.24s: %d route%s", JmpPathPlayerName(st),
+				n, n == 1 ? "" : "s");
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "of %d rounds, to %d s past ACTION!",
 			st->demo->players[st->player].trails, (st->frames - MVP_ACTION_FRAMES) / 10);
 		Jmp_MenuRow(ent, JMP_PATH_FIRST + 1, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All of them on the map");
+		if (st->spawn_filter)
+			Jmp_MenuRow(ent, JMP_PATH_FIRST + 2, PMENU_ALIGN_LEFT, 0, JmpPathMenuAllSpawns, "From every spawn");
 		row = JMP_PATH_FIRST + 3;
 		for (i = st->top; i < n && i < st->top + JMP_PATH_ROUTE_ROWS; i++, row++) {
-			const mvp_trail_t *t = &st->demo->trails[st->routes[i]];
+			int k = st->vis[i];
+			const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
 
-			JmpPathDesc(st, i, desc, sizeof(desc));
-			if (st->dups[i])
-				Q_snprintf(label, sizeof(label), "R%d x%d", st->demo->rounds[t->round].number, st->dups[i] + 1);
+			JmpPathDesc(st, k, desc, sizeof(desc));
+			if (st->dups[k])
+				Q_snprintf(label, sizeof(label), "R%d x%d", st->demo->rounds[t->round].number, st->dups[k] + 1);
 			else
 				Q_snprintf(label, sizeof(label), "R%d", st->demo->rounds[t->round].number);
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickRoute, "%2d %-6.6s %.30s", i + 1, label, desc);
-			if (cur < 0 && i == st->pick)
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, k, JmpPathPickRoute, "%2d %-6.6s %.30s", i + 1, label, desc);
+			if (cur < 0 && k == st->pick)
 				cur = row;
 		}
 		if (!n)
-			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No whole round of theirs");
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, st->spawn_filter ? "None from this spawn" : "No whole round of theirs");
 		JmpPathPaging(ent, st, JMP_PATH_FIRST + 3 + JMP_PATH_ROUTE_ROWS + 1, n, JMP_PATH_ROUTE_ROWS);
 		if (cur < 0)
 			cur = JMP_PATH_FIRST + 1;
@@ -903,7 +1019,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		vec3_t o;
 		int spawn, ms = (min(t->count, st->frames + 1) - 1) * 100;
 
-		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.16s", st->pick + 1, r->number, t->name);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.16s", JmpPathVisNumber(st, st->pick), r->number, t->name);
 		MvdPath_Origin(&st->demo->samples[t->first], o);
 		spawn = JmpPathSpawn(o);
 		if (spawn)
@@ -956,13 +1072,33 @@ void JmpPath_Cmd(edict_t *ent, const char *cmd)
 		JmpPathOver(ent, st, !st->over);
 		return;
 	}
-	if (!Q_stricmp(cmd, "path")) {
-		k = atoi(arg) - 1;
-		if (!arg[0] || k < 0 || k >= st->route_count) {
-			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod path <1-%d> [ghost|pov]: a route of %s\n",
-				st->route_count, st->route_count ? JmpPathPlayerName(st) : "the player jmod paths picks");
+	if (!Q_stricmp(cmd, "pathspawn")) {
+		k = atoi(arg);
+		if (!st->route_count) {
+			gi.cprintf(ent, PRINT_HIGH, "No routes listed: jmod paths picks a demo and a player\n");
 			return;
 		}
+		if (!arg[0] || k < 0) {
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod pathspawn <spawnpoint>: %s's routes from it; 0 from every spawn\n",
+				JmpPathPlayerName(st));
+			return;
+		}
+		st->spawn_mode = true;
+		st->spawn_filter = k;
+		JmpPathFilter(st);
+		if (st->over)
+			JmpPathOver(ent, st, false);
+		JmpPathOver(ent, st, true);
+		return;
+	}
+	if (!Q_stricmp(cmd, "path")) {
+		k = atoi(arg) - 1;
+		if (!arg[0] || k < 0 || k >= st->vis_count) {
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod path <1-%d> [ghost|pov]: a route of %s\n",
+				st->vis_count, st->route_count ? JmpPathPlayerName(st) : "the player jmod paths picks");
+			return;
+		}
+		k = st->vis[k];
 		arg = gi.argc() > 3 ? gi.argv(3) : "";
 		if (!Q_stricmp(arg, "ghost"))
 			JmpPathGhost(ent, st, k, false);

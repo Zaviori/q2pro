@@ -14,6 +14,10 @@ pick **View player pathing...**, or type `jmod paths`.
    directory whose name carries this map's name, newest first. `jmod paths
    <file>` loads one by name. A demo of another map is refused.
 2. **A player.** Everybody who played a round in it, most rounds first.
+   Picking one puts the spawnpoint markers up: Shift+fire on a marker
+   draws that player's routes from that spawn (`jmod pathspawn <#>` is
+   the console form, 0 for every spawn), and a plain fire still spawns
+   you there to run beside them. `jmod pathmap` draws them all.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
    route, taken three times). The row names the location they reached
