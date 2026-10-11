@@ -80,7 +80,8 @@ void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
 qboolean Jmp_SpawnEscape(edict_t *ent);
 qboolean Jmp_RecEscape(edict_t *ent);
-qboolean JmpPath_Status(edict_t *ent, char *row0, char *row1, char *row2, size_t size, const char *spawn);
+#define JMP_STATUS_ROWS	4
+qboolean JmpPath_Status(edict_t *ent, char rows[][64], const char *spawn);
 void Jmp_TipRows(edict_t *ent, int *els, qboolean on);
 void Jmp_TipText(edict_t *ent, const int *els, const char *const *rows);
 int Jmp_MenuRowAt(int row);

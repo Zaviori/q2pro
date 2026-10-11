@@ -1994,9 +1994,10 @@ static void JmpStatus(edict_t *ent)
 {
 	gclient_t *client = ent->client;
 	jmp_state_t *st = JmpState(ent);
-	char row0[64] = "", row1[64] = "", row2[64] = "", spawn[64] = "", secs[16];
-	int i;
+	char rows[JMP_STATUS_ROWS][64], spawn[64] = "", secs[16];
+	int i, n = 0;
 
+	memset(rows, 0, sizeof(rows));
 	if (client->resp.jmp_spawn_frame) {
 		if (client->resp.jmp_spawn_repeat > 0) {
 			JmpSecsName(client->resp.jmp_spawn_repeat, secs, sizeof(secs));
@@ -2006,45 +2007,56 @@ static void JmpStatus(edict_t *ent)
 		}
 	}
 
+	// the state on the first row, then a key a row
 	if (st->playing) {
 		// the playback HUD says it all
 	} else if (st->recording) {
 		JmpSecs(st->rec_ms, secs, sizeof(secs));
-		Q_snprintf(row0, sizeof(row0), "Recording a jump: %s s", secs);
-		Q_strncpyz(row1, spawn[0] ? "the countdown - Escape: stop the take"
-			: "Escape: stop and keep the take   jmod recall: another go", sizeof(row1));
-	} else if (JmpPath_Status(ent, row0, row1, row2, sizeof(row0), spawn)) {
+		Q_snprintf(rows[0], sizeof(rows[0]), "Recording a jump: %s", spawn[0] ? "the countdown" : secs);
+		if (spawn[0]) {
+			Q_strncpyz(rows[1], "Escape: stop the take", sizeof(rows[1]));
+		} else {
+			Q_strncpyz(rows[1], "Escape: stop and keep the take", sizeof(rows[1]));
+			Q_strncpyz(rows[2], "jmod recall: another go", sizeof(rows[2]));
+		}
+	} else if (JmpPath_Status(ent, rows, spawn)) {
 		// the pathing's: routes, ghosts, a drill, the spawn pick
 	} else if (spawn[0]) {
-		Q_strncpyz(row0, spawn, sizeof(row0));
-		Q_strncpyz(row1, "Escape: stop it", sizeof(row1));
+		Q_strncpyz(rows[0], spawn, sizeof(rows[0]));
+		Q_strncpyz(rows[1], "Escape: stop it", sizeof(rows[1]));
 	} else if (client->resp.jmp_markers && client->layout != LAYOUT_MENU) {
-		Q_strncpyz(row0, "Spawn markers up", sizeof(row0));
-		Q_strncpyz(row1, "click: spawn there   double click: delay, repeat   Escape: away", sizeof(row1));
+		Q_strncpyz(rows[0], "Spawn markers up", sizeof(rows[0]));
+		Q_strncpyz(rows[1], "click: spawn there", sizeof(rows[1]));
+		Q_strncpyz(rows[2], "double click: delay, repeat", sizeof(rows[2]));
+		Q_strncpyz(rows[3], "Escape: remove markers", sizeof(rows[3]));
 	}
 
-	if (!row0[0] && !row1[0]) {
+	for (i = 0; i < JMP_STATUS_ROWS; i++)
+		if (rows[i][0])
+			n = i + 1;
+	if (!n) {
 		if (client->resp.jmp_status_on)
-			for (i = 0; i < 3; i++)
+			for (i = 0; i < JMP_STATUS_ROWS; i++)
 				Ghud_RemoveElement(ent, client->resp.jmp_status[i]);
 		client->resp.jmp_status_on = false;
 		return;
 	}
 	if (!client->resp.jmp_status_on) {
-		for (i = 0; i < 3; i++) {
+		for (i = 0; i < JMP_STATUS_ROWS; i++) {
 			client->resp.jmp_status[i] = Ghud_NewElement(ent, GHT_TEXT);
 			Ghud_SetAnchor(ent, client->resp.jmp_status[i], 0.5f, 1);
-			Ghud_SetPosition(ent, client->resp.jmp_status[i], 0, -46 + 12 * i);
+			Ghud_SetPosition(ent, client->resp.jmp_status[i], 0, -22 - 12 * (JMP_STATUS_ROWS - 1 - i));
 			Ghud_SetTextFlags(ent, client->resp.jmp_status[i], UI_CENTER);
 			Ghud_SetColor(ent, client->resp.jmp_status[i], 255, 255, 255, i ? 200 : 255);
 		}
 		client->resp.jmp_status_on = true;
 	}
-	// the server sends a line only when it changes; the third is for a
-	// state with more keys than a line holds
-	Ghud_SetText(ent, client->resp.jmp_status[0], row0);
-	Ghud_SetText(ent, client->resp.jmp_status[1], row1);
-	Ghud_SetText(ent, client->resp.jmp_status[2], row2);
+	// the server sends a row only when it changes; the rows used sit at
+	// the bottom, the empty ones above them
+	for (i = 0; i < JMP_STATUS_ROWS; i++)
+		Ghud_SetText(ent, client->resp.jmp_status[JMP_STATUS_ROWS - n + i], i < n ? rows[i] : "");
+	for (i = 0; i < JMP_STATUS_ROWS - n; i++)
+		Ghud_SetText(ent, client->resp.jmp_status[i], "");
 }
 
 // Escape while a take records: the take ends and is kept, its menu up
