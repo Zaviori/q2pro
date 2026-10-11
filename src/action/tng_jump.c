@@ -1369,15 +1369,15 @@ static void JmpTip(edict_t *ent, qboolean on)
 	if (!on)
 		return;
 	if (client->jmp_menu_rec && client->layout == LAYOUT_MENU) {
-		rows[0] = "click: record a jump from here";
+		rows[0] = "Click: record a jump from here";
 	} else {
-		rows[0] = "click: spawn here";
-		rows[1] = "double click: delay, repeat";
+		rows[0] = "Click: spawn here";
+		rows[1] = "Double click: delay, repeat";
 		if (JmpPath_SpawnTip(ent, shift, sizeof(shift))) {
 			rows[2] = shift;
-			rows[3] = "alt + click: another player";
+			rows[3] = "Alt + click: another player";
 		} else {
-			rows[2] = "shift + click: record a jump from here";
+			rows[2] = "Shift + click: record a jump from here";
 		}
 	}
 	Jmp_TipText(ent, client->resp.jmp_tip, rows);
@@ -2014,21 +2014,21 @@ static void JmpStatus(edict_t *ent)
 		JmpSecs(st->rec_ms, secs, sizeof(secs));
 		Q_snprintf(rows[0], sizeof(rows[0]), "Recording a jump: %s", spawn[0] ? "the countdown" : secs);
 		if (spawn[0]) {
-			Q_strncpyz(rows[1], "Escape: stop the take", sizeof(rows[1]));
+			Q_strncpyz(rows[1], "Esc: stop the take", sizeof(rows[1]));
 		} else {
-			Q_strncpyz(rows[1], "Escape: stop and keep the take", sizeof(rows[1]));
-			Q_strncpyz(rows[2], "jmod recall: another go", sizeof(rows[2]));
+			Q_strncpyz(rows[1], "Esc: stop and keep the take", sizeof(rows[1]));
+			Q_strncpyz(rows[2], "The jmod recall command: another go", sizeof(rows[2]));
 		}
 	} else if (JmpPath_Status(ent, rows, spawn)) {
 		// the pathing's: routes, ghosts, a drill, the spawn pick
 	} else if (spawn[0]) {
 		Q_strncpyz(rows[0], spawn, sizeof(rows[0]));
-		Q_strncpyz(rows[1], "Escape: stop it", sizeof(rows[1]));
+		Q_strncpyz(rows[1], "Esc: stop it", sizeof(rows[1]));
 	} else if (client->resp.jmp_markers && client->layout != LAYOUT_MENU) {
 		Q_strncpyz(rows[0], "Spawn markers up", sizeof(rows[0]));
-		Q_strncpyz(rows[1], "click: spawn there", sizeof(rows[1]));
-		Q_strncpyz(rows[2], "double click: delay, repeat", sizeof(rows[2]));
-		Q_strncpyz(rows[3], "Escape: remove markers", sizeof(rows[3]));
+		Q_strncpyz(rows[1], "Click: spawn there", sizeof(rows[1]));
+		Q_strncpyz(rows[2], "Double click: delay, repeat", sizeof(rows[2]));
+		Q_strncpyz(rows[3], "Esc: remove markers", sizeof(rows[3]));
 	}
 
 	for (i = 0; i < JMP_STATUS_ROWS; i++)
