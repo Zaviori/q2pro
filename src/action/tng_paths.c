@@ -1489,7 +1489,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %.13s", level.mapname);
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, n ? "%d .mvd2 of it in demos/" : "none in demos/ yet", n);
-		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Get one from aq2world...");
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Download a recent pickup game of this map...");
 		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpPathMenuFind, "Search for player in local demos...");
 		row = JMP_PATH_FIRST + 3;
 		if (st->demo) {
