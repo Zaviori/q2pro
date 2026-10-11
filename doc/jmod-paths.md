@@ -98,7 +98,8 @@ later, `jpath_kills 0` to drop them. The parser takes a kill from the obituary p
 killer being the other name of the round in it. On the client `jpath_look 1`
 draws the player's shots as the bullets went: a line from the eye the
 way he looked, faint red to the wall it hit, green to the player it
-hit, with a dot on him. The parser takes a shot from the muzzle flash
+hit, each whole for two seconds while the run plays and gone a second
+later. The parser takes a shot from the muzzle flash
 the server sent; the client traces the world itself and counts a hit
 where one of the round's others stood within a body's reach of the
 line that frame, so a shot on the edge may show either way. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
