@@ -52,6 +52,7 @@ typedef struct {
 	qboolean	over;				// the overview is up: lines on the client, markers here
 	int		sel;					// the route drawn alone, -1 none
 	int		aim;					// the marker aimed at, from 1; 0 none
+	int		aim_sent;				// the trail the client was told is aimed at, -1 none
 	qboolean	fire_held;
 	int		click_route, click_ms;	// a click waiting to see if it is a double one
 	int		ghud[JMP_PATH_MAX * 2];	// a ring and a number per route
@@ -685,6 +686,7 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 
 	if (!st->over || !count) {
 		st->aim = 0;
+		st->aim_sent = -1;
 		JmpPathTip(ent, st, false);
 		JmpPathMarkersClear(ent, st);
 		return;
@@ -695,6 +697,15 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 	// no aiming out of a ghost's eyes
 	st->aim = (ent->svflags & SVF_NOCLIENT) ? 0 : Jmp_AimAt(ent, origins, count);
 	JmpPathTip(ent, st, st->aim != 0);
+	// the client lights the route aimed at
+	i = st->aim ? st->routes[st->vis[st->aim - 1]] : -1;
+	if (i != st->aim_sent) {
+		char cmd[64];
+
+		st->aim_sent = i;
+		Q_snprintf(cmd, sizeof(cmd), "jpath hl %d", i);
+		JmpPathStuff(ent, cmd);
+	}
 	hl = st->aim ? st->aim : st->sel >= 0 ? JmpPathVisNumber(st, st->sel) : 0;
 
 	// sized by distance, as the spawn markers are: the client scales a

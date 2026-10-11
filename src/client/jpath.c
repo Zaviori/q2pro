@@ -31,6 +31,7 @@ typedef struct {
     int         other_count;
     bool        playing;            // trails[0] runs from its start
     unsigned    start;              // cls.realtime it last started
+    int         hl;                 // the trail aimed at: lit, the rest dimmed; -1 none
 } jpath_t;
 
 static jpath_t jpath;
@@ -100,6 +101,11 @@ static void JPath_Cmd_f(void)
     if (!strcmp(sub, "off")) {
         jpath.count = jpath.other_count = 0;
         jpath.playing = false;
+        jpath.hl = -1;
+        return;
+    }
+    if (!strcmp(sub, "hl")) {
+        jpath.hl = Cmd_Argc() > 2 ? atoi(Cmd_Argv(2)) : -1;
         return;
     }
     if (strcmp(sub, "show") && strcmp(sub, "play")) {
@@ -114,6 +120,7 @@ static void JPath_Cmd_f(void)
     jpath.other_count = Cmd_Argc() > 5 ? JPath_List(Cmd_Argv(5), jpath.others, JPATH_MAX) : 0;
     jpath.playing = !strcmp(sub, "play") && jpath.count > 0;
     jpath.start = cls.realtime;
+    jpath.hl = -1;
 }
 
 // green at LIGHTS shading to orange up to ACTION!, bright red from there
@@ -127,12 +134,11 @@ static uint32_t JPath_Color(int frame, int alpha)
 }
 
 #if USE_REF
-static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t dim, bool depth)
+static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t dim, bool depth, float lift)
 {
     const mvp_sample_t *s = &jpath.demo->samples[t->first];
     vec3_t a, b, head;
     int i, n = min(t->count, jpath.frames + 1), whole = (int)upto;
-    float lift = jpath_lift->value;
 
     MvdPath_Origin(&s[0], a);
     a[2] += lift;
@@ -184,10 +190,18 @@ void JPath_AddToScene(void)
         const mvp_trail_t *t = jpath.count ? &jpath.demo->trails[jpath.trails[0]] : NULL;
         uint32_t dim = t && o->team == t->team ? MakeColor(90, 170, 255, 110) : MakeColor(220, 220, 220, 90);
 
-        JPath_Lines(o, upto, 110, dim, depth);
+        JPath_Lines(o, upto, 110, dim, depth, jpath_lift->value);
     }
-    for (i = 0; i < jpath.count; i++)
-        JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, 255, 0, depth);
+    // the one aimed at lit and drawn twice, a little higher, for a thick
+    // line; the rest dimmed while it is
+    for (i = 0; i < jpath.count; i++) {
+        bool lit = jpath.hl >= 0 && jpath.trails[i] == jpath.hl;
+        int alpha = jpath.hl >= 0 && !lit ? 90 : 255;
+
+        JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, alpha, 0, depth, jpath_lift->value);
+        if (lit)
+            JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, 255, 0, depth, jpath_lift->value + 2);
+    }
 }
 #else
 void JPath_AddToScene(void)
