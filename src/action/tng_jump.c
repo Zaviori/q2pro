@@ -3471,6 +3471,17 @@ qboolean Jmp_PlayEscape(edict_t *ent)
 	return true;
 }
 
+// the playback let go and the watcher put back where he was before it
+// (a route followed from its marker), not at the ghost's start
+qboolean Jmp_PlayStopTo(edict_t *ent, const vec3_t origin, float pitch, float yaw)
+{
+	if (!JmpState(ent)->playing)
+		return false;
+	JmpPlayStop(ent, false);
+	JmpPlace(ent, origin, pitch, yaw);
+	return true;
+}
+
 // "jmod stop": true if there was a playback or a recording to end
 static qboolean Jmp_Stop(edict_t *ent)
 {
