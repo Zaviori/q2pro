@@ -39,9 +39,11 @@ if the menu is left. Only what is picked is downloaded - the listing
 itself is a few kilobytes of XML.
 
 A month's listing is kept for the session and on disk in `s3cache/`
-(`<source>-<YYYY-MM>.txt`): the month being played is asked again after
-an hour, an older month after a year (F5 asks at once). The players
-read for a row are kept through a new listing whatever its age. `ui_s3demos_url` is the
+(`<source>-<YYYY-MM>.txt`). A demo never changes once it is up, so a
+listing only ever asks the bucket for the keys after the last one it
+knows: the month being played is asked on each visit, a past month
+after a year (F5 asks at once). The players read for a row are kept
+whatever a listing's age. `ui_s3demos_url` is the
 bucket (`https://aq2world.s3.amazonaws.com`).
 
 ## How it is built

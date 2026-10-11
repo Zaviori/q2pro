@@ -56,10 +56,12 @@ row a moment, and kept with the listing.
 #define S3_MAX_PAGES    8           // listings of a thousand a month may take
 #define S3_CACHE_DIR    "s3cache"
 // seconds a month's listing is good for before the bucket is asked
-// again: the month being played gains demos, a past one is done. The
-// players read for a row are kept through a new listing whatever the
-// age - they never change, and all of them come to well under a megabyte
-#define S3_TTL_NOW      (60 * 60)
+// again. A demo never changes once it is up, so a listing is only ever
+// asked for what came after the last key known (start-after), and the
+// month being played is asked on each visit; a past month is done. The
+// players read for a row are kept whatever a listing's age - they never
+// change, and all of them come to well under a megabyte
+#define S3_TTL_NOW      60
 #define S3_TTL_PAST     (365 * 24 * 60 * 60)
 #define S3_PAGES_KEPT   8           // months kept in memory
 #define S3_KEY_MAX      192         // a key with its directory: longer than MAX_QPATH
@@ -600,8 +602,14 @@ static bool S3_ParseListing(const char *xml)
             && S3_Tag(p, e, "Size", size, sizeof(size)) && m_s3.raw_count < S3_MAX_KEYS) {
             s3raw_t *r = &m_s3.raw[m_s3.raw_count];
 
+            int k;
+
+            // one known already (two prefixes can overlap) is not taken twice
+            for (k = 0; k < m_s3.raw_count; k++)
+                if (!strcmp(m_s3.raw[k].key, key))
+                    break;
             // the odd character an XML escape stands for is not in a demo's name
-            if (!strchr(key, '&') && (q = strrchr(key, '/')) != NULL && q[1]) {
+            if (k >= m_s3.raw_count && !strchr(key, '&') && (q = strrchr(key, '/')) != NULL && q[1]) {
                 memset(r, 0, sizeof(*r));
                 Q_strlcpy(r->key, key, sizeof(r->key));
                 r->size = atoll(size);
@@ -653,6 +661,23 @@ static void S3_ListRequest(void)
 
     S3_UrlEncode(prefix[m_s3.list_prefix], enc, sizeof(enc));
     Q_snprintf(url, sizeof(url), "%s/?list-type=2&prefix=%s", ui_s3demos_url->string, enc);
+    // from the last key known under the prefix on: the keys carry the
+    // date and sort as it does
+    if (!m_s3.token[0]) {
+        const char *after = NULL;
+        size_t plen = strlen(prefix[m_s3.list_prefix]);
+        int i;
+
+        for (i = 0; i < m_s3.raw_count; i++)
+            if (!strncmp(m_s3.raw[i].key, prefix[m_s3.list_prefix], plen)
+                && (!after || strcmp(m_s3.raw[i].key, after) > 0))
+                after = m_s3.raw[i].key;
+        if (after) {
+            S3_UrlEncode(after, enc, sizeof(enc));
+            Q_strlcat(url, "&start-after=", sizeof(url));
+            Q_strlcat(url, enc, sizeof(url));
+        }
+    }
     if (m_s3.token[0]) {
         S3_UrlEncode(m_s3.token, enc, sizeof(enc));
         Q_strlcat(url, "&continuation-token=", sizeof(url));
@@ -722,6 +747,16 @@ static void S3_ListStart(void)
     m_s3.token[0] = 0;
     m_s3.raw = UI_Malloc(sizeof(*m_s3.raw) * S3_MAX_KEYS);
     m_s3.raw_count = 0;
+    // what is known of the month already, stale or not: the listing asks
+    // only for the keys after it, and the players known stay known
+    {
+        s3page_t *old = S3_PageFind(m_s3.source, month, false);
+
+        if (old && old->count) {
+            m_s3.raw_count = min(old->count, S3_MAX_KEYS);
+            memcpy(m_s3.raw, old->raw, m_s3.raw_count * sizeof(*m_s3.raw));
+        }
+    }
     m_s3.note[0] = 0;
     S3_BuildList();
     S3_ListRequest();
