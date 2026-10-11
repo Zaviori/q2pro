@@ -1301,39 +1301,60 @@ static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
 	return aim <= map ? aim : JMP_SPOT_JUMPS + aim - 1 - map;
 }
 
-// what a click on the marker does, under the crosshair while one is aimed at
+// what a click on the marker does, under the crosshair while one is aimed
+// at: four rows, a hint on each, the same rows every time
+#define JMP_TIP_ROWS	4
+
+void Jmp_TipRows(edict_t *ent, int *els, qboolean on)
+{
+	int i;
+
+	for (i = 0; i < JMP_TIP_ROWS; i++) {
+		if (!on) {
+			Ghud_RemoveElement(ent, els[i]);
+			continue;
+		}
+		els[i] = Ghud_NewElement(ent, GHT_TEXT);
+		Ghud_SetAnchor(ent, els[i], 0.5f, 0.5f);
+		Ghud_SetPosition(ent, els[i], 0, 22 + 10 * i);
+		Ghud_SetTextFlags(ent, els[i], UI_CENTER);
+		Ghud_SetColor(ent, els[i], 255, 255, 255, i ? 190 : 255);
+	}
+}
+
+void Jmp_TipText(edict_t *ent, const int *els, const char *const *rows)
+{
+	int i;
+
+	for (i = 0; i < JMP_TIP_ROWS; i++)
+		Ghud_SetText(ent, els[i], (char *)(rows[i] ? rows[i] : ""));
+}
+
 static void JmpTip(edict_t *ent, qboolean on)
 {
 	gclient_t *client = ent->client;
-	int i;
+	const char *rows[JMP_TIP_ROWS] = { NULL };
+	char shift[64];
 
 	if (on == client->resp.jmp_tip_on)
 		return;
 	client->resp.jmp_tip_on = on;
-
-	for (i = 0; i < 2; i++) {
-		if (!on) {
-			Ghud_RemoveElement(ent, client->resp.jmp_tip[i]);
-			continue;
-		}
-		client->resp.jmp_tip[i] = Ghud_NewElement(ent, GHT_TEXT);
-		Ghud_SetAnchor(ent, client->resp.jmp_tip[i], 0.5f, 0.5f);
-		Ghud_SetPosition(ent, client->resp.jmp_tip[i], 0, 22 + 10 * i);
-		Ghud_SetTextFlags(ent, client->resp.jmp_tip[i], UI_CENTER);
-		Ghud_SetColor(ent, client->resp.jmp_tip[i], 255, 255, 255, i ? 170 : 255);
-	}
+	Jmp_TipRows(ent, client->resp.jmp_tip, on);
 	if (!on)
 		return;
 	if (client->jmp_menu_rec && client->layout == LAYOUT_MENU) {
-		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: record a jump from here");
-		Ghud_SetText(ent, client->resp.jmp_tip[1], "");
+		rows[0] = "click: record a jump from here";
 	} else {
-		const char *paths = JmpPath_SpawnTip(ent);
-
-		// a ghud line holds MAX_QPATH: the pathing's hints share the second
-		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: spawn here   double click: delay, repeat");
-		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? (char *)paths : "shift + click: record a jump from here");
+		rows[0] = "click: spawn here";
+		rows[1] = "double click: delay, repeat";
+		if (JmpPath_SpawnTip(ent, shift, sizeof(shift))) {
+			rows[2] = shift;
+			rows[3] = "ctrl + click: another player";
+		} else {
+			rows[2] = "shift + click: record a jump from here";
+		}
 	}
+	Jmp_TipText(ent, client->resp.jmp_tip, rows);
 }
 
 /*

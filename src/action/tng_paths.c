@@ -85,7 +85,7 @@ typedef struct {
 	int		ghud_made;				// level.framenum they were made at
 	int		ghud_key;
 	int		ghud_size[JMP_PATH_MAX];
-	int		tip[2];
+	int		tip[4];
 	qboolean	tip_on;
 } jmp_path_t;
 
@@ -809,28 +809,22 @@ static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st)
 	st->ghud_count = 0;
 }
 
+// the route markers' tooltip: the spawn markers' four rows (Jmp_TipRows)
 static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 {
-	int i;
+	static const char *const rows[4] = {
+		"click: follow this route from the player's view",
+		"fire while following: third person and back",
+		"shift + click: drill it beside its ghost",
+		"Esc: back to the routes",
+	};
 
 	if (on == st->tip_on)
 		return;
 	st->tip_on = on;
-	for (i = 0; i < 2; i++) {
-		if (!on) {
-			Ghud_RemoveElement(ent, st->tip[i]);
-			continue;
-		}
-		st->tip[i] = Ghud_NewElement(ent, GHT_TEXT);
-		Ghud_SetAnchor(ent, st->tip[i], 0.5f, 0.5f);
-		Ghud_SetPosition(ent, st->tip[i], 0, 22 + 10 * i);
-		Ghud_SetTextFlags(ent, st->tip[i], UI_CENTER);
-		Ghud_SetColor(ent, st->tip[i], 255, 255, 255, i ? 170 : 255);
-	}
-	if (on) {
-		Ghud_SetText(ent, st->tip[0], "click: follow this route from the player's view");
-		Ghud_SetText(ent, st->tip[1], "shift + click: drill it beside its ghost");
-	}
+	Jmp_TipRows(ent, st->tip, on);
+	if (on)
+		Jmp_TipText(ent, st->tip, rows);
 }
 
 static void JmpPathEnd(jmp_path_t *st, int k, vec3_t out)
@@ -1173,16 +1167,14 @@ qboolean JmpPath_SpawnCtrl(edict_t *ent)
 }
 
 // the spawn markers' tooltip while a player is picked
-const char *JmpPath_SpawnTip(edict_t *ent)
+qboolean JmpPath_SpawnTip(edict_t *ent, char *shift, size_t size)
 {
 	jmp_path_t *st = JmpPath(ent);
-	static char tip[64];
 
 	if (!st->spawn_mode || !st->route_count)
-		return NULL;
-	// under MAX_QPATH, a ghud line's whole
-	Q_snprintf(tip, sizeof(tip), "shift+click: %.10s's routes   ctrl+click: another player", JmpPathPlayerName(st));
-	return tip;
+		return false;
+	Q_snprintf(shift, size, "shift + click: %.16s's routes from here", JmpPathPlayerName(st));
+	return true;
 }
 
 // the client's aq2world list, on this map: a demo got there is listed here
