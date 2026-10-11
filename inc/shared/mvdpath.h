@@ -42,6 +42,7 @@ typedef struct {
     int     action_f;       // of its ACTION!, 0 if it never came
     int     trail_first;    // its trails: index into trails, and how many
     int     trail_count;
+    char    skin[2][MAX_QPATH]; // each team's model/skin, as the players wore it
 } mvp_round_t;
 
 typedef struct {

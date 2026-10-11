@@ -267,6 +267,7 @@ static const char *JmpPathPlayerName(jmp_path_t *st)
 }
 
 static int JmpPathSpawn(const vec3_t origin);
+static int JmpPathSkin(jmp_path_t *st, const mvp_trail_t *t, int which);
 
 // the routes shown: all of them, or those from the spawnpoint picked
 static void JmpPathFilter(jmp_path_t *st)
@@ -430,6 +431,8 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 	take->fps = 10;
 	take->count = n;
 	take->ms = (n - 1) * 100;
+	take->skinnum = JmpPathSkin(st, t, 0);
+	take->skinset = take->skinnum >= 0;
 	take->samples = gi.TagMalloc(n * sizeof(jmp_sample_t), TAG_GAME);
 
 	for (i = 0; i < n; i++) {
@@ -501,6 +504,26 @@ free to spawn there and run beside them. Unlike a stored jump's playback
 ==============================================================================
 */
 
+/*
+A ghost wears the demo player's name and team skin of that round: a
+player model takes its skin from a player skin configstring, so each
+ghost gets a slot of its own above the real clients. Slot 0 is for the
+followed ghost (Jmp_PlayTake), the rest for the spawn's.
+*/
+#define JMP_PATH_SKIN_SLOTS	(JMP_PATH_MAX + 1)
+
+// the slot set for the trail, -1 when there is none to spare
+static int JmpPathSkin(jmp_path_t *st, const mvp_trail_t *t, int which)
+{
+	const mvp_round_t *r = &st->demo->rounds[t->round];
+	int slot = game.maxclients + which;
+
+	if (which < 0 || which >= JMP_PATH_SKIN_SLOTS || slot >= MAX_CLIENTS || !r->skin[t->team][0])
+		return -1;
+	gi.configstring(game.csr.playerskins + slot, va("%s\\%s", t->name, r->skin[t->team]));
+	return slot;
+}
+
 static void JmpPathGhostsClear(jmp_path_t *st)
 {
 	int i;
@@ -514,7 +537,7 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 // one per route shown, at its start
 static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 {
-	int i;
+	int i, slot;
 
 	JmpPathGhostsClear(st);
 	for (i = 0; i < st->vis_count; i++) {
@@ -526,7 +549,8 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 		ghost->movetype = MOVETYPE_NONE;
 		ghost->solid = SOLID_NOT;
 		ghost->s.modelindex = 255;
-		ghost->s.skinnum = ent - g_edicts - 1;
+		slot = JmpPathSkin(st, t, 1 + i);
+		ghost->s.skinnum = slot >= 0 ? slot : ent - g_edicts - 1;
 		ghost->s.renderfx = RF_TRANSLUCENT;
 		MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
 		VectorCopy(ghost->s.origin, ghost->s.old_origin);

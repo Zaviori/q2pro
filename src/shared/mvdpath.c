@@ -510,6 +510,8 @@ static bool open_round(parser_t *ps)
         ps->team[slot] = k < 2 ? k : 1;
         ps->alive[slot] = true;
     }
+    for (k = 0; k < 2; k++)
+        Q_strlcpy(rnd->skin[k], skins[k] ? skins[k] : "", sizeof(rnd->skin[k]));
     return true;
 }
 
