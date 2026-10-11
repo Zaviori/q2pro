@@ -127,6 +127,19 @@ void PMenu_Update (edict_t * ent)
 			x = 64;
 		x -= shift;
 
+		// a centred row is sent as one, centred by the client on the
+		// box's middle: its proportional font draws a row narrower than
+		// its conchars would be, and a row placed by its conchars start
+		// sat left of the bar under it
+		if (p->align == PMENU_ALIGN_CENTER && hnd->cur != i && !note) {
+			Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d %s \"%s\" ",
+				32 + i * 8, 64 + 196 / 2 - 160 - shift, alt ? "cstring2" : "cstring", t);
+			len = strlen(string);
+			if(len >= sizeof(string)-1)
+				break;
+			continue;
+		}
+
 		Q_snprintf (string + len, sizeof(string)-len, "yv %d xv %d ",
 			32 + i * 8, x - ((hnd->cur == i) ? 8 : 0));
 
