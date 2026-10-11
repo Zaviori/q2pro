@@ -2112,7 +2112,7 @@ typedef struct
   int jmp_ghud_made;				// level.framenum they were made at; a map change frees them
   int jmp_tip[5];					// the tooltip under the crosshair while one is aimed at: a panel, a hint a row
   qboolean jmp_tip_on;
-  int jmp_status[2];				// two lines at the bottom: what the jump mod is doing, and the keys
+  int jmp_status[3];				// lines at the bottom: what the jump mod is doing, and the keys
   qboolean jmp_status_on;
   char jmp_starts_packs[JMP_STARTS_PACKS][JMP_NAME_MAX];	// jmod: the collections they are of; "/" is the jumps in none
 
