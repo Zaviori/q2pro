@@ -1152,8 +1152,46 @@ static void parse_info_string(demoInfo_t *info, int clientNum, int index, const 
                 *p = 0;
             }
         }
+        // the name and the skin, onto the list of everybody's
+        p = strchr(string, '\\');
+        if (p) {
+            *p++ = 0;
+        }
+        if (string[0] && info->numPlayers < MAX_CLIENTS) {
+            Q_strlcpy(info->players[info->numPlayers].name, string, MAX_CLIENT_NAME);
+            Q_strlcpy(info->players[info->numPlayers].skin, p ? p : "", MAX_QPATH);
+            info->numPlayers++;
+        }
     } else if (index == csr->models + 1) {
         Com_ParseMapName(info->map, string, sizeof(info->map));
+    }
+}
+
+void CL_DemoPlayersNote(const demoInfo_t *info, char *buf, size_t size)
+{
+    bool done[MAX_CLIENTS] = { 0 };
+    const char *skin, *tail;
+    int i, k;
+
+    buf[0] = 0;
+    for (i = 0; i < info->numPlayers; i++) {
+        if (done[i])
+            continue;
+        skin = info->players[i].skin;
+        // "male/sniper" is the sniper team
+        tail = strrchr(skin, '/');
+        tail = tail ? tail + 1 : skin;
+        if (buf[0])
+            Q_strlcat(buf, "\n", size);
+        Q_strlcat(buf, tail[0] ? tail : "?", size);
+        Q_strlcat(buf, ":", size);
+        for (k = i; k < info->numPlayers; k++) {
+            if (done[k] || strcmp(info->players[k].skin, skin))
+                continue;
+            done[k] = true;
+            Q_strlcat(buf, k == i ? " " : ", ", size);
+            Q_strlcat(buf, info->players[k].name, size);
+        }
     }
 }
 

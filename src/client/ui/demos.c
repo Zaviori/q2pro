@@ -47,6 +47,9 @@ DEMOS MENU
 #define COL_MAP     3
 #define COL_POV     4
 #define COL_MAX     5
+#define COL_PLAYERS 5   // past the columns drawn: the players by team, a line each, shown under the row
+
+#define DEMO_CACHE_VERSION  '2' // after the hash: the players came in
 
 typedef struct {
     unsigned    type;
@@ -82,7 +85,8 @@ static void BuildName(const file_info_t *info, char **cache)
 {
     char buffer[MAX_OSPATH];
     char date[MAX_QPATH];
-    demoInfo_t demo;
+    static demoInfo_t demo;     // too big for the stack
+    char players[MAX_STRING_CHARS];
     demoEntry_t *e;
     struct tm *tm;
     size_t len;
@@ -90,6 +94,7 @@ static void BuildName(const file_info_t *info, char **cache)
     memset(&demo, 0, sizeof(demo));
     strcpy(demo.map, "???");
     strcpy(demo.pov, "???");
+    players[0] = 0;
 
     if (cache) {
         char *s = *cache;
@@ -103,6 +108,12 @@ static void BuildName(const file_info_t *info, char **cache)
                 *p = 0;
                 Q_strlcpy(demo.pov, s, sizeof(demo.pov));
                 s = p + 1;
+                p = strchr(s, '\\');
+                if (p) {
+                    *p = 0;
+                    Q_strlcpy(players, s, sizeof(players));
+                    s = p + 1;
+                }
             }
         }
         *cache = s;
@@ -112,6 +123,7 @@ static void BuildName(const file_info_t *info, char **cache)
         if (demo.mvd) {
             strcpy(demo.pov, DEMO_MVD_POV);
         }
+        CL_DemoPlayersNote(&demo, players, sizeof(players));
     }
 
     // resize columns
@@ -144,7 +156,7 @@ static void BuildName(const file_info_t *info, char **cache)
     Com_FormatSize(buffer, sizeof(buffer), info->size);
 
     e = UI_FormatColumns(DEMO_EXTRASIZE,
-                         info->name, date, buffer, demo.map, demo.pov, NULL);
+                         info->name, date, buffer, demo.map, demo.pov, players, NULL);
     e->type = ENTRY_DEMO;
     e->size = info->size;
     e->mtime = info->mtime;
@@ -191,8 +203,8 @@ static char *LoadCache(void **list)
         hash[i] = (c1 << 4) | c2;
     }
 
-    if (cache[32] != '\\') {
-        goto fail;
+    if (len < 35 || cache[32] != '\\' || cache[33] != DEMO_CACHE_VERSION || cache[34] != '\\') {
+        goto fail;      // an older cache: read the demos again
     }
 
     if (memcmp(hash, m_demos.hash, 16)) {
@@ -229,13 +241,13 @@ static void WriteCache(void)
     for (i = 0; i < 16; i++) {
         FS_FPrintf(f, "%02x", m_demos.hash[i]);
     }
-    FS_FPrintf(f, "\\");
+    FS_FPrintf(f, "\\%c\\", DEMO_CACHE_VERSION);
 
     for (i = m_demos.numDirs; i < m_demos.list.numItems; i++) {
         e = m_demos.list.items[i];
         map = UI_GetColumn(e->name, COL_MAP);
         pov = UI_GetColumn(e->name, COL_POV);
-        FS_FPrintf(f, "%s\\%s\\", map, pov);
+        FS_FPrintf(f, "%s\\%s\\%s\\", map, pov, UI_GetColumn(e->name, COL_PLAYERS));
     }
     FS_CloseFile(f);
 }
@@ -280,12 +292,22 @@ static menuSound_t Change(menuCommon_t *self)
     return QMS_SILENT;
 }
 
+// by the name, or by who is in it
+static int DemoScore(const demoEntry_t *e)
+{
+    int s1 = Fuzzy_Score(m_demos.filter, e->name), s2 = -1;
+
+    if (e->type == ENTRY_DEMO)
+        s2 = Fuzzy_Score(m_demos.filter, UI_GetColumn((char *)e->name, COL_PLAYERS));
+    return max(s1, s2);
+}
+
 static int scorecmp(const void *p1, const void *p2)
 {
     const demoEntry_t *e1 = *(const demoEntry_t **)p1;
     const demoEntry_t *e2 = *(const demoEntry_t **)p2;
-    int s1 = Fuzzy_Score(m_demos.filter, e1->name);
-    int s2 = Fuzzy_Score(m_demos.filter, e2->name);
+    int s1 = DemoScore(e1);
+    int s2 = DemoScore(e2);
 
     if (s1 != s2)
         return s2 - s1;
@@ -301,8 +323,7 @@ static void ApplyFilter(void)
 
     for (i = 0; i < m_demos.numAll; i++) {
         e = m_demos.all[i];
-        if (!*m_demos.filter || e->type == ENTRY_UP || e->type == ENTRY_S3 ||
-            Fuzzy_Score(m_demos.filter, e->name) >= 0)
+        if (!*m_demos.filter || e->type == ENTRY_UP || e->type == ENTRY_S3 || DemoScore(e) >= 0)
             m_demos.list.items[n++] = e;
         if (i + 1 == m_demos.allDirs)
             m_demos.numDirs = n;
@@ -389,7 +410,7 @@ static void BuildList(void)
     if (demolist) {
         CalcHash(demolist);
         if ((cache = LoadCache(demolist)) != NULL) {
-            p = cache + 32 + 1;
+            p = cache + 32 + 3;
             for (i = 0; i < numDemos; i++) {
                 BuildName(demolist[i], &p);
             }
@@ -513,6 +534,26 @@ static menuSound_t EnterDirectory(demoEntry_t *e)
     BuildList();
     MenuList_Init(&m_demos.list);
     return QMS_IN;
+}
+
+// a server demo's map in the jump mod, the pathing menu open on the demo
+// (jmod_paths_open, read by the game as the player comes in)
+static menuSound_t PracticeDemo(demoEntry_t *e)
+{
+    const char *map = UI_GetColumn(e->name, COL_MAP);
+
+    if (strcmp(UI_GetColumn(e->name, COL_POV), DEMO_MVD_POV) || !*map || !strcmp(map, "???"))
+        return QMS_BEEP;    // a client demo has one player's view, not the routes
+    if (strlen(m_demos.browse) + 1 + strlen(e->name) >= sizeof(m_demos.browse) || !FileNameOk(e->name))
+        return QMS_BEEP;
+    // the other modes off, which the game checks before jump (as Practice Jumps does)
+    Cbuf_AddText(&cmd_buffer, va("forcemenuoff; set ltk_loadbots 0; set am 0; "
+                 "set teamplay 0; set teamdm 0; set ctf 0; set dom 0; set esp 0; "
+                 "set use_tourney 0; set deathmatch 1; set jump 1; "
+                 "set jmod_paths_open \"%s%s\"; map \"%s\" force\n",
+                 strcmp(m_demos.browse, "/demos") ? m_demos.browse + 1 : "",
+                 e->name, map));
+    return QMS_SILENT;
 }
 
 static menuSound_t PlayDemo(demoEntry_t *e)
@@ -659,6 +700,13 @@ static menuSound_t Keydown(menuFrameWork_t *self, int key)
         return QMS_SILENT;
     }
 
+    // Shift+Enter: a server demo's map in the jump mod with its routes
+    if ((key == K_ENTER || key == K_KP_ENTER) && Key_IsDown(K_SHIFT) && m_demos.list.numItems) {
+        demoEntry_t *e = m_demos.list.items[m_demos.list.curvalue];
+        if (e->type == ENTRY_DEMO)
+            return PracticeDemo(e);
+    }
+
     // letters are for the filter (they come as characters), not the
     // list's h/j/k/l; Alt+digit still picks a column
     if (key >= 32 && key < 127 && !Key_IsDown(K_ALT) && !Key_IsDown(K_CTRL))
@@ -683,6 +731,11 @@ static menuSound_t CharEvent(menuFrameWork_t *self, int key)
 static void Draw(menuFrameWork_t *self)
 {
     Menu_Draw(self);
+    if (m_demos.list.numItems) {
+        demoEntry_t *e = m_demos.list.items[m_demos.list.curvalue];
+        if (e->type == ENTRY_DEMO)
+            MenuList_DrawNote(&m_demos.list, UI_GetColumn(e->name, COL_PLAYERS));
+    }
     if (uis.width >= 640) {
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT,
                       UI_RIGHT, m_demos.status);
@@ -692,6 +745,9 @@ static void Draw(menuFrameWork_t *self)
                       va("filter: %s (%d of %d)", m_demos.filter,
                          m_demos.list.numItems - m_demos.numDirs,
                          m_demos.numAll - m_demos.allDirs));
+    } else {
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
+                      "type to filter by name or player   Shift+Enter: a server demo's map in the jump mod, its routes listed");
     }
 }
 

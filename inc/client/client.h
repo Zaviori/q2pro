@@ -61,7 +61,16 @@ typedef struct {
     char map[MAX_QPATH];
     char pov[MAX_CLIENT_NAME];
     bool mvd;
+    int numPlayers;                     // everybody with a skin
+    struct {
+        char name[MAX_CLIENT_NAME];
+        char skin[MAX_QPATH];
+    } players[MAX_CLIENTS];
 } demoInfo_t;
+
+// the players by skin - which is the team, in a teamplay demo - as
+// lines of "skin: name, name"; "" when there are none
+void CL_DemoPlayersNote(const demoInfo_t *info, char *buf, size_t size);
 
 typedef enum {
     ACT_MINIMIZED,
