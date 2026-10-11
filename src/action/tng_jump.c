@@ -1326,7 +1326,7 @@ static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
 
 // what a click on the marker does, under the crosshair while one is aimed
 // at: four rows, a hint on each, the same rows every time
-#define JMP_TIP_ROWS	4
+#define JMP_TIP_ROWS	5
 
 void Jmp_TipRows(edict_t *ent, int *els, qboolean on)
 {
