@@ -730,12 +730,14 @@ static menuSound_t CharEvent(menuFrameWork_t *self, int key)
 
 static void Draw(menuFrameWork_t *self)
 {
-    Menu_Draw(self);
+    // the players under the demo the cursor is on
+    m_demos.list.note = NULL;
     if (m_demos.list.numItems) {
         demoEntry_t *e = m_demos.list.items[m_demos.list.curvalue];
         if (e->type == ENTRY_DEMO)
-            MenuList_DrawNote(&m_demos.list, UI_GetColumn(e->name, COL_PLAYERS));
+            m_demos.list.note = UI_GetColumn(e->name, COL_PLAYERS);
     }
+    Menu_Draw(self);
     if (uis.width >= 640) {
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT,
                       UI_RIGHT, m_demos.status);
