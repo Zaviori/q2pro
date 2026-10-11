@@ -2820,6 +2820,8 @@ static void SCR_Draw2D(void)
     // Draw game defined hud elements
     SCR_DrawGhud();
 
+    JPath_Draw2D();     // the jump mod's marks in the world: the kill rays' weapon icons, at the hud's scale
+
     // gotta redo the colors because the ghud messes with them, sadly.
     R_ClearColor();
     R_SetAlpha(Cvar_ClampValue(scr_alpha, 0, 1));
@@ -2847,8 +2849,6 @@ static void SCR_Draw2D(void)
 #endif
 
     R_SetScale(1.0f);
-
-    JPath_Draw2D();     // the jump mod's marks in the world: the kill rays' weapon icons
 }
 
 static void SCR_DrawActive(void)
