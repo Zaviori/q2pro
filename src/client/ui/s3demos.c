@@ -16,6 +16,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "common/prompt.h"
 #include "ui.h"
 #include "common/files.h"
 #include "common/fuzzy.h"
@@ -108,6 +109,7 @@ typedef struct {
     time_t  stamp;
     bool    have;                   // in demos/ already
     int     raw;                    // its index in the page
+    char    month[8];               // the page's month
     char    key[S3_KEY_MAX];
     char    local[S3_KEY_MAX];      // its name in demos/
     char    map[MAX_QPATH];
@@ -129,7 +131,10 @@ typedef struct {
 
     int             source;
     int             year, mon;      // the month shown
-    char            month[8];
+    char            month[8];       // the latest month shown, YYYY-MM
+    int             months;         // the window: this many months back from it, 1 as a rule
+    char            lmonth[8];      // the month being listed
+    char            maplock[MAX_QPATH]; // "aq2world map <name>": that map alone, exactly, over S3_LOCK_MONTHS
     char            filter[MAX_QPATH];
     void            **all;          // every row of the month; the list shows those the filter lets through
     int             numAll;
@@ -166,6 +171,20 @@ typedef struct {
 
 static m_s3_t   m_s3;
 static char     s3_prefilter[MAX_QPATH];    // "aq2world <filter>": typed in before the list shows
+static char     s3_premap[MAX_QPATH];       // "aq2world map <name>": the map to lock on
+#define S3_LOCK_MONTHS  3           // the window with a map locked: some maps get a game a month
+
+// the window's month `back` months before the latest shown
+static void S3_WindowMonth(int back, char *buf, size_t size)
+{
+    int year = m_s3.year, mon = m_s3.mon - back;
+
+    while (mon < 0) {
+        mon += 12;
+        year--;
+    }
+    Q_snprintf(buf, size, "%04d-%02d", year + 1900, mon + 1);
+}
 
 static cvar_t   *ui_s3demos_url;
 
@@ -602,7 +621,7 @@ static void S3_ListFail(const char *err)
 static void S3_ListRequest(void)
 {
     char prefix[2][MAX_QPATH], enc[MAX_QPATH * 3], url[MAX_STRING_CHARS], err[128];
-    int n = S3_Prefixes(m_s3.source, m_s3.month, prefix);
+    int n = S3_Prefixes(m_s3.source, m_s3.lmonth, prefix);
 
     if (m_s3.list_prefix >= n) {
         // done: into the cache, onto the screen; what was known of the
@@ -611,7 +630,7 @@ static void S3_ListRequest(void)
         s3raw_t *raw = m_s3.raw;
         int count = m_s3.raw_count, i, k;
 
-        old = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
+        old = S3_PageSlot(m_s3.source, m_s3.lmonth, &oldest);
         if (old) {
             for (i = 0; i < count; i++)
                 for (k = 0; k < old->count; k++)
@@ -623,8 +642,8 @@ static void S3_ListRequest(void)
         m_s3.raw = NULL;
         m_s3.raw_count = 0;
         m_s3.listing = false;
-        S3_PageStore(m_s3.source, m_s3.month, raw, count);
-        S3_BuildList();
+        S3_PageStore(m_s3.source, m_s3.lmonth, raw, count);
+        S3_ListStart();     // the window's next month, or the list
         return;
     }
 
@@ -672,12 +691,19 @@ static bool S3_Busy(void)
     return m_s3.listing || m_s3.fetching || m_s3.peeking;
 }
 
-// the month's listing: from the cache when it is fresh, else fetched
+// the window's months' listings: from the cache when fresh, else fetched,
+// one month at a time, the list built when every one is in
 static void S3_ListStart(void)
 {
-    s3page_t *page = S3_PageFind(m_s3.source, m_s3.month, true);
+    char month[8];
+    int back;
 
-    if (page) {
+    for (back = 0; back < max(m_s3.months, 1); back++) {
+        S3_WindowMonth(back, month, sizeof(month));
+        if (!S3_PageFind(m_s3.source, month, true))
+            break;
+    }
+    if (back >= max(m_s3.months, 1)) {
         S3_BuildList();
         return;
     }
@@ -686,6 +712,7 @@ static void S3_ListStart(void)
         S3_BuildList();
         return;
     }
+    Q_strlcpy(m_s3.lmonth, month, sizeof(m_s3.lmonth));
     m_s3.listing = true;
     m_s3.list_prefix = m_s3.list_page = 0;
     m_s3.token[0] = 0;
@@ -827,7 +854,7 @@ static void S3_SetPlayers(s3entry_t *e, const char *players)
     s3page_t *page, *oldest;
 
     Q_strlcpy(e->players, players, sizeof(e->players));
-    page = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
+    page = S3_PageSlot(m_s3.source, e->month[0] ? e->month : m_s3.month, &oldest);
     if (page && e->raw >= 0 && e->raw < page->count && !strcmp(page->raw[e->raw].key, e->key)) {
         Q_strlcpy(page->raw[e->raw].players, players, sizeof(page->raw[e->raw].players));
         page->dirty = true;
@@ -1045,22 +1072,63 @@ static s3entry_t *S3_Entry(const s3raw_t *r, int raw)
 // what it has so far
 static void S3_BuildList(void)
 {
-    s3page_t *page = m_s3.listing ? NULL : S3_PageFind(m_s3.source, m_s3.month, false);
-    s3raw_t *raw = m_s3.listing ? m_s3.raw : page ? page->raw : NULL;
-    int i, count = m_s3.listing ? m_s3.raw_count : page ? page->count : 0;
+    char month[8], first[8];
+    int i, back, count = 0, months = max(m_s3.months, 1);
 
     S3_FreeList();
     m_s3.widest_map = 3;
 
-    if (raw && count > 1)
-        qsort(raw, count, sizeof(*raw), S3_RawCmp);
+    // the window's months, the latest first: the page of each, or what
+    // a listing of it has so far
+    for (back = 0; back < months; back++) {
+        s3page_t *page;
+
+        S3_WindowMonth(back, month, sizeof(month));
+        if (m_s3.listing && !strcmp(month, m_s3.lmonth))
+            count += m_s3.raw_count;
+        else if ((page = S3_PageFind(m_s3.source, month, false)))
+            count += page->count;
+    }
     m_s3.all = UI_Malloc(sizeof(void *) * (count + 1));
     m_s3.numAll = 0;
-    for (i = 0; i < count; i++)
-        m_s3.all[m_s3.numAll++] = S3_Entry(&raw[i], i);
+    for (back = 0; back < months; back++) {
+        s3page_t *page = NULL;
+        s3raw_t *raw;
+        int n;
+
+        S3_WindowMonth(back, month, sizeof(month));
+        if (m_s3.listing && !strcmp(month, m_s3.lmonth)) {
+            raw = m_s3.raw;
+            n = m_s3.raw_count;
+        } else if ((page = S3_PageFind(m_s3.source, month, false))) {
+            raw = page->raw;
+            n = page->count;
+        } else {
+            continue;
+        }
+        if (raw && n > 1)
+            qsort(raw, n, sizeof(*raw), S3_RawCmp);
+        for (i = 0; i < n; i++) {
+            s3entry_t *e = S3_Entry(&raw[i], i);
+
+            // a map locked: that map alone, exactly
+            if (m_s3.maplock[0] && Q_stricmp(e->map, m_s3.maplock)) {
+                Z_Free(e);
+                continue;
+            }
+            Q_strlcpy(e->month, month, sizeof(e->month));
+            m_s3.all[m_s3.numAll++] = e;
+        }
+    }
     m_s3.list.items = UI_Malloc(sizeof(void *) * (count + 1));
 
-    Q_snprintf(m_s3.title, sizeof(m_s3.title), "aq2world demos: %s, %s", s3_sources[m_s3.source].name, m_s3.month);
+    S3_WindowMonth(months - 1, first, sizeof(first));
+    if (months > 1)
+        Q_snprintf(m_s3.title, sizeof(m_s3.title), "aq2world demos: %s, %s to %s%s%s", s3_sources[m_s3.source].name,
+                   first, m_s3.month, m_s3.maplock[0] ? " - " : "", m_s3.maplock);
+    else
+        Q_snprintf(m_s3.title, sizeof(m_s3.title), "aq2world demos: %s, %s%s%s", s3_sources[m_s3.source].name,
+                   m_s3.month, m_s3.maplock[0] ? " - " : "", m_s3.maplock);
     m_s3.menu.size(&m_s3.menu);
     S3_ApplyFilter();
     S3_Change(&m_s3.list.generic);     // the status line for the row the cursor lands on
@@ -1299,10 +1367,15 @@ static menuSound_t S3_Keydown(menuFrameWork_t *self, int key)
         // asked again, whatever the cache has
         if (!m_s3.listing && !m_s3.fetching) {
             s3page_t *page, *oldest;
+            char month[8];
+            int back;
 
-            page = S3_PageSlot(m_s3.source, m_s3.month, &oldest);
-            if (page)
-                page->fetched = 0;
+            for (back = 0; back < max(m_s3.months, 1); back++) {
+                S3_WindowMonth(back, month, sizeof(month));
+                page = S3_PageSlot(m_s3.source, month, &oldest);
+                if (page)
+                    page->fetched = 0;
+            }
             S3_ListStart();
         }
         return QMS_MOVE;
@@ -1420,6 +1493,13 @@ static void S3_Expose(menuFrameWork_t *self)
         S3_SetMonth(tm->tm_year, tm->tm_mon);
     Q_strlcpy(m_s3.filter, s3_prefilter, sizeof(m_s3.filter));
     s3_prefilter[0] = 0;
+    // a map locked (the jump mod's way in): that map alone, exactly, and
+    // three months of it - some maps get a game a month; else this month
+    Q_strlcpy(m_s3.maplock, s3_premap, sizeof(m_s3.maplock));
+    s3_premap[0] = 0;
+    m_s3.months = m_s3.maplock[0] ? S3_LOCK_MONTHS : 1;
+    if (m_s3.maplock[0] && tm)
+        S3_SetMonth(tm->tm_year, tm->tm_mon);   // the window from this month; a plain open keeps the month left on
     if (!m_s3.fetching)
         m_s3.note[0] = 0;
     S3_ListStart();
@@ -1430,13 +1510,22 @@ static void S3_Expose(menuFrameWork_t *self)
 // aq2world <filter>: a map's name is the usual filter
 static void S3_Open_c(genctx_t *ctx, int argnum)
 {
-    if (argnum == 1)
+    if (argnum == 1) {
+        Prompt_AddMatch(ctx, "map");
         FS_File_g("maps", ".bsp", FS_SEARCH_STRIPEXT, ctx);
+    } else if (argnum == 2 && !Q_stricmp(Cmd_Argv(1), "map")) {
+        FS_File_g("maps", ".bsp", FS_SEARCH_STRIPEXT, ctx);
+    }
 }
 
+// aq2world map <name>: that map alone, exactly, over the last months
 static void S3_Open_f(void)
 {
-    Q_strlcpy(s3_prefilter, Cmd_Argc() > 1 ? Cmd_Argv(1) : "", sizeof(s3_prefilter));
+    s3_prefilter[0] = s3_premap[0] = 0;
+    if (Cmd_Argc() > 2 && !Q_stricmp(Cmd_Argv(1), "map"))
+        Q_strlcpy(s3_premap, Cmd_Argv(2), sizeof(s3_premap));
+    else if (Cmd_Argc() > 1)
+        Q_strlcpy(s3_prefilter, Cmd_Argv(1), sizeof(s3_prefilter));
     UI_PushMenu(&m_s3.menu);
 }
 
