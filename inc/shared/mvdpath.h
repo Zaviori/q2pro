@@ -16,7 +16,7 @@ records; an extended-limits demo is refused rather than misparsed.
 
 #define MVP_NAME_MAX        16
 #define MVP_ACTION_FRAMES   41      // LIGHTS to ACTION!, the same on every server
-#define MVP_AFTER_FRAMES    150     // kept past ACTION!: 15 seconds, at 10 frames a second
+#define MVP_AFTER_FRAMES    3000    // kept past ACTION!: the whole round, up to 5 minutes at 10 frames a second
 #define MVP_MIN_SAMPLES     12      // shorter trails - died in the countdown - are dropped
 
 typedef struct {

@@ -81,16 +81,21 @@ The routes and the ghosts are drawn through the walls: a route runs out
 of sight in a moment otherwise. `jpath_depth 1` on the client puts the
 lines behind the walls again.
 
-`jmod_path_secs` (6) is how many seconds past ACTION! a route is followed,
-up to 15. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
+The whole round is read, to five minutes. `jmod_path_secs` (6) is how
+many seconds of it past ACTION! a route is shown and run; the routes
+menu's "Shown to N s past ACTION!" row steps it up with Enter, through
+3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180 and the round's end, and the
+routes are folded afresh over the new span. On the client `jpath_look 1`
+draws where the player looked, a short line off the route every half
+second. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
 the ghosts set off to. On the client, `jpath_lift` raises the lines off the floor.
 
 ## How it is built
 
 - `src/shared/mvdpath.c` reads the demo: the player states' origins,
   view angles and offsets and the player entities' animation frames,
-  frame by frame, from each LIGHTS (an `svc_centerprint`) to ACTION!
-  plus 15 s. A trail ends early when its player dies. The duplicates are
+  frame by frame, from each LIGHTS (an `svc_centerprint`) to the next
+  LIGHTS, up to five minutes. A trail ends early when its player dies. The duplicates are
   folded by `MvdPath_Unique`: the same spawn (64 units) and a mean
   distance under 80 units over the compared span, sampled every half
   second. Only old-protocol demos are read, which is what every AQ2

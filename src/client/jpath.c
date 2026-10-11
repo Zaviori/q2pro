@@ -37,6 +37,7 @@ typedef struct {
 static jpath_t jpath;
 
 static cvar_t *jpath_depth;         // 1: the walls hide the lines, as anything else
+static cvar_t *jpath_look;          // 1: where the player looked, a short line off the route every half second
 static cvar_t *jpath_lift;          // units the lines float over the player's origin
 
 static void JPath_Clear(void)
@@ -163,6 +164,16 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
             R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
+        // where he looked: a short line from the eye, every half second
+        if (jpath_look->integer && i % 5 == 0 && !dim) {
+            vec3_t angles = { SHORT2ANGLE(s[i].pitch), SHORT2ANGLE(s[i].yaw), 0 }, fwd, eye, tip;
+
+            AngleVectors(angles, fwd, NULL, NULL);
+            VectorCopy(a, eye);
+            eye[2] += s[i].viewheight;
+            VectorMA(eye, 48, fwd, tip);
+            R_AddDebugLine(eye, tip, MakeColor(80 * bright, 220 * bright, 255 * bright, alpha), 0, depth);
+        }
         VectorCopy(b, a);
     }
     // the stretch being run, and its head
@@ -242,6 +253,7 @@ static const cmdreg_t c_jpath[] = {
 void JPath_Init(void)
 {
     jpath_depth = Cvar_Get("jpath_depth", "0", 0);   // through the walls, as the ghosts are drawn
+    jpath_look = Cvar_Get("jpath_look", "0", 0);
     jpath_lift = Cvar_Get("jpath_lift", "0", 0);
     Cmd_Register(c_jpath);
 }
