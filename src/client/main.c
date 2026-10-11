@@ -2237,6 +2237,14 @@ static void CL_Jmod_c(genctx_t *ctx, int argnum)
         for (int i = 0; subcmds[i]; i++) {
             Prompt_AddMatch(ctx, subcmds[i]);
         }
+    } else if (argnum == 2 && !Q_stricmp(Cmd_Argv(1), "paths")) {
+        // jmod paths <demo>: the server demos in demos/
+        FS_File_g("demos", ".mvd2;.mvd2.gz", FS_SEARCH_RECURSIVE, ctx);
+    } else if (argnum == 3 && !Q_stricmp(Cmd_Argv(1), "path")) {
+        // jmod path <#> [ghost|pov|train]
+        Prompt_AddMatch(ctx, "ghost");
+        Prompt_AddMatch(ctx, "pov");
+        Prompt_AddMatch(ctx, "train");
     }
 }
 
