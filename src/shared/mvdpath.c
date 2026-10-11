@@ -886,6 +886,9 @@ int MvdPath_Names(const byte *data, size_t len, char (*names)[MVP_NAME_MAX], int
             cs = MVP_NAME_MAX - 1;
         memcpy(names[n], text, cs);
         names[n][cs] = 0;
+        // the server's spectator slots, no game's players
+        if (!Q_stricmp(names[n], "spec") || !Q_stricmp(names[n], "[MVDSPEC]"))
+            continue;
         n++;
     }
     return n;
