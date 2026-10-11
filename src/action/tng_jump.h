@@ -50,6 +50,8 @@ typedef struct {
 	int		ms;			// its length
 	int		count;
 	jmp_sample_t	*samples;
+	int		skinnum;	// the ghost's player skin slot, when skinset; else the watcher's
+	qboolean	skinset;
 } jmp_take_t;
 
 // the jmod menus share the client's rows (jmp_menu): what builds them

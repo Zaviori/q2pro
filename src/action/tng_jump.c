@@ -2977,7 +2977,7 @@ static void JmpPlayStart(edict_t *ent, qboolean pov)
 	ghost->movetype = MOVETYPE_NONE;
 	ghost->solid = SOLID_NOT;
 	ghost->s.modelindex = 255;
-	ghost->s.skinnum = ent - g_edicts - 1;
+	ghost->s.skinnum = st->play.skinset ? st->play.skinnum : ent - g_edicts - 1;
 	ghost->s.renderfx = RF_TRANSLUCENT;
 	VectorCopy(st->play.samples[0].origin, ghost->s.origin);
 	VectorCopy(ghost->s.origin, ghost->s.old_origin);
