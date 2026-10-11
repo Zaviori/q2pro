@@ -938,14 +938,16 @@ static void S3_FreeList(void)
     m_s3.rest_on = NULL;
 }
 
-// by the name, or by who is in it
+// by the teams, the map, or who is in it - not the key, whose dates and
+// numbers matched most anything
 static int S3_Score(const s3entry_t *e)
 {
-    int s1 = Fuzzy_Score(m_s3.filter, S3_Base(e->key)), s2 = -1;
+    int s = max(Fuzzy_Score(m_s3.filter, UI_GetColumn((char *)e->text, COL_TEAMS)),
+                Fuzzy_Score(m_s3.filter, e->map));
 
     if (e->players[0] && strcmp(e->players, S3_NONE))
-        s2 = Fuzzy_Score(m_s3.filter, e->players);
-    return max(s1, s2);
+        s = max(s, Fuzzy_Score(m_s3.filter, e->players));
+    return s;
 }
 
 static int S3_ScoreCmp(const void *p1, const void *p2)
@@ -959,6 +961,7 @@ static int S3_ScoreCmp(const void *p1, const void *p2)
         return s2 - s1;
     return strcmp(S3_Base(e2->key), S3_Base(e1->key));
 }
+
 
 static void S3_ApplyFilter(void)
 {
@@ -1404,7 +1407,7 @@ static void S3_Draw(menuFrameWork_t *self)
                       va("filter: %s   (Backspace edits, Escape clears)", m_s3.filter));
     else
         UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
-                      "Left/Right: month   Tab: source   type: filter by name or player   F5: list again");
+                      "Left/Right: month   Tab: source   type: filter by team, map or player   F5: list again");
 }
 
 static void S3_Expose(menuFrameWork_t *self)
