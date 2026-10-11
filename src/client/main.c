@@ -2228,7 +2228,7 @@ static void CL_Jmod_c(genctx_t *ctx, int argnum)
         "spawnp", "spawnc", "spawns", "respawn", "delay", "repeat", "stop", "cancel",
         "lca", "laser", "slippers", "menu", "markers",
         "rec", "save", "play", "start", "delete", "jumps",
-        "paths", "path", "pathmap", NULL
+        "paths", "path", "pathmap", "pathspawn", NULL
     };
 
     if (argnum == 1) {

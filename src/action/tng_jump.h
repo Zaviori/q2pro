@@ -71,6 +71,8 @@ void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
 qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
 void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
+qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
+const char *JmpPath_SpawnTip(edict_t *ent);
 void JmpPath_HudCleared(edict_t *ent);
 void JmpPath_ClientDisconnect(edict_t *ent);
 qboolean GetLocationAt(const vec3_t origin, char *buf);
