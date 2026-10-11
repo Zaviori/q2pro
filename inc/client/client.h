@@ -60,6 +60,7 @@ typedef struct {
 typedef struct {
     char map[MAX_QPATH];
     char pov[MAX_CLIENT_NAME];
+    char players[MAX_STRING_CHARS];     // everybody with a skin, space separated
     bool mvd;
 } demoInfo_t;
 
