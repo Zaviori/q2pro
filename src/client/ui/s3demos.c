@@ -152,7 +152,7 @@ typedef struct {
     char            fetch_local[S3_KEY_MAX];
     char            fetch_map[MAX_QPATH];
     bool            fetch_launch;   // and then its map in the jump mod
-    unsigned        fetch_shown;
+    int64_t         fetch_got, fetch_total; // its progress, for the bar
 
     // the peek under way, and the cursor's rest
     bool            peeking;
@@ -171,6 +171,7 @@ static cvar_t   *ui_s3demos_url;
 
 static void S3_BuildList(void);
 static void S3_ListStart(void);
+static menuSound_t S3_Change(menuCommon_t *self);
 static void S3_PageWrite(s3page_t *page);
 
 /*
@@ -1048,6 +1049,7 @@ static void S3_BuildList(void)
     Q_snprintf(m_s3.title, sizeof(m_s3.title), "aq2world demos: %s, %s", s3_sources[m_s3.source].name, m_s3.month);
     m_s3.menu.size(&m_s3.menu);
     S3_ApplyFilter();
+    S3_Change(&m_s3.list.generic);     // the status line for the row the cursor lands on
 }
 
 /*
@@ -1182,8 +1184,8 @@ static menuSound_t S3_Change(menuCommon_t *self)
         return QMS_BEEP;
     }
     e = m_s3.list.items[m_s3.list.curvalue];
-    m_s3.menu.status = e->have ? "Enter plays the demo; Shift+Enter its map in the jump mod, with its routes"
-        : "Enter downloads the demo; Shift+Enter downloads it and starts its map in the jump mod";
+    m_s3.menu.status = e->have ? "Enter: play it   Shift+Enter: its map in the jump mod, with its routes"
+        : "Enter: download it   Shift+Enter: download it and start its map in the jump mod";
     return QMS_SILENT;
 }
 
@@ -1228,7 +1230,7 @@ static void S3_Size(menuFrameWork_t *self)
     m_s3.list.generic.x      = 0;
     m_s3.list.generic.y      = CONCHAR_HEIGHT;
     m_s3.list.generic.width  = 0;
-    m_s3.list.generic.height = uis.height - CONCHAR_HEIGHT * 2 - 1;
+    m_s3.list.generic.height = uis.height - CONCHAR_HEIGHT * 3 - 1;    // the hint line and the status line under it
 
     // the date, the size and the have columns are fixed; the teams take the rest
     w1 = 16 + 7 + 4 + m_s3.widest_map;
@@ -1333,15 +1335,32 @@ void S3_Frame(void)
         // a month asked for during the download
         if (uis.activeMenu == &m_s3.menu && !S3_Busy() && !S3_PageFind(m_s3.source, m_s3.month, true))
             S3_ListStart();
-    } else if (m_s3.fetching && uis.realtime - m_s3.fetch_shown > 200) {
-        m_s3.fetch_shown = uis.realtime;
-        Com_FormatSize(size, sizeof(size), got);
-        if (total > 0)
-            Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %d%%, %s",
-                       m_s3.fetch_local, (int)(got * 100 / total), size);
-        else
-            Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %s", m_s3.fetch_local, size);
+    } else if (m_s3.fetching) {
+        m_s3.fetch_got = got;
+        m_s3.fetch_total = total;
     }
+}
+
+// the download's bar on the hint line: its share filled green, the
+// name and the bytes over it
+static void S3_DrawProgress(int y)
+{
+    char got[16], total[16], text[MAX_QPATH + 64];
+    int w = uis.width, fill = 0;
+
+    R_DrawFill32(0, y - 2, w, CONCHAR_HEIGHT + 4, MakeColor(0, 0, 0, 220));
+    Com_FormatSize(got, sizeof(got), m_s3.fetch_got);
+    if (m_s3.fetch_total > 0) {
+        fill = (int)(w * m_s3.fetch_got / m_s3.fetch_total);
+        Com_FormatSize(total, sizeof(total), m_s3.fetch_total);
+        Q_snprintf(text, sizeof(text), "Downloading %s   %d%%   %s of %s", m_s3.fetch_local,
+                   (int)(m_s3.fetch_got * 100 / m_s3.fetch_total), got, total);
+    } else {
+        Q_snprintf(text, sizeof(text), "Downloading %s   %s", m_s3.fetch_local, got);
+    }
+    if (fill > 0)
+        R_DrawFill32(0, y - 2, fill, CONCHAR_HEIGHT + 4, MakeColor(40, 180, 70, 230));
+    UI_DrawString(w / 2, y, UI_CENTER, text);
 }
 
 static void S3_Draw(menuFrameWork_t *self)
@@ -1360,16 +1379,22 @@ static void S3_Draw(menuFrameWork_t *self)
             m_s3.list.note = "looking who is in it...";
     }
     Menu_Draw(self);
+    // the bottom line is the menu's status, centred, and the count at
+    // the right; the keys, a note or the download's bar go on the line
+    // above, clear of them
     if (uis.width >= 640)
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT, UI_RIGHT, m_s3.status);
-    if (*m_s3.filter)
-        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
-                      va("filter: %s   %s", m_s3.filter, m_s3.note));
+    if (m_s3.fetching)
+        S3_DrawProgress(uis.height - CONCHAR_HEIGHT * 2);
     else if (*m_s3.note)
-        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR, m_s3.note);
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
+                      *m_s3.filter ? va("filter: %s   %s", m_s3.filter, m_s3.note) : m_s3.note);
+    else if (*m_s3.filter)
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
+                      va("filter: %s   (Backspace edits, Escape clears)", m_s3.filter));
     else
-        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
-                      "Left/Right: month   Tab: source   type to filter by name or player   F5: list again");
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
+                      "Left/Right: month   Tab: source   type: filter by name or player   F5: list again");
 }
 
 static void S3_Expose(menuFrameWork_t *self)

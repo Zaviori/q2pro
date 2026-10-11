@@ -656,7 +656,7 @@ static void Size(menuFrameWork_t *self)
     m_demos.list.generic.x      = 0;
     m_demos.list.generic.y      = CONCHAR_HEIGHT;
     m_demos.list.generic.width  = 0;
-    m_demos.list.generic.height = uis.height - CONCHAR_HEIGHT * 2 - 1;
+    m_demos.list.generic.height = uis.height - CONCHAR_HEIGHT * 3 - 1;  // the hint line and the status line under it
 
     w1 = 17 + m_demos.widest_map + m_demos.widest_pov;
     w2 = uis.width - w1 * CONCHAR_WIDTH - MLIST_PADDING * 4 - MLIST_SCROLLBAR_WIDTH;
@@ -742,14 +742,15 @@ static void Draw(menuFrameWork_t *self)
         UI_DrawString(uis.width, uis.height - CONCHAR_HEIGHT,
                       UI_RIGHT, m_demos.status);
     }
+    // the keys on the line above the status line, clear of it
     if (*m_demos.filter) {
-        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
-                      va("filter: %s (%d of %d)", m_demos.filter,
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
+                      va("filter: %s (%d of %d)   Backspace edits, Escape clears", m_demos.filter,
                          m_demos.list.numItems - m_demos.numDirs,
                          m_demos.numAll - m_demos.allDirs));
     } else {
-        UI_DrawString(0, uis.height - CONCHAR_HEIGHT, UI_LEFT | UI_ALTCOLOR,
-                      "type to filter by name or player   Shift+Enter: a server demo's map in the jump mod, its routes listed");
+        UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
+                      "type: filter by name or player   Shift+Enter: a server demo's map in the jump mod, its routes listed");
     }
 }
 
