@@ -3089,8 +3089,14 @@ static void SCR_DrawGhudElement(ghud_element_t *element, float alpha_base, color
                 // bold and outlined to read over whatever is behind it
                 // (the grid below sets words on conchar columns, which a
                 // big size overlaps)
-                SCR_DrawTextCell(x, y, 0, uiflags | align, TEXT_BOLD | TEXT_OUTLINE,
-                                 Cvar_ClampValue(scr_ghud_label_size, 6, 40),
+                // the size's offset and GHUD_TEXT_PLAIN in val: the jump
+                // mod's names over its ghosts, small and not bold, as the
+                // stream names the players
+                float lsize = Cvar_ClampValue(scr_ghud_label_size, 6, 40);
+                if (GHUD_TEXT_SIZE(element->val))
+                    lsize = Q_clipf(lsize + GHUD_TEXT_SIZE(element->val), 6, 40);
+                SCR_DrawTextCell(x, y, 0, uiflags | align,
+                                 (element->val & GHUD_TEXT_PLAIN ? 0 : TEXT_BOLD) | TEXT_OUTLINE, lsize,
                                  color_base.u32 | MakeColor(0, 0, 0, 255),
                                  element->text, MAX_STRING_CHARS);
                 break;
