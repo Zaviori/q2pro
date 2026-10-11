@@ -768,7 +768,8 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 
 	// the names: the state's client is its slot's
 	for (i = 0; st->names_on && i < st->ghost_count; i++)
-		Ghud_RemoveElement(g_edicts + 1 + (st - jmp_paths), st->names[i]);
+		if (st->names[i] >= 0)
+			Ghud_RemoveElement(g_edicts + 1 + (st - jmp_paths), st->names[i]);
 	st->names_on = false;
 	for (i = 0; i < st->ghost_count; i++) {
 		if (st->ghosts[i] && st->ghosts[i]->inuse && !strcmp(st->ghosts[i]->classname, "jmp_path_ghost"))
@@ -782,7 +783,7 @@ static void JmpPathGhostsClear(jmp_path_t *st)
 
 // a ghost down trail k, at its start; a skull where he died, hidden
 // until the ghost gets there. Dim: one to run beside, not to watch
-static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
+static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, qboolean named)
 {
 	const mvp_trail_t *t = &st->demo->trails[k];
 	edict_t *ghost, *skull;
@@ -809,7 +810,11 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 	st->skulls[i] = NULL;
 
 	// his name over his head, small and plain, as the stream names the
-	// players over their arrows (GHUD_TEXT_SIZE/PLAIN, the client's)
+	// players over their arrows (GHUD_TEXT_SIZE/PLAIN, the client's) -
+	// where there are others to tell him from
+	st->names[i] = -1;
+	if (!named)
+		goto skull;
 	st->names[i] = Ghud_NewElement(ent, GHT_TEXT);
 	Ghud_SetFlags(ent, st->names[i], GHF_3DPOS);
 	Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
@@ -818,6 +823,8 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 	Ghud_SetColor(ent, st->names[i], 255, 255, 255, dim ? 120 : 220);
 	Ghud_SetText(ent, st->names[i], (char *)t->name);
 	st->names_on = true;
+
+skull:
 
 	if (t->died && t->count <= st->frames + 1) {
 		skull = G_Spawn();
@@ -841,10 +848,12 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 {
 	int i, k;
+	// names only where the round's others run too, to tell them apart
+	qboolean named = st->solo >= 0 && (st->train < 0 || st->train_others >= 2);
 
 	JmpPathGhostsClear(st);
 	for (i = 0; own && i < st->vis_count; i++)
-		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]], st->train >= 0);
+		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]], st->train >= 0, named);
 	// a route followed runs with the whole round, teammates and
 	// opponents - the view Escape leaves it in; a drill the same when
 	// its spawn menu asked for them
@@ -856,7 +865,7 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 			continue;
 		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
 			if (k != st->routes[st->vis[i]])
-				JmpPathGhostAdd(ent, st, k, false);
+				JmpPathGhostAdd(ent, st, k, false, true);
 	}
 	st->ghost_t0 = level.time;
 	st->ghost_ms = -1;
@@ -931,7 +940,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 				skull->svflags = dead ? (skull->svflags & ~SVF_NOCLIENT) : (skull->svflags | SVF_NOCLIENT);
 				gi.linkentity(skull);
 			}
-			if (st->names_on)
+			if (st->names_on && st->names[i] >= 0)
 				Ghud_SetFlags(ent, st->names[i], dead ? GHF_3DPOS | GHF_HIDE : GHF_3DPOS);
 		}
 		a = &st->demo->samples[t->first + k];
@@ -951,7 +960,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		if (restarted)
 			ghost->s.event = EV_OTHER_TELEPORT;	// back at the start: no glide there
 		gi.linkentity(ghost);
-		if (st->names_on)
+		if (st->names_on && st->names[i] >= 0)
 			Ghud_SetPosition3D(ent, st->names[i], ghost->s.origin[0], ghost->s.origin[1], ghost->s.origin[2] + 40);
 	}
 }
