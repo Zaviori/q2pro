@@ -325,6 +325,7 @@ bool        UI_CursorInRect(const vrect_t *rect);
 void        *UI_FormatColumns(int extrasize, ...) q_sentinel;
 char        *UI_GetColumn(char *s, int n);
 void        UI_DrawString(int x, int y, int flags, const char *string);
+void        UI_MarkMatches(char *text, const char *query);
 void        UI_DrawChar(int x, int y, int flags, int ch);
 void        UI_DrawRect8(const vrect_t *rect, int border, int c);
 //void        UI_DrawRect32(const vrect_t *rect, int border, uint32_t color);
