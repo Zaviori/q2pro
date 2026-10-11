@@ -78,6 +78,19 @@ typedef struct {
     bool            ok;
 } font_t;
 
+/*
+The menus' furniture that conchars keep as 8x8 pictures - the bar a title
+sits in (0x1d-0x1f, green as 0x9d-0x9f), a slider's track and knob
+(0x80-0x83), the cursor arrow (13) - drawn as shapes at the size they
+are shown instead, baked into each atlas beside the letters.
+*/
+enum {
+    SHAPE_BAR_L, SHAPE_BAR_M, SHAPE_BAR_R,
+    SHAPE_SLIDE_L, SHAPE_SLIDE_M, SHAPE_SLIDE_R, SHAPE_KNOB,
+    SHAPE_CURSOR,
+    TEXT_SHAPES
+};
+
 typedef struct {
     int         font;       // index into fonts[], -1 when the slot is empty
     int         px;
@@ -88,7 +101,92 @@ typedef struct {
     float       scale;      // stbtt scale for px
     unsigned    used;
     glyph_t     glyphs[TEXT_GLYPHS];
+    glyph_t     shapes[TEXT_SHAPES];
 } textsize_t;
+
+// the shape a conchar code stands for, -1 when it is a picture of its own
+static int text_shape_of(int c)
+{
+    switch (c) {
+    case 0x1d: case 0x9d: return SHAPE_BAR_L;
+    case 0x1e: case 0x9e: return SHAPE_BAR_M;
+    case 0x1f: case 0x9f: return SHAPE_BAR_R;
+    case 0x80: return SHAPE_SLIDE_L;
+    case 0x81: return SHAPE_SLIDE_M;
+    case 0x82: return SHAPE_SLIDE_R;
+    case 0x83: return SHAPE_KNOB;
+    case 13: case 13 + 128: return SHAPE_CURSOR;
+    }
+    return -1;
+}
+
+// is (u, v) of the unit cell inside the shape
+static bool text_shape_inside(int shape, float u, float v)
+{
+    float dv = v - 0.5f, du, r;
+
+    switch (shape) {
+    case SHAPE_BAR_L:
+    case SHAPE_BAR_M:
+    case SHAPE_BAR_R:
+        // a pill: the bar is 0.26 of the cell to either side of the middle,
+        // an end rounded on a disc of that radius
+        r = 0.26f;
+        if (shape == SHAPE_BAR_M)
+            return fabsf(dv) <= r;
+        du = u - (shape == SHAPE_BAR_L ? 0.36f : 0.64f);
+        if (shape == SHAPE_BAR_L ? du >= 0 : du <= 0)
+            return fabsf(dv) <= r;
+        return du * du + dv * dv <= r * r;
+    case SHAPE_SLIDE_L:
+    case SHAPE_SLIDE_M:
+    case SHAPE_SLIDE_R:
+        r = 0.11f;
+        if (shape == SHAPE_SLIDE_M)
+            return fabsf(dv) <= r;
+        du = u - (shape == SHAPE_SLIDE_L ? 0.3f : 0.7f);
+        if (shape == SHAPE_SLIDE_L ? du >= 0 : du <= 0)
+            return fabsf(dv) <= r;
+        return du * du + dv * dv <= r * r;
+    case SHAPE_KNOB:
+        // a rounded box across the track
+        du = fabsf(u - 0.5f) - 0.12f;
+        dv = fabsf(dv) - 0.24f;
+        r = 0.1f;
+        if (du <= 0 && dv <= 0)
+            return true;
+        du = max(du, 0);
+        dv = max(dv, 0);
+        return du * du + dv * dv <= r * r;
+    case SHAPE_CURSOR:
+        // an arrowhead pointing right, its point at 0.8
+        if (u < 0.22f || u > 0.8f)
+            return false;
+        return fabsf(dv) <= (0.8f - u) / 0.58f * 0.34f;
+    }
+    return false;
+}
+
+// the shape's coverage into cov, w by h with a clear pixel round the edge
+static void text_shape_rasterise(int shape, byte *cov, int w, int h)
+{
+    const int ss = 4;
+
+    for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+            int hits = 0;
+
+            for (int sj = 0; sj < ss; sj++)
+                for (int si = 0; si < ss; si++) {
+                    float u = (i - 1 + (si + 0.5f) / ss) / (w - 2);
+                    float v = (j - 1 + (sj + 0.5f) / ss) / (h - 2);
+                    if (u >= 0 && u <= 1 && v >= 0 && v <= 1 && text_shape_inside(shape, u, v))
+                        hits++;
+                }
+            cov[j * w + i] = hits * 255 / (ss * ss);
+        }
+    }
+}
 
 static cvar_t   *r_font;
 static cvar_t   *r_font_bold;
@@ -256,6 +354,22 @@ static textsize_t *text_bake(int index, int px)
         x += g->w * 2;
         row_h = max(row_h, g->h);
     }
+    // the shapes: a cell the size an icon is drawn at, a pixel clear round it
+    for (int c = 0; c < TEXT_SHAPES; c++) {
+        glyph_t *g = &ts->shapes[c];
+
+        g->w = g->h = (int)(px * 0.9f + 0.5f) + 2;
+        g->ox = 0;
+        if (x + g->w > TEXT_ATLAS_W) {
+            x = 0;
+            y += row_h;
+            row_h = 0;
+        }
+        g->x = x;
+        g->y = y;
+        x += g->w;
+        row_h = max(row_h, g->h);
+    }
     ts->atlas_h = 1;
     while (ts->atlas_h < y + row_h)
         ts->atlas_h <<= 1;
@@ -292,6 +406,20 @@ static textsize_t *text_bake(int index, int px)
                 row[i * 4 + 3] = cov[j * gw + i];
                 row[(g->ox + i) * 4 + 3] = out[j * gw + i];
             }
+        }
+    }
+
+    for (int c = 0; c < TEXT_SHAPES; c++) {
+        glyph_t *g = &ts->shapes[c];
+        int gw = g->w, gh = g->h;
+
+        if (gw > TEXT_MAX_PX * 2 || gh > TEXT_MAX_PX * 2)
+            continue;
+        text_shape_rasterise(c, cov, gw, gh);
+        for (int j = 0; j < gh; j++) {
+            byte *row = rgba + ((g->y + j) * TEXT_ATLAS_W + g->x) * 4;
+            for (int i = 0; i < gw; i++)
+                row[i * 4 + 3] = cov[j * gw + i];
         }
     }
 
@@ -720,6 +848,29 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
         for (const char *t = s; n-- && *t; ) {
             if (text_icon((byte)*t)) {
                 int b = (byte)*t++;
+                int shape = text_shape_of(b);
+
+                if (shape >= 0 && ts->shapes[shape].w > 2) {
+                    // a shape across the cell's whole span, a bar's segments
+                    // meeting; in the charset's colour for the cell (the green)
+                    const glyph_t *g = &ts->shapes[shape];
+                    float adv = mono ? cell : text_icon_advance(ts);
+                    float gx = floorf(p + 0.5f), pad = adv / (g->w - 2);
+                    float sx0 = (g->x + 1) * tw - pad * 0 , sy0 = (g->y + 1) * th;
+                    float sx1 = (g->x + g->w - 1) * tw, sy1 = (g->y + g->h - 1) * th;
+                    uint32_t fill = text_tint(icon_color, b);
+
+                    (void)pad;
+                    if (pass == 0)
+                        GL_TextQuad((gx + shadow) * sc, (icon_y + shadow) * sc, adv * sc, icon * sc,
+                                    sx0, sy0, sx1, sy1, edge, ts->texnum);
+                    else
+                        GL_TextQuad(gx * sc, icon_y * sc, adv * sc, icon * sc,
+                                    sx0, sy0, sx1, sy1, fill, ts->texnum);
+                    p += adv;
+                    prev = 0;
+                    continue;
+                }
                 if (!charset)
                     charset = text_charset();
                 float gx = floorf(p + (mono ? (cell - icon) * 0.5f : 0) + 0.5f);
