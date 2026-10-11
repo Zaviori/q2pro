@@ -29,7 +29,7 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_SECS		6		// shown past ACTION!, by default
 #define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
 #define JMP_PATH_GHOST_HOLD_MS	1000	// the ghosts stand at their ends this long, then set off again (JMP_PLAY_TAIL_MS: in step with a followed ghost)
-#define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rounds' opponents
+#define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rest of their rounds
 #define JMP_PATH_SKULL		"models/objects/gibs/skull/tris.md2"	// where a ghost's player died
 
 typedef struct {
@@ -58,7 +58,7 @@ typedef struct {
 	int		vis_count;
 	int		spawn_filter;			// a spawnpoint's number, 0 all
 	qboolean	spawn_mode;			// a player is picked: shift+fire on a spawn marker shows his routes from it
-	edict_t	*ghosts[JMP_PATH_GHOSTS];	// a ghost running each route shown, and the opponents of its round
+	edict_t	*ghosts[JMP_PATH_GHOSTS];	// a ghost running each route shown, and the rest of its round
 	int		ghost_trail[JMP_PATH_GHOSTS];	// index into demo->trails
 	edict_t	*skulls[JMP_PATH_GHOSTS];	// a skull where the ghost's player died, when he did inside the window
 	int		ghost_count;
@@ -520,7 +520,7 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 
 /*
 A route alone: its line with the others of its round round it, the
-round's opponents running, and the player's ghost followed - from his
+round's others running, and the player's ghost followed - from his
 own eyes, fire for third person and back (Jmp_PlayThink) - in step with
 them. Escape ends the following (Jmp_PlayEscape) and leaves the route
 up; Escape again brings the set it was picked from back.
@@ -558,7 +558,7 @@ static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 A route to drill (shift+fire on its number, or jmod path <#> train):
 the route drawn, its ghost dim beside you and off again every time you
 spawn, and the spawn menu asking how long until you spawn at its start
-and how often again; no opponents. Escape ends the drill.
+and how often again; none of the round's others until asked. Escape ends the drill.
 */
 static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 {
@@ -760,7 +760,7 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim)
 }
 
 // one per route shown - unless the one route shown is followed as the
-// watcher's own ghost - and with a route alone, the opponents of its round
+// watcher's own ghost - and with a route alone, the rest of its round
 static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 {
 	int i, k;
