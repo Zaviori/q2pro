@@ -68,6 +68,7 @@ typedef struct {
 	int		solo;					// a route picked alone, as an index into routes; -1 none
 	int		train;					// the route drilled: its ghost dim, off again at each spawn; -1 none
 	int		train_others;			// the drill's company: 0 the route alone, 1 the round's other routes, 2 their ghosts too
+	qboolean train_preset;			// the company was chosen with the click (shift+alt): the spawn menu does not ask
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -575,6 +576,7 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	st->solo = k;
 	st->train = k;
 	st->train_others = 0;
+	st->train_preset = false;
 	JmpPathFilter(st);
 	st->over = true;
 	st->sel = k;
@@ -600,7 +602,7 @@ int JmpPath_AskOthers(edict_t *ent)
 {
 	jmp_path_t *st = JmpPath(ent);
 
-	if (st->train < 0 || !st->over)
+	if (st->train < 0 || !st->over || st->train_preset)
 		return 0;
 	return st->train_others + 1;
 }
@@ -1063,8 +1065,10 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 		if (pressed && k >= 0) {
 			client->latched_buttons &= ~BUTTON_ATTACK;
 			JmpPathTrain(ent, st, k);
-			if (client->jmp_alt)
+			if (client->jmp_alt) {
 				JmpPath_DrillOthers(ent, 2);
+				st->train_preset = true;
+			}
 			return true;
 		}
 		return false;
