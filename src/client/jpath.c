@@ -241,7 +241,7 @@ static const cmdreg_t c_jpath[] = {
 
 void JPath_Init(void)
 {
-    jpath_depth = Cvar_Get("jpath_depth", "1", 0);
+    jpath_depth = Cvar_Get("jpath_depth", "0", 0);   // through the walls, as the ghosts are drawn
     jpath_lift = Cvar_Get("jpath_lift", "0", 0);
     Cmd_Register(c_jpath);
 }
