@@ -1341,7 +1341,9 @@ void Jmp_TipRows(edict_t *ent, int *els, qboolean on)
 		Ghud_SetAnchor(ent, els[i], 0.5f, 0.5f);
 		Ghud_SetPosition(ent, els[i], 0, 22 + 12 * i);
 		Ghud_SetTextFlags(ent, els[i], UI_CENTER);
-		Ghud_SetInt(ent, els[i], 2);	// the client draws a text's val as a size step
+		// the client reads a text's val: the size's step in the low byte,
+		// 0x100 for outlined letters (GHUD_TEXT_OUTLINE in its ghud.h)
+		Ghud_SetInt(ent, els[i], 2 | 0x100);
 		Ghud_SetColor(ent, els[i], 255, 255, 255, 255);
 	}
 }
