@@ -1090,6 +1090,15 @@ static menuSound_t MenuList_Click(menuList_t *l)
     // click on item
     j = min(l->numItems, l->prestep + l->maxItems);
     for (i = l->prestep; i < j; i++) {
+        if (i == l->curvalue + 1 && l->noteRows) {
+            // the note's rows: a click there is on nothing
+            vrect_t note = rect;
+
+            note.height = l->noteRows * MLIST_SPACING;
+            if (UI_CursorInRect(&note))
+                return QMS_SILENT;
+            rect.y += note.height;
+        }
         if (UI_CursorInRect(&rect)) {
             if (l->curvalue == i && uis.realtime -
                 l->clickTime < DOUBLE_CLICK_DELAY) {
@@ -1353,6 +1362,9 @@ static void MenuList_DrawString(int x, int y, int flags,
 MenuList_Draw
 =================
 */
+static int MenuList_NoteRows(menuList_t *l);
+static void MenuList_DrawNote(menuList_t *l, int x, int y, int rows);
+
 static void MenuList_Draw(menuList_t *l)
 {
     char *s;
@@ -1442,9 +1454,18 @@ static void MenuList_Draw(menuList_t *l)
         xx += l->columns[j].width;
     }
 
+    // the note takes rows of its own under the cursor's: scrolled so that
+    // the cursor's row and the note are on the page
+    l->noteRows = MenuList_NoteRows(l);
+    if (l->noteRows && l->curvalue >= l->prestep && l->curvalue - l->prestep + 1 + l->noteRows > l->maxItems) {
+        l->prestep = l->curvalue + 1 + l->noteRows - l->maxItems;
+        if (l->prestep < 0)
+            l->prestep = 0;
+    }
+
     yy = y;
     k = min(l->numItems, l->prestep + l->maxItems);
-    for (i = l->prestep; i < k; i++) {
+    for (i = l->prestep; i < k && yy + MLIST_SPACING <= y + height; i++) {
         // draw selection
         if (!(l->generic.flags & QMF_DISABLED) && i == l->curvalue) {
             xx = x;
@@ -1478,6 +1499,13 @@ static void MenuList_Draw(menuList_t *l)
         }
 
         yy += MLIST_SPACING;
+
+        if (i == l->curvalue && l->noteRows) {
+            if (l->mlFlags & MLF_COLOR)
+                R_SetColor(U32_WHITE);
+            MenuList_DrawNote(l, x, yy, l->noteRows);
+            yy += l->noteRows * MLIST_SPACING;
+        }
     }
 
     if (l->mlFlags & MLF_COLOR) {
@@ -1487,34 +1515,17 @@ static void MenuList_Draw(menuList_t *l)
 
 /*
 =================
-MenuList_DrawNote
+MenuList_NoteLines
 
-Lines of text in a box under the row the cursor is on, over the rows
-below it: what the browsers say about the demo picked. Wrapped to the
-list's width, cut at its bottom. Drawn after the list.
+The note's lines, wrapped to the list's width: counted, or drawn at y.
 =================
 */
-void MenuList_DrawNote(menuList_t *l, const char *text)
+static int MenuList_NoteLines(menuList_t *l, const char *text, int x, int y, int cols, int draw)
 {
     char line[MAX_STRING_CHARS];
-    const char *s = text, *e, *cut;
-    int x = l->generic.rect.x, y = l->generic.rect.y, bottom;
-    int width = l->generic.rect.width, cols, n, lines = 0;
-    int pad = MLIST_PRESTEP;
+    const char *s, *e, *cut;
+    int n, lines = 0;
 
-    if (!text || !*text || l->curvalue < l->prestep || l->curvalue >= l->prestep + l->maxItems)
-        return;
-    if (l->mlFlags & MLF_HEADER)
-        y += MLIST_SPACING;
-    y += (l->curvalue - l->prestep + 1) * MLIST_SPACING;
-    bottom = l->generic.rect.y + l->generic.rect.height;
-    if (l->mlFlags & MLF_SCROLLBAR)
-        width -= MLIST_SCROLLBAR_WIDTH;
-    cols = (width - 2 * pad) / CONCHAR_WIDTH;
-    if (cols < 8)
-        return;
-
-    // how many lines it comes to, wrapped
     for (s = text; *s; ) {
         e = strchr(s, '\n');
         n = e ? e - s : strlen(s);
@@ -1524,6 +1535,10 @@ void MenuList_DrawNote(menuList_t *l, const char *text)
                 ;
             if (cut == s)
                 cut = s + cols;
+            if (draw) {
+                Q_snprintf(line, sizeof(line), "%.*s", (int)(cut - s), s);
+                UI_DrawString(x, y + lines * CONCHAR_HEIGHT, UI_LEFT, line);
+            }
             lines++;
             n -= cut - s;
             s = cut;
@@ -1532,47 +1547,50 @@ void MenuList_DrawNote(menuList_t *l, const char *text)
                 n--;
             }
         }
+        if (draw) {
+            Q_snprintf(line, sizeof(line), "%.*s", n, s);
+            UI_DrawString(x, y + lines * CONCHAR_HEIGHT, UI_LEFT, line);
+        }
         lines++;
         s += n;
         if (*s == '\n')
             s++;
     }
-    if (y + lines * CONCHAR_HEIGHT + 2 * pad > bottom)
-        lines = (bottom - y - 2 * pad) / CONCHAR_HEIGHT;
-    if (lines <= 0)
-        return;
+    return lines;
+}
 
-    R_DrawFill32(x, y, width, lines * CONCHAR_HEIGHT + 2 * pad, MakeColor(0, 0, 0, 210));
-    y += pad;
-    for (s = text; *s && lines > 0; ) {
-        e = strchr(s, '\n');
-        n = e ? e - s : strlen(s);
-        while (n > cols && lines > 0) {
-            for (cut = s + cols; cut > s && *cut != ' '; cut--)
-                ;
-            if (cut == s)
-                cut = s + cols;
-            Q_snprintf(line, sizeof(line), "%.*s", (int)(cut - s), s);
-            UI_DrawString(x + pad, y, UI_LEFT, line);
-            y += CONCHAR_HEIGHT;
-            lines--;
-            n -= cut - s;
-            s = cut;
-            while (*s == ' ' && n) {
-                s++;
-                n--;
-            }
-        }
-        if (lines <= 0)
-            break;
-        Q_snprintf(line, sizeof(line), "%.*s", n, s);
-        UI_DrawString(x + pad, y, UI_LEFT, line);
-        y += CONCHAR_HEIGHT;
-        lines--;
-        s += n;
-        if (*s == '\n')
-            s++;
-    }
+static int MenuList_NoteCols(menuList_t *l)
+{
+    int width = l->generic.rect.width;
+
+    if (l->mlFlags & MLF_SCROLLBAR)
+        width -= MLIST_SCROLLBAR_WIDTH;
+    return (width - 2 * MLIST_PRESTEP) / CONCHAR_WIDTH;
+}
+
+// the rows the note takes under the cursor's; 0 without one
+static int MenuList_NoteRows(menuList_t *l)
+{
+    int cols, lines;
+
+    if (!l->note || !*l->note || l->curvalue < 0 || l->curvalue >= l->numItems)
+        return 0;
+    cols = MenuList_NoteCols(l);
+    if (cols < 8)
+        return 0;
+    lines = MenuList_NoteLines(l, l->note, 0, 0, cols, 0);
+    return (lines * CONCHAR_HEIGHT + 2 * MLIST_PRESTEP + MLIST_SPACING - 1) / MLIST_SPACING;
+}
+
+// in a box at y, as wide as the list's rows
+static void MenuList_DrawNote(menuList_t *l, int x, int y, int rows)
+{
+    int width = l->generic.rect.width, cols = MenuList_NoteCols(l);
+
+    if (l->mlFlags & MLF_SCROLLBAR)
+        width -= MLIST_SCROLLBAR_WIDTH;
+    R_DrawFill32(x, y, width, rows * MLIST_SPACING - 1, MakeColor(0, 0, 0, 210));
+    MenuList_NoteLines(l, l->note, x + MLIST_PRESTEP, y + MLIST_PRESTEP, cols, 1);
 }
 
 void MenuList_Sort(menuList_t *l, int offset, int (*cmpfunc)(const void *, const void *))

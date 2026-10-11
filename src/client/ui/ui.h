@@ -219,6 +219,9 @@ typedef struct menuList_s {
     int                 sortdir, sortcol;
 
     menuSound_t (*sort)(struct menuList_s *);
+
+    const char  *note;      // lines under the cursor's row, the rows below pushed down; set before the draw
+    int         noteRows;   // what it takes, in rows, as last drawn
 } menuList_t;
 
 typedef struct {
@@ -352,7 +355,6 @@ menuSound_t     Menu_AdjustCursor(menuFrameWork_t *menu, int dir);
 menuCommon_t    *Menu_ItemAtCursor(menuFrameWork_t *menu);
 menuCommon_t    *Menu_HitTest(menuFrameWork_t *menu);
 void        MenuList_Init(menuList_t *l);
-void        MenuList_DrawNote(menuList_t *l, const char *text);
 void        MenuList_SetValue(menuList_t *l, int value);
 void        MenuList_Sort(menuList_t *l, int offset,
                           int (*cmpfunc)(const void *, const void *));
