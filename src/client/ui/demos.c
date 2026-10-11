@@ -292,14 +292,14 @@ static menuSound_t Change(menuCommon_t *self)
     return QMS_SILENT;
 }
 
-// by the name, or by who is in it
+// by the map, or by who is in it - not the file's name, whose dates and
+// numbers matched most anything; a directory by its name
 static int DemoScore(const demoEntry_t *e)
 {
-    int s1 = Fuzzy_Score(m_demos.filter, e->name), s2 = -1;
-
-    if (e->type == ENTRY_DEMO)
-        s2 = Fuzzy_Score(m_demos.filter, UI_GetColumn((char *)e->name, COL_PLAYERS));
-    return max(s1, s2);
+    if (e->type != ENTRY_DEMO)
+        return Fuzzy_Score(m_demos.filter, e->name);
+    return max(Fuzzy_Score(m_demos.filter, UI_GetColumn((char *)e->name, COL_MAP)),
+               Fuzzy_Score(m_demos.filter, UI_GetColumn((char *)e->name, COL_PLAYERS)));
 }
 
 static int scorecmp(const void *p1, const void *p2)
@@ -338,7 +338,7 @@ static void ApplyFilter(void)
     for (i = 0; i < m_demos.numAll; i++) {
         e = m_demos.all[i];
         if (e->type == ENTRY_DEMO) {
-            UI_MarkMatches(e->name, m_demos.filter);
+            UI_MarkMatches(UI_GetColumn(e->name, COL_MAP), m_demos.filter);
             UI_MarkMatches(UI_GetColumn(e->name, COL_PLAYERS), m_demos.filter);
         }
     }
@@ -759,7 +759,7 @@ static void Draw(menuFrameWork_t *self)
                          m_demos.numAll - m_demos.allDirs));
     } else {
         UI_DrawString(0, uis.height - CONCHAR_HEIGHT * 2, UI_LEFT | UI_ALTCOLOR,
-                      "type: filter by name or player   Shift+Enter: a server demo's map in the jump mod, its routes listed");
+                      "type: filter by map or player   Shift+Enter: a server demo's map in the jump mod, its routes listed");
     }
 }
 
