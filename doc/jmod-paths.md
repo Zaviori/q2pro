@@ -30,8 +30,8 @@ pick **View player pathing...**, or type `jmod paths`.
    where a ghost's player died; you keep control, and a plain fire on
    the marker spawns you there to run beside them. Fire on a route's
    number leaves that route alone and follows its ghost from the
-   player's own view (fire for third person and back), with that round's
-   opponents running as ghosts in their team's colours; Escape lets go
+   player's own view (fire for third person and back), with the rest of
+   that round running as ghosts in their teams' colours; Escape lets go
    of the ghost, Escape again brings the spawn's set back, and once more
    takes the lines and ghosts down. Shift+fire on a route's number
    **drills** it: the route alone stays drawn, its ghost runs dim beside

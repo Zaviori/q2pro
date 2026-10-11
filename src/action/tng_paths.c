@@ -768,17 +768,18 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 	JmpPathGhostsClear(st);
 	for (i = 0; own && i < st->vis_count; i++)
 		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]], st->train >= 0);
-	// a route followed runs with its round's opponents; a drill with the
-	// whole round, when its spawn menu asked for them
+	// a route followed runs with the whole round, teammates and
+	// opponents - the view Escape leaves it in; a drill the same when
+	// its spawn menu asked for them
 	for (i = 0; st->solo >= 0 && i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
 		const mvp_round_t *r = &st->demo->rounds[t->round];
 
-		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++) {
-			if (st->train < 0 ? st->demo->trails[k].team != t->team
-				: st->train_others >= 2 && k != st->routes[st->vis[i]])
+		if (st->train >= 0 && st->train_others < 2)
+			continue;
+		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
+			if (k != st->routes[st->vis[i]])
 				JmpPathGhostAdd(ent, st, k, false);
-		}
 	}
 	st->ghost_t0 = level.time;
 	st->ghost_ms = -1;
