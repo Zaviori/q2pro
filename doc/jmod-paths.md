@@ -77,10 +77,13 @@ this way with the menu already open on it: the client sets
 `jmod_paths_open` to the demo's name before the map command, and the
 game reads it once as the player comes in.
 
+The routes and the ghosts are drawn through the walls: a route runs out
+of sight in a moment otherwise. `jpath_depth 1` on the client puts the
+lines behind the walls again.
+
 `jmod_path_secs` (6) is how many seconds past ACTION! a route is followed,
 up to 15. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
-the ghosts set off to. On the client, `jpath_depth 0` draws the lines through walls
-and `jpath_lift` raises them off the floor.
+the ghosts set off to. On the client, `jpath_lift` raises the lines off the floor.
 
 ## How it is built
 
