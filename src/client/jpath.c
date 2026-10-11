@@ -123,18 +123,25 @@ static void JPath_Cmd_f(void)
     jpath.hl = -1;
 }
 
-// green at LIGHTS shading to orange up to ACTION!, bright red from there
-static uint32_t JPath_Color(int frame, int alpha)
+// green at LIGHTS shading to orange up to ACTION!, bright red from there;
+// bright is the colour's share, under 1 for a route put in the shade
+static uint32_t JPath_Color(int frame, int alpha, float bright)
 {
     float f = (float)frame / MVP_ACTION_FRAMES;
+    int r, g;
 
-    if (f >= 1)
-        return MakeColor(255, 0, 0, alpha);
-    return MakeColor(255 * f, 255 - 95 * f, 0, alpha);
+    if (f >= 1) {
+        r = 255;
+        g = 0;
+    } else {
+        r = 255 * f;
+        g = 255 - 95 * f;
+    }
+    return MakeColor(r * bright, g * bright, 0, alpha);
 }
 
 #if USE_REF
-static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t dim, bool depth, float lift)
+static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float bright, uint32_t dim, bool depth, float lift)
 {
     const mvp_sample_t *s = &jpath.demo->samples[t->first];
     vec3_t a, b, head;
@@ -142,14 +149,14 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t di
 
     MvdPath_Origin(&s[0], a);
     a[2] += lift;
-    R_AddDebugPoint(a, 12, dim ? dim : JPath_Color(0, alpha), 0, depth);
+    R_AddDebugPoint(a, 12, dim ? dim : JPath_Color(0, alpha, bright), 0, depth);
     for (i = 0; i + 1 < n && i < whole; i++) {
         MvdPath_Origin(&s[i + 1], b);
         b[2] += lift;
-        R_AddDebugLine(a, b, dim ? dim : JPath_Color(i, alpha), 0, depth);
+        R_AddDebugLine(a, b, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         // where ACTION! came: a white cross on the line
         if (i + 1 == MVP_ACTION_FRAMES && !dim)
-            R_AddDebugPoint(b, 20, MakeColor(255, 255, 255, alpha), 0, depth);
+            R_AddDebugPoint(b, 20, MakeColor(255 * bright, 255 * bright, 255 * bright, alpha), 0, depth);
         VectorCopy(b, a);
     }
     // the stretch being run, and its head
@@ -157,7 +164,7 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t di
         MvdPath_Origin(&s[i + 1], b);
         b[2] += lift;
         LerpVector(a, b, upto - whole, head);
-        R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha), 0, depth);
+        R_AddDebugLine(a, head, dim ? dim : JPath_Color(i, alpha, bright), 0, depth);
         R_AddDebugPoint(head, 16, dim ? dim : MakeColor(255, 255, 255, 255), 0, depth);
     }
 }
@@ -190,17 +197,19 @@ void JPath_AddToScene(void)
         const mvp_trail_t *t = jpath.count ? &jpath.demo->trails[jpath.trails[0]] : NULL;
         uint32_t dim = t && o->team == t->team ? MakeColor(90, 170, 255, 110) : MakeColor(220, 220, 220, 90);
 
-        JPath_Lines(o, upto, 110, dim, depth, jpath_lift->value);
+        JPath_Lines(o, upto, 110, 1, dim, depth, jpath_lift->value);
     }
     // the one aimed at lit and drawn twice, a little higher, for a thick
     // line; the rest dimmed while it is
     for (i = 0; i < jpath.count; i++) {
         bool lit = jpath.hl >= 0 && jpath.trails[i] == jpath.hl;
-        int alpha = jpath.hl >= 0 && !lit ? 90 : 255;
+        bool shade = jpath.hl >= 0 && !lit;
 
-        JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, alpha, 0, depth, jpath_lift->value);
+        // the rest in the shade while one is lit: darker, and faint
+        JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, shade ? 70 : 255, shade ? 0.45f : 1,
+                    0, depth, jpath_lift->value);
         if (lit)
-            JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, 255, 0, depth, jpath_lift->value + 2);
+            JPath_Lines(&jpath.demo->trails[jpath.trails[i]], upto, 255, 1, 0, depth, jpath_lift->value + 2);
     }
 }
 #else
