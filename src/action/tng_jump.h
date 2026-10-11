@@ -136,6 +136,7 @@ qboolean Jmp_GhostHidden (edict_t *clent, edict_t *ent);
 void Jmp_ClientDisconnect (edict_t *ent);
 qboolean Jmp_Answer (edict_t *ent);
 qboolean Jmp_PlayEscape (edict_t *ent);
+qboolean Jmp_PlayStopTo(edict_t *ent, const vec3_t origin, float pitch, float yaw);
 void Jmp_MenuFire (edict_t *ent, usercmd_t *ucmd);
 qboolean Jmp_MarkersEscape (edict_t *ent);
 void Jmp_HudCleared (edict_t *ent);

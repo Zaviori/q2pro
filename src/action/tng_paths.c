@@ -69,6 +69,9 @@ typedef struct {
 	int		train;					// the route drilled: its ghost dim, off again at each spawn; -1 none
 	int		train_others;			// the drill's company: 0 the route alone, 1 the round's other routes, 2 their ghosts too
 	qboolean train_preset;			// the company was chosen with the click (shift+alt): the spawn menu does not ask
+	vec3_t	back_origin;			// where he stood when he clicked a route's marker: Escape puts him back
+	float	back_pitch, back_yaw;
+	qboolean back_set;
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -547,6 +550,11 @@ static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 	JmpPathMarkers(ent, st);
 	JmpPathGhostsSpawn(ent, st, false);
 	JmpPathTake(st, k, &take);
+	// where he is now, to come back to when he lets go
+	VectorCopy(ent->s.origin, st->back_origin);
+	st->back_pitch = ent->client->v_angle[PITCH];
+	st->back_yaw = ent->client->v_angle[YAW];
+	st->back_set = true;
 	Jmp_PlayTake(ent, &take, pov);
 }
 
@@ -1115,8 +1123,11 @@ qboolean JmpPath_Escape(edict_t *ent)
 	}
 	if (st->solo >= 0) {
 		// back to the set the route was picked from, the follow let go
-		// and the round's ghosts with it - one Escape, not two
-		Jmp_PlayEscape(ent);
+		// and the round's ghosts with it - one Escape, not two - and he
+		// is put back where he clicked the marker
+		if (!st->back_set || !Jmp_PlayStopTo(ent, st->back_origin, st->back_pitch, st->back_yaw))
+			Jmp_PlayEscape(ent);
+		st->back_set = false;
 		st->solo = -1;
 		JmpPathFilter(st);
 		JmpPathOver(ent, st, false);
