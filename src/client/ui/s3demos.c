@@ -1426,11 +1426,23 @@ static void S3_Expose(menuFrameWork_t *self)
 
 // aq2world [filter]: the list, filtered from the start - the jump mod's
 // pathing menu opens it on the map's name
+// aq2world <filter>: a map's name is the usual filter
+static void S3_Open_c(genctx_t *ctx, int argnum)
+{
+    if (argnum == 1)
+        FS_File_g("maps", ".bsp", FS_SEARCH_STRIPEXT, ctx);
+}
+
 static void S3_Open_f(void)
 {
     Q_strlcpy(s3_prefilter, Cmd_Argc() > 1 ? Cmd_Argv(1) : "", sizeof(s3_prefilter));
     UI_PushMenu(&m_s3.menu);
 }
+
+static const cmdreg_t c_s3[] = {
+    { "aq2world", S3_Open_f, S3_Open_c },
+    { NULL }
+};
 
 static void S3_Pop(menuFrameWork_t *self)
 {
@@ -1501,5 +1513,5 @@ void M_Menu_S3Demos(void)
     Menu_AddItem(&m_s3.menu, &m_s3.list);
 
     List_Append(&ui_menus, &m_s3.menu.entry);
-    Cmd_AddCommand("aq2world", S3_Open_f);
+    Cmd_Register(c_s3);
 }
