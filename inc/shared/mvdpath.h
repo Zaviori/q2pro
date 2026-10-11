@@ -25,7 +25,10 @@ typedef struct {
     short   anim;           // the model's animation frame
     signed char viewheight; // the view's height over the origin, in units
     byte    weapon;         // the weapon model held (the vwep index), 0 for none
+    byte    flags;          // MVP_SHOT: his muzzle flashed this frame
 } mvp_sample_t;
+
+#define MVP_SHOT            1
 
 typedef struct {
     int     round;          // index into rounds
