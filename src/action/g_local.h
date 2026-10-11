@@ -2112,8 +2112,8 @@ typedef struct
   int jmp_ghud_made;				// level.framenum they were made at; a map change frees them
   int jmp_tip[4];					// the tooltip under the crosshair while one is aimed at: a hint a row
   qboolean jmp_tip_on;
-  int jmp_spawn_tip;				// the line at the bottom while a spawn is pending: Escape stops it
-  int jmp_spawn_tip_kind;			// 0 none, 1 one spawn, 2 repeating
+  int jmp_status[2];				// two lines at the bottom: what the jump mod is doing, and the keys
+  qboolean jmp_status_on;
   char jmp_starts_packs[JMP_STARTS_PACKS][JMP_NAME_MAX];	// jmod: the collections they are of; "/" is the jumps in none
 
 #ifdef AQTION_EXTENSION

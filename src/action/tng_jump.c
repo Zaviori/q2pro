@@ -43,6 +43,8 @@ char *jump_statusbar =
     "num 10 3 "
 ;
 
+static qboolean JmpIsRecording(edict_t *ent);
+
 void Jmp_SetStats(edict_t *ent)
 {
 	vec3_t	velocity;
@@ -69,8 +71,9 @@ void Jmp_SetStats(edict_t *ent)
 		ent->client->ps.stats[STAT_LAYOUTS] |= 1;
 	if (ent->client->showinventory && ent->health > 0)
 		ent->client->ps.stats[STAT_LAYOUTS] |= 2;
-	// a spawn pending - a drill, a repeat: Escape comes to the game, to stop it
-	if (ent->client->resp.jmp_spawn_frame)
+	// a spawn pending - a drill, a repeat - or a take recording: Escape
+	// comes to the game, to stop it
+	if (ent->client->resp.jmp_spawn_frame || JmpIsRecording(ent))
 		ent->client->ps.stats[STAT_LAYOUTS] |= LAYOUTS_ESCAPE;
 
 	SetIDView (ent);
@@ -660,35 +663,8 @@ static void JmpJumpsFrame(edict_t *ent);
 
 // called every frame for each client: counts a pending spawn down, and
 // keeps the spawnpoint labels
-static void JmpSecsName(float secs, char *buf, size_t size);
+static void JmpStatus(edict_t *ent);
 
-// the line at the bottom while a spawn is pending, and off again after
-static void JmpSpawnTip(edict_t *ent)
-{
-	gclient_t *client = ent->client;
-	char text[96], secs[16];
-	int kind = !client->resp.jmp_spawn_frame ? 0 : client->resp.jmp_spawn_repeat > 0 ? 2 : 1;
-
-	if (kind == client->resp.jmp_spawn_tip_kind)
-		return;
-	if (client->resp.jmp_spawn_tip_kind)
-		Ghud_RemoveElement(ent, client->resp.jmp_spawn_tip);
-	client->resp.jmp_spawn_tip_kind = kind;
-	if (!kind)
-		return;
-	if (kind == 2) {
-		JmpSecsName(client->resp.jmp_spawn_repeat, secs, sizeof(secs));
-		Q_snprintf(text, sizeof(text), "Spawning again every %s - Escape stops it", secs);
-	} else {
-		Q_strncpyz(text, "Spawning in a moment - Escape stops it", sizeof(text));
-	}
-	client->resp.jmp_spawn_tip = Ghud_NewElement(ent, GHT_TEXT);
-	Ghud_SetAnchor(ent, client->resp.jmp_spawn_tip, 0.5f, 1);
-	Ghud_SetPosition(ent, client->resp.jmp_spawn_tip, 0, -30);
-	Ghud_SetTextFlags(ent, client->resp.jmp_spawn_tip, UI_CENTER);
-	Ghud_SetColor(ent, client->resp.jmp_spawn_tip, 255, 255, 255, 200);
-	Ghud_SetText(ent, client->resp.jmp_spawn_tip, text);
-}
 
 // Escape with nothing else up: a pending spawn - a drill - stops
 qboolean Jmp_SpawnEscape(edict_t *ent)
@@ -707,7 +683,7 @@ void Jmp_RunSpawn(edict_t *ent)
 	JmpMarkersUpdate(ent);
 	JmpJumpsFrame(ent);
 	JmpPath_Frame(ent);
-	JmpSpawnTip(ent);
+	JmpStatus(ent);
 
 	if (!client->resp.jmp_spawn_frame)
 		return;
@@ -1983,6 +1959,85 @@ static jmp_state_t *JmpState(edict_t *ent)
 	}
 	st->seen = level.framenum;
 	return st;
+}
+
+static void JmpSecsName(float secs, char *buf, size_t size);
+static void JmpSecs(int ms, char *buf, size_t size);
+static void JmpRecStop(edict_t *ent);
+
+/*
+The status: two lines at the bottom of the screen saying what the jump
+mod is doing and what the keys do about it, whenever it is doing
+anything - recording, a spawn pending, routes up, markers up. A
+playback has its own HUD and none of this. Each line holds MAX_QPATH.
+*/
+static void JmpStatus(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+	jmp_state_t *st = JmpState(ent);
+	char row0[64] = "", row1[64] = "", spawn[64] = "", secs[16];
+	int i;
+
+	if (client->resp.jmp_spawn_frame) {
+		if (client->resp.jmp_spawn_repeat > 0) {
+			JmpSecsName(client->resp.jmp_spawn_repeat, secs, sizeof(secs));
+			Q_snprintf(spawn, sizeof(spawn), "Spawning again every %s", secs);
+		} else {
+			Q_strncpyz(spawn, "Spawning in a moment", sizeof(spawn));
+		}
+	}
+
+	if (st->playing) {
+		// the playback HUD says it all
+	} else if (st->recording) {
+		JmpSecs(st->rec_ms, secs, sizeof(secs));
+		Q_snprintf(row0, sizeof(row0), "Recording a jump: %s s", secs);
+		Q_strncpyz(row1, spawn[0] ? "the countdown - Escape: stop the take"
+			: "Escape: stop and keep the take   jmod recall: another go", sizeof(row1));
+	} else if (JmpPath_Status(ent, row0, row1, sizeof(row0), spawn)) {
+		// the pathing's: routes, ghosts, a drill, the spawn pick
+	} else if (spawn[0]) {
+		Q_strncpyz(row0, spawn, sizeof(row0));
+		Q_strncpyz(row1, "Escape: stop it", sizeof(row1));
+	} else if (client->resp.jmp_markers && client->layout != LAYOUT_MENU) {
+		Q_strncpyz(row0, "Spawn markers up", sizeof(row0));
+		Q_strncpyz(row1, "click: spawn there   double click: delay, repeat   Escape: away", sizeof(row1));
+	}
+
+	if (!row0[0] && !row1[0]) {
+		if (client->resp.jmp_status_on)
+			for (i = 0; i < 2; i++)
+				Ghud_RemoveElement(ent, client->resp.jmp_status[i]);
+		client->resp.jmp_status_on = false;
+		return;
+	}
+	if (!client->resp.jmp_status_on) {
+		for (i = 0; i < 2; i++) {
+			client->resp.jmp_status[i] = Ghud_NewElement(ent, GHT_TEXT);
+			Ghud_SetAnchor(ent, client->resp.jmp_status[i], 0.5f, 1);
+			Ghud_SetPosition(ent, client->resp.jmp_status[i], 0, -34 + 12 * i);
+			Ghud_SetTextFlags(ent, client->resp.jmp_status[i], UI_CENTER);
+			Ghud_SetColor(ent, client->resp.jmp_status[i], 255, 255, 255, i ? 200 : 255);
+		}
+		client->resp.jmp_status_on = true;
+	}
+	// the server sends a line only when it changes
+	Ghud_SetText(ent, client->resp.jmp_status[0], row0);
+	Ghud_SetText(ent, client->resp.jmp_status[1], row1);
+}
+
+// Escape while a take records: the take ends and is kept, its menu up
+qboolean Jmp_RecEscape(edict_t *ent)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (!st->recording)
+		return false;
+	Cmd_SpawnCancel_f(ent);		// the countdown, if it was still running
+	JmpRecStop(ent);
+	if (st->take.count)
+		Jmp_OpenTakeMenu(ent);
+	return true;
 }
 
 static const char *JmpGameDir(void)
