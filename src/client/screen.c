@@ -2276,6 +2276,10 @@ static void SCR_LayoutWords(int x, int y, int flags, float size, uint32_t color,
     }
 }
 
+// the layout's "size" command: the font's pixel height for the strings
+// after it, 0 for scr_layout_size; reset as each layout starts
+static float lay_size;
+
 static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
                              const char *s)
 {
@@ -2290,7 +2294,7 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
         return;
     }
 
-    float size = Cvar_ClampValue(scr_layout_size, 6, 20);
+    float size = lay_size ? Q_clipf(lay_size, 6, 24) : Cvar_ClampValue(scr_layout_size, 6, 20);
     uint32_t c = color ? color : U32_WHITE;
     bool left = !(flags & UI_RIGHT);    // UI_CENTER includes UI_RIGHT
 
@@ -2386,6 +2390,7 @@ static void SCR_ExecuteLayoutString(const char *s)
     if (!s[0])
         return;
     lay_flow.on = false;
+    lay_size = 0;
     if (scr_layout_font->integer && R_TextAvailable())
         SCR_ScanLayoutColumns(s);
 
@@ -2654,6 +2659,14 @@ static void SCR_ExecuteLayoutString(const char *s)
         if (!strcmp(token, "cstring")) {
             token = COM_Parse(&s);
             SCR_LayoutString(x + 320 / 2, y, UI_CENTER, lay_color, token);
+            continue;
+        }
+
+        // ours: the font's size for the strings that follow (a menu's
+        // title); an older client skips the token and its number
+        if (!strcmp(token, "size")) {
+            token = COM_Parse(&s);
+            lay_size = Q_atof(token);
             continue;
         }
 
