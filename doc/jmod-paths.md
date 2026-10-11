@@ -44,8 +44,8 @@ pick **View player pathing...**, or type `jmod paths`.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
    route, taken three times). The row names the location they reached
-   (from the map's `tng/<map>.aqg` location file; the coordinates when
-   there is none). Picking a row shows where the route goes and offers:
+   (from the map's `tng/<map>.aqg` location file; nothing when there
+   is none). Picking a row shows where the route goes and offers:
    - **Draw it on the map** - the route as a line, run from its LIGHTS in
      real time, with the round's other players drawn dim round it
      (teammates blue, the others grey) for context.

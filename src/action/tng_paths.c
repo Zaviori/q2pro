@@ -241,11 +241,12 @@ static void JmpPathDemoLabel(const char *name, char *buf, size_t size)
 
 #define JMP_PATH_LOC	128		// a location's description, as placedata_t has it
 
-// the place's name, or its coordinates on a map without a location file
+// the place's name; "" on a map without a location file - coordinates
+// told nobody anything
 static const char *JmpPathLoc(const vec3_t origin, char *buf)
 {
 	if (!GetLocationAt(origin, buf))
-		Q_snprintf(buf, JMP_PATH_LOC, "%.0f %.0f", origin[0], origin[1]);
+		buf[0] = 0;
 	return buf;
 }
 
@@ -279,7 +280,7 @@ static void JmpPathDesc(jmp_path_t *st, int k, char *buf, size_t size)
 	MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), o);
 	JmpPathLoc(o, to);
 
-	if (strcmp(via, to) && strcmp(via, from))
+	if (via[0] && strcmp(via, to) && strcmp(via, from))
 		Q_snprintf(buf, size, "%s, by %s", to, via);
 	else
 		Q_strncpyz(buf, to, size);
@@ -1539,15 +1540,18 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.16s", JmpPathVisNumber(st, st->pick), r->number, t->name);
 		MvdPath_Origin(&st->demo->samples[t->first], o);
 		spawn = JmpPathSpawn(o);
+		// the places, where the map has a location file to name them
 		if (spawn)
-			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.30s", spawn, JmpPathLoc(o, loc));
-		else
-			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.32s", JmpPathLoc(o, loc));
+			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d%s%.30s", spawn, *JmpPathLoc(o, loc) ? ": " : "", loc);
+		else if (*JmpPathLoc(o, loc))
+			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.32s", loc);
 		MvdPath_Origin(MvdPath_At(st->demo, t, MVP_ACTION_FRAMES), o);
-		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "ACTION!: %.31s", JmpPathLoc(o, loc));
+		if (*JmpPathLoc(o, loc))
+			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "ACTION!: %.31s", loc);
 		MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), o);
-		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, NULL, "%s: %.34s", t->died && t->count <= st->frames ? "died" : "then",
-			JmpPathLoc(o, loc));
+		if (*JmpPathLoc(o, loc) || (t->died && t->count <= st->frames))
+			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, NULL, "%s%s%.34s", t->died && t->count <= st->frames ? "died" : "then",
+				loc[0] ? ": " : "", loc);
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "%d.%d seconds%s", ms / 1000, ms % 1000 / 100,
 			t->died && t->count <= st->frames ? ", cut by the death" : "");
 		if (st->dups[st->pick])
