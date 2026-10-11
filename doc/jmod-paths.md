@@ -12,7 +12,10 @@ pick **View player pathing...**, or type `jmod paths`.
 
 1. **A demo.** The menu lists the `.mvd2` files in the game's `demos/`
    directory whose name carries this map's name, newest first. `jmod paths
-   <file>` loads one by name. A demo of another map is refused.
+   <file>` loads one by name. A demo of another map is refused. **Get one
+   from aq2world...** opens the client's aq2world listing (`aq2world
+   <filter>`) filtered on the map's name: Enter downloads a demo into
+   `demos/`, and it is on this list afterwards.
 2. **A player.** Everybody who played a round in it, most rounds first.
    Picking one puts the spawnpoint markers up: Shift+fire on a marker
    draws that player's routes from that spawn (`jmod pathspawn <#>` is

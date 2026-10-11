@@ -1065,6 +1065,16 @@ const char *JmpPath_SpawnTip(edict_t *ent)
 	return tip;
 }
 
+// the client's aq2world list, on this map: a demo got there is listed here
+static void JmpPathMenuAq2world(edict_t *ent, pmenu_t *p)
+{
+	char cmd[64];
+
+	PMenu_Close(ent);
+	Q_snprintf(cmd, sizeof(cmd), "aq2world %s", level.mapname);
+	JmpPathStuff(ent, cmd);
+}
+
 static void JmpPathPickPlayer(edict_t *ent, pmenu_t *p)
 {
 	jmp_path_t *st = JmpPath(ent);
@@ -1179,7 +1189,8 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		if (st->top >= n)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %.13s", level.mapname);
-		row = JMP_PATH_FIRST;
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Get one from aq2world...");
+		row = JMP_PATH_FIRST + 1;
 		if (st->demo) {
 			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.31s", label);
@@ -1195,7 +1206,7 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		}
 		if (!n)
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No .mvd2 of %.16s in demos/", level.mapname);
-		JmpPathPaging(ent, st, JMP_PATH_FIRST + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + 1 + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
 	} else if (step == JMP_MENU_PATH_PLAYERS) {
 		n = st->demo->player_count;
 		if (st->top >= n)
