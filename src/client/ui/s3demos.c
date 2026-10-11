@@ -165,6 +165,7 @@ typedef struct {
 } m_s3_t;
 
 static m_s3_t   m_s3;
+static char     s3_prefilter[MAX_QPATH];    // "aq2world <filter>": typed in before the list shows
 
 static cvar_t   *ui_s3demos_url;
 
@@ -1378,10 +1379,19 @@ static void S3_Expose(menuFrameWork_t *self)
 
     if (!m_s3.month[0] && tm)
         S3_SetMonth(tm->tm_year, tm->tm_mon);
-    m_s3.filter[0] = 0;
+    Q_strlcpy(m_s3.filter, s3_prefilter, sizeof(m_s3.filter));
+    s3_prefilter[0] = 0;
     if (!m_s3.fetching)
         m_s3.note[0] = 0;
     S3_ListStart();
+}
+
+// aq2world [filter]: the list, filtered from the start - the jump mod's
+// pathing menu opens it on the map's name
+static void S3_Open_f(void)
+{
+    Q_strlcpy(s3_prefilter, Cmd_Argc() > 1 ? Cmd_Argv(1) : "", sizeof(s3_prefilter));
+    UI_PushMenu(&m_s3.menu);
 }
 
 static void S3_Pop(menuFrameWork_t *self)
@@ -1453,4 +1463,5 @@ void M_Menu_S3Demos(void)
     Menu_AddItem(&m_s3.menu, &m_s3.list);
 
     List_Append(&ui_menus, &m_s3.menu.entry);
+    Cmd_AddCommand("aq2world", S3_Open_f);
 }
