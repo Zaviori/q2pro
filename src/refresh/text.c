@@ -423,6 +423,7 @@ draws it at came out jagged. The icons are drawn from a copy of the
 same pixels, uploaded here as the charset loads, filtered and mipmapped.
 */
 static GLuint text_charset_tex;
+static int    text_charset_w, text_charset_h;   // its size, for a texel's inset
 
 static void text_charset_upload(const byte *pic, int w, int h)
 {
@@ -430,6 +431,8 @@ static void text_charset_upload(const byte *pic, int w, int h)
     if (!text_charset_tex)
         qglGenTextures(1, &text_charset_tex);
     GL_ForceTexture(TMU_TEXTURE, text_charset_tex);
+    text_charset_w = w;
+    text_charset_h = h;
     qglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pic);
     if (qglGenerateMipmap) {
         qglGenerateMipmap(GL_TEXTURE_2D);
@@ -762,16 +765,19 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                 if (!charset)
                     charset = text_charset();
                 float gx = floorf(p + (mono ? (cell - icon) * 0.5f : 0) + 0.5f);
-                float s1 = (b & 15) * 0.0625f, t1 = (b >> 4) * 0.0625f;
+                // a texel in from the cell's edges: filtered, the edge
+                // would blend the next cell in (a bar's segments got ticks)
+                float is = text_charset_tex && text_charset_w ? 1.0f / text_charset_w : 0;
+                float it = text_charset_tex && text_charset_h ? 1.0f / text_charset_h : 0;
+                float s1 = (b & 15) * 0.0625f + is, t1 = (b >> 4) * 0.0625f + it;
+                float s2 = s1 + 0.0625f - 2 * is, t2 = t1 + 0.0625f - 2 * it;
 
                 if (pass == 0)
                     GL_TextQuad((gx + shadow) * sc, (icon_y + shadow) * sc,
-                                icon * sc, icon * sc, s1, t1,
-                                s1 + 0.0625f, t1 + 0.0625f, edge, charset);
+                                icon * sc, icon * sc, s1, t1, s2, t2, edge, charset);
                 else
                     GL_TextQuad(gx * sc, icon_y * sc, icon * sc, icon * sc,
-                                s1, t1, s1 + 0.0625f, t1 + 0.0625f,
-                                icon_color, charset);
+                                s1, t1, s2, t2, icon_color, charset);
                 p += mono ? cell : text_icon_advance(ts);
                 prev = 0;
                 continue;
