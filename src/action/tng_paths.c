@@ -667,6 +667,7 @@ void JmpPath_Spawned(edict_t *ent)
 	st->ghost_t0 = level.time;
 	st->ghost_ms = -1;
 	st->ghost_lca = 0;
+	JmpPathStuff(ent, "jpath restart");
 }
 
 /*
@@ -826,6 +827,9 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 		st->ghost_lca = 0;
 	restarted = ms < st->ghost_ms;
 	st->ghost_ms = ms;
+	// the client's line runs on its own clock: set it off with the ghosts
+	if (restarted && st->over)
+		JmpPathStuff(ent, "jpath restart");
 	JmpPathGhostsLca(ent, st, ms);
 
 	for (i = 0; i < st->ghost_count; i++) {
