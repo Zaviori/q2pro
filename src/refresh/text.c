@@ -418,10 +418,10 @@ static inline uint32_t text_letter_color(int flags, uint32_t color, int c)
 // The conchars image the icons come from, looked up by name each string -
 // a hash hit once loaded, and never a handle gone stale across a map load
 /*
-The charset's own texture is filtered nearest, as the pics are, and has
-no mipmaps: an icon shrunk from its 32-pixel cell to the size the text
-draws it at came out jagged. The icons are drawn from a copy of the
-same pixels, uploaded here as the charset loads, filtered and mipmapped.
+The charset's own texture is filtered nearest, as the pics are: an icon
+shrunk from its 32-pixel cell to the size the text draws it at came out
+jagged. The icons are drawn from a copy of the same pixels, uploaded
+here as the charset loads, filtered linear.
 */
 static GLuint text_charset_tex;
 static int    text_charset_w, text_charset_h;   // its size, for a texel's inset
@@ -435,12 +435,10 @@ static void text_charset_upload(const byte *pic, int w, int h)
     text_charset_w = w;
     text_charset_h = h;
     qglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pic);
-    if (qglGenerateMipmap) {
-        qglGenerateMipmap(GL_TEXTURE_2D);
-        qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    } else {
-        qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    }
+    // linear, no mipmaps: a mip's texel reaches into the next cell and
+    // put ticks between a bar's segments; an icon is shrunk by two at
+    // most, which linear takes well enough
+    qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -475,6 +473,16 @@ static inline bool text_icon(int c)
     // every control code but the newline and the bold brackets: the
     // charset draws a picture for 13 (the menus' arrow) and the rest too
     return b < 32 && b != '\n' && b != 16 && b != 17;
+}
+
+// The pieces that join up into one: the bars' caps and middle (both
+// halves) and the sliders' - drawn across the whole advance, so a bar
+// has no seams
+static inline bool text_icon_joined(int c)
+{
+    int b = c & 127;
+
+    return (b >= 0x1d && b <= 0x1f) || (c >= 0x80 && c <= 0x83);
 }
 
 // An icon is a conchar cell a little under the font's pixel size, square,
@@ -765,7 +773,10 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                 int b = (byte)*t++;
                 if (!charset)
                     charset = text_charset();
-                float gx = floorf(p + (mono ? (cell - icon) * 0.5f : 0) + 0.5f);
+                float adv = mono ? cell : text_icon_advance(ts);
+                bool joined = text_icon_joined(b);
+                float gx = joined ? floorf(p + 0.5f) : floorf(p + (mono ? (cell - icon) * 0.5f : 0) + 0.5f);
+                float gw = joined ? floorf(p + adv + 0.5f) - gx : icon;
                 // a texel in from the cell's edges: filtered, the edge
                 // would blend the next cell in (a bar's segments got ticks)
                 float is = text_charset_tex && text_charset_w ? 1.0f / text_charset_w : 0;
@@ -775,11 +786,11 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
 
                 if (pass == 0)
                     GL_TextQuad((gx + shadow) * sc, (icon_y + shadow) * sc,
-                                icon * sc, icon * sc, s1, t1, s2, t2, edge, charset);
+                                gw * sc, icon * sc, s1, t1, s2, t2, edge, charset);
                 else
-                    GL_TextQuad(gx * sc, icon_y * sc, icon * sc, icon * sc,
+                    GL_TextQuad(gx * sc, icon_y * sc, gw * sc, icon * sc,
                                 s1, t1, s2, t2, icon_color, charset);
-                p += mono ? cell : text_icon_advance(ts);
+                p += adv;
                 prev = 0;
                 continue;
             }
