@@ -116,21 +116,14 @@ static void JPath_Cmd_f(void)
     jpath.start = cls.realtime;
 }
 
-// LIGHTS green, ACTION! red, and darker from there
+// green at LIGHTS shading to orange up to ACTION!, bright red from there
 static uint32_t JPath_Color(int frame, int alpha)
 {
     float f = (float)frame / MVP_ACTION_FRAMES;
-    int r, g;
 
-    if (f <= 1) {
-        r = 255 * f;
-        g = 255 * (1 - f);
-    } else {
-        f = (f - 1) * MVP_ACTION_FRAMES / MVP_AFTER_FRAMES;
-        r = 255 - 110 * min(f, 1.0f);
-        g = 0;
-    }
-    return MakeColor(r, g, 0, alpha);
+    if (f >= 1)
+        return MakeColor(255, 0, 0, alpha);
+    return MakeColor(255 * f, 255 - 95 * f, 0, alpha);
 }
 
 #if USE_REF
@@ -148,6 +141,9 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, uint32_t di
         MvdPath_Origin(&s[i + 1], b);
         b[2] += lift;
         R_AddDebugLine(a, b, dim ? dim : JPath_Color(i, alpha), 0, depth);
+        // where ACTION! came: a white cross on the line
+        if (i + 1 == MVP_ACTION_FRAMES && !dim)
+            R_AddDebugPoint(b, 20, MakeColor(255, 255, 255, alpha), 0, depth);
         VectorCopy(b, a);
     }
     // the stretch being run, and its head

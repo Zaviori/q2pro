@@ -17,8 +17,9 @@ pick **View player pathing...**, or type `jmod paths`.
    Picking one puts the spawnpoint markers up: Shift+fire on a marker
    draws that player's routes from that spawn (`jmod pathspawn <#>` is
    the console form, 0 for every spawn) and sends a ghost down each of
-   them, all setting off together from LIGHTS and running in a loop with
-   a short hold at the end; you keep control, and a plain fire on the
+   them, all setting off together from LIGHTS - "LIGHTS... CAMERA...
+   ACTION!" sounding as they go, ACTION! where the demo had it - and
+   running in a loop with a short hold at the end; you keep control, and a plain fire on the
    marker spawns you there to run beside them. `jmod pathmap` draws them
    all; Escape takes the lines and ghosts down.
 3. **Their routes.** One row per route, the rounds in which they ran the
@@ -35,8 +36,8 @@ pick **View player pathing...**, or type `jmod paths`.
    - **All the routes on the map** - the overview.
 
 The **overview** draws every listed route at once, green at LIGHTS
-shading to red at ACTION! and darkening after it, with a numbered marker
-at each route's end. The markers are buttons, like the spawnpoint ones:
+shading to orange up to ACTION!, where a white cross marks the line, and
+bright red from there on, with a numbered marker at each route's end. The markers are buttons, like the spawnpoint ones:
 fire on one draws that route alone with its round's company, a second
 click within a third of a second sends its ghost. Escape puts the lines
 and markers away (a ghost's Escape ends the ghost first).
