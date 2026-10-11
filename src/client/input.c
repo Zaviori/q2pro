@@ -729,6 +729,28 @@ void CL_RegisterInput(void)
 
 /*
 =================
+CL_SendShiftKey
+
+The jump mod's markers take shift+fire for more than fire (the spawn
+markers: a jump recorded from there, a player's routes from there).
+The batched command delta of the newer protocols carries no impulse,
+so the shift is told the game as a command when it changes, while a
+layout is up - the markers keep an empty one up for this.
+=================
+*/
+static void CL_SendShiftKey(void)
+{
+    static bool sent;
+    bool shift = Key_IsDown(K_SHIFT) && (cl.frame.ps.stats[STAT_LAYOUTS] & 1);
+
+    if (shift == sent)
+        return;
+    sent = shift;
+    CL_ClientCommand(va("jmod shiftkey %d", shift));
+}
+
+/*
+=================
 CL_FinalizeCmd
 
 Builds the actual movement vector for sending to server. Assumes that msec
@@ -788,6 +810,7 @@ void CL_FinalizeCmd(void)
     cl.cmd.impulse = in_impulse;
     if (!in_impulse && Key_IsDown(K_SHIFT) && (cl.frame.ps.stats[STAT_LAYOUTS] & 1))
         cl.cmd.impulse = IMPULSE_SHIFT;
+    CL_SendShiftKey();
 
     // save this command off for prediction
     cl.cmdNumber++;

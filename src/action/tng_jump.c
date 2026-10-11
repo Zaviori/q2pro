@@ -250,6 +250,13 @@ void Cmd_Jmod_f (edict_t *ent)
 		Jmp_OpenJumpMenu(ent, NULL);
 		return;
 	}
+	else if(Q_stricmp(cmd, "shiftkey") == 0)
+	{
+		// the client's shift, told as it changes: the batched command
+		// delta carries no impulse (CL_SendShiftKey, src/client/input.c)
+		ent->client->jmp_shift = gi.argc() >= 3 && atoi(gi.argv(2)) != 0;
+		return;
+	}
 	else if(Q_stricmp(cmd, "paths") == 0 || Q_stricmp(cmd, "path") == 0 || Q_stricmp(cmd, "pathmap") == 0 || Q_stricmp(cmd, "pathspawn") == 0)
 	{
 		JmpPath_Cmd(ent, cmd);
@@ -1248,6 +1255,7 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 	qboolean list = bare || (client->layout == LAYOUT_MENU && client->menu.entries == client->jmp_menu
 		&& client->jmp_menu_step == 0);
 	int spot = client->jmp_menu_aim;
+	qboolean shift = ucmd->impulse == IMPULSE_SHIFT || client->jmp_shift;
 
 	client->jmp_fire_held = fire;
 
@@ -1282,10 +1290,10 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 	client->latched_buttons &= ~BUTTON_ATTACK;
 
 	// with a player's routes listed, shift on a spawn marker draws his from there
-	if (ucmd->impulse == IMPULSE_SHIFT && JmpPath_SpawnPick(ent, spot))
+	if (shift && JmpPath_SpawnPick(ent, spot))
 		return;
 
-	if ((client->jmp_menu_rec && !bare) || ucmd->impulse == IMPULSE_SHIFT) {
+	if ((client->jmp_menu_rec && !bare) || shift) {
 		client->jmp_menu_pick = spot;
 		PMenu_Close(ent);
 		if (!JmpIsRecording(ent))
