@@ -40,7 +40,8 @@ itself is a few kilobytes of XML.
 
 A month's listing is kept for the session and on disk in `s3cache/`
 (`<source>-<YYYY-MM>.txt`): the month being played is asked again after
-ten minutes, an older month after a day. `ui_s3demos_url` is the
+an hour, an older month after a year (F5 asks at once). The players
+read for a row are kept through a new listing whatever its age. `ui_s3demos_url` is the
 bucket (`https://aq2world.s3.amazonaws.com`).
 
 ## How it is built
