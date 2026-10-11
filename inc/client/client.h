@@ -91,6 +91,26 @@ int HTTP_FetchFile(const char *url, void **data);
 #define HTTP_FreeFile(data) free(data)
 #endif
 
+// one fetch in the background (http.c), polled by the menu that asked
+typedef enum {
+    FETCH_IDLE,
+    FETCH_RUNNING,
+    FETCH_DONE,
+    FETCH_FAILED
+} fetch_state_t;
+
+#if USE_CURL
+bool HTTP_FetchStart(const char *url, const char *path, bool gunzip);
+fetch_state_t HTTP_FetchState(int64_t *got, int64_t *total, char *err, size_t errlen);
+int HTTP_FetchTake(void **data);
+void HTTP_FetchCancel(void);
+#else
+#define HTTP_FetchStart(url, path, gunzip)          false
+#define HTTP_FetchState(got, total, err, errlen)    FETCH_IDLE
+#define HTTP_FetchTake(data)                        0
+#define HTTP_FetchCancel()                          (void)0
+#endif
+
 bool CL_ForwardToServer(void);
 // adds the current command line as a clc_stringcmd to the client message.
 // things like godmode, noclip, etc, are commands directed to the server,
