@@ -91,9 +91,10 @@ routes are folded afresh over the new span. The ghosts and the lines loop as lon
 a second's hold. While they run, a player's path is taken down
 `jpath_cut` (3) seconds after a kill of his or his death - it starts
 afresh from the kill - and with a round selected - a route followed, the Alt+fire round
-view, a drill with the others - that round's kill shots stay: a ray
+view, a drill with the others - that round's kill shots show: a ray
 from the killer's eye to the man he killed with the weapon's icon by
-the shooter, `jpath_kills 0` to drop them. The parser takes a kill from the obituary printed at a death, the
+the shooter, whole for five seconds after the kill and gone a second
+later, `jpath_kills 0` to drop them. The parser takes a kill from the obituary printed at a death, the
 killer being the other name of the round in it. On the client `jpath_look 1`
 draws the player's shots as the bullets went: a line from the eye the
 way he looked, faint red to the wall it hit, green to the player it
