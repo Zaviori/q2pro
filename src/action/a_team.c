@@ -1131,7 +1131,7 @@ void ToggleSlippers(edict_t *ent, pmenu_t *p)
 pmenu_t pmitemmenu[] = {
   { "*Jump Menu",										PMENU_ALIGN_CENTER,	NULL, NULL					},
   { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
-  { "the command to bind beside each",					PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { (char *)jmp_menu_line,								PMENU_ALIGN_CENTER,	NULL, NULL					},
   { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { "Respawn to Closest Spawn   (jmod spawnc)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoPC_f_compat  	},
