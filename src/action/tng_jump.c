@@ -1907,6 +1907,7 @@ typedef struct {
 	int		save_top;		// its first collection on the page
 
 	qboolean	playing, pov;
+	qboolean	play_noclip;	// he was noclipping when the playback took him: given back after
 	qboolean	play_started;
 	jmp_take_t	play;
 	float	play_ms;
@@ -3090,7 +3091,7 @@ static void JmpPlayStop(edict_t *ent, qboolean place)
 		Ghud_RemoveElement(ent, st->hud[i]);
 
 	ent->svflags &= ~SVF_NOCLIENT;
-	ent->movetype = MOVETYPE_WALK;
+	ent->movetype = st->play_noclip ? MOVETYPE_NOCLIP : MOVETYPE_WALK;
 	ent->viewheight = 22;
 	client->ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
 	client->ps.pmove.pm_type = PM_NORMAL;
@@ -3138,6 +3139,7 @@ static void JmpPlayStart(edict_t *ent, qboolean pov)
 	gi.linkentity(ghost);
 
 	ent->svflags |= SVF_NOCLIENT;
+	st->play_noclip = ent->movetype == MOVETYPE_NOCLIP;
 	ent->movetype = MOVETYPE_NOCLIP;
 	VectorClear(ent->velocity);
 
