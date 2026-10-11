@@ -75,7 +75,8 @@ this way with the menu already open on it: the client sets
 game reads it once as the player comes in.
 
 `jmod_path_secs` (6) is how many seconds past ACTION! a route is followed,
-up to 15. On the client, `jpath_depth 0` draws the lines through walls
+up to 15. `jmod_path_lca 0` silences the "LIGHTS... CAMERA... ACTION!"
+the ghosts set off to. On the client, `jpath_depth 0` draws the lines through walls
 and `jpath_lift` raises them off the floor.
 
 ## How it is built

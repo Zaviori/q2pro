@@ -101,6 +101,7 @@ static jmp_path_demo_t jmp_path_demos[JMP_PATH_DEMOS];
 static int jmp_path_demo_count;
 
 static cvar_t *jmod_path_secs;
+static cvar_t *jmod_path_lca;		// 0: the ghosts set off without "LIGHTS... CAMERA... ACTION!"
 
 static void JmpPathShow(edict_t *ent, int step, int cur);
 
@@ -810,9 +811,13 @@ static void JmpPathGhostsLca(edict_t *ent, jmp_path_t *st, float ms)
 		{ "ACTION!", "atl/action.wav", MVP_ACTION_FRAMES * 100 },
 	};
 
+	if (!jmod_path_lca)
+		jmod_path_lca = gi.cvar("jmod_path_lca", "1", 0);
 	while (st->ghost_lca < 3 && ms >= lca[st->ghost_lca].ms) {
-		gi.centerprintf(ent, "%s\n", lca[st->ghost_lca].text);
-		unicastSound(ent, gi.soundindex((char *)lca[st->ghost_lca].sound), 1.0f);
+		if (jmod_path_lca->value) {
+			gi.centerprintf(ent, "%s\n", lca[st->ghost_lca].text);
+			unicastSound(ent, gi.soundindex((char *)lca[st->ghost_lca].sound), 1.0f);
+		}
 		st->ghost_lca++;
 	}
 }
