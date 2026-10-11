@@ -1542,6 +1542,7 @@ void CL_AddEntities(void)
     CL_AddDLights();
     CL_AddLightStyles();
     LOC_AddLocationsToScene();
+    JPath_AddToScene();
 }
 
 /*

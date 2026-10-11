@@ -1000,6 +1000,12 @@ void LOC_LoadLocations(void);
 void LOC_FreeLocations(void);
 void LOC_AddLocationsToScene(void);
 
+//
+// jpath.c: the players' round-start routes out of a demo, as lines
+//
+void JPath_Init(void);
+void JPath_AddToScene(void);
+
 
 //
 // console.c

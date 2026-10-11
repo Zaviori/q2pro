@@ -2385,6 +2385,7 @@ bool R_Init(bool total)
 
     GL_InitTables();
 
+    GL_InitDebugDraw();
     GL_BOTLIBInitDebugDraw();
 
     GL_PostInit();

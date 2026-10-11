@@ -1315,9 +1315,7 @@ void GL_InitImages(void)
     GL_InitRawTexture();
     GL_InitCubemaps();
 
-#if USE_DEBUG
     r_charset = R_RegisterFont("conchars");
-#endif
 
     GL_ShowErrors(__func__);
 }
@@ -1354,9 +1352,7 @@ void GL_ShutdownImages(void)
         gl_static.renderbuffer = 0;
     }
 
-#if USE_DEBUG
     r_charset = 0;
-#endif
 
     scrap_dirty = false;
 

@@ -18,6 +18,62 @@ typedef struct {
 } jmp_start_t;
 #define JMP_MARKER_PX	40				// its size on screen
 #define JMP_MARKER_HL	56				// the highlighted one's
+#define JMP_MARKER_NEAR	64				// no marker on a spot this close
+#define JMP_AIM_TAN		0.045f			// a marker's radius, as the tangent of its angle on screen
+#define JMP_DESC_MAX	57				// a jump's description: two menu rows, indented
+
+#define JMP_KEY_FWD		1
+#define JMP_KEY_BACK	2
+#define JMP_KEY_LEFT	4
+#define JMP_KEY_RIGHT	8
+#define JMP_KEY_JUMP	16
+#define JMP_KEY_DUCK	32
+#define JMP_KEYS		6
+
+// a recorded jump: a sample a frame, replayed by a ghost
+typedef struct {
+	int		ms;			// since the take began, on the player's own clock
+	vec3_t	origin;
+	float	pitch, yaw;	// the view's
+	short	frame;		// the model's animation frame
+	short	speed;
+	byte	keys;		// held at any time since the sample before
+	signed char	viewheight;
+} jmp_sample_t;
+
+typedef struct {
+	char	name[JMP_NAME_MAX];
+	char	pack[JMP_NAME_MAX];	// its collection, "" none
+	char	author[16];
+	char	desc[JMP_DESC_MAX];
+	int		fps;
+	int		ms;			// its length
+	int		count;
+	jmp_sample_t	*samples;
+} jmp_take_t;
+
+// the jmod menus share the client's rows (jmp_menu): what builds them
+extern const char jmp_menu_line[];
+void Jmp_MenuRow(edict_t *ent, int row, int align, intptr_t arg,
+	void (*func)(edict_t *, pmenu_t *), const char *fmt, ...);
+void Jmp_MenuItems(edict_t *ent, pmenu_t *p);
+const char *Jmp_GameDir(void);
+int Jmp_AimAt(edict_t *ent, const vec3_t *origins, int count);
+void Jmp_PlayTake(edict_t *ent, jmp_take_t *take, qboolean pov);
+
+// tng_paths.c: the players' round-start routes out of a demo
+#define JMP_MENU_PATHS		20	// the demo to read
+#define JMP_MENU_PATH_PLAYERS	21	// whose routes
+#define JMP_MENU_PATH_ROUTES	22	// the routes, duplicates folded
+#define JMP_MENU_PATH_ROUTE	23	// one of them: watch it, show it
+void JmpPath_Cmd(edict_t *ent, const char *cmd);
+void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
+qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
+void JmpPath_Frame(edict_t *ent);
+qboolean JmpPath_Escape(edict_t *ent);
+void JmpPath_HudCleared(edict_t *ent);
+void JmpPath_ClientDisconnect(edict_t *ent);
+qboolean GetLocationAt(const vec3_t origin, char *buf);
 #define STAT_SPEEDX					1
 #define STAT_HIGHSPEED					2
 #define STAT_FALLDMGLAST				3

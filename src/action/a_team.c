@@ -1136,6 +1136,7 @@ pmenu_t pmitemmenu[] = {
   { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { "Record a jump...           (jmod rec)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenRecordMenu   	},
   { "Recorded jumps...          (jmod jumps)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenJumpMenu   	},
+  { "View player pathing...     (jmod paths)",		PMENU_ALIGN_LEFT,	NULL, Jmp_OpenPathMenu   	},
 
 };
 

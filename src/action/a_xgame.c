@@ -236,6 +236,12 @@ static qboolean GetLocation(int xo, int yo, int zo, int mod, char *buf)
 	return false;
 }
 
+// the location of a point
+qboolean GetLocationAt(const vec3_t origin, char *buf)
+{
+	return GetLocation((int)origin[0], (int)origin[1], (int)origin[2], 0, buf);
+}
+
 // Get the player location
 //
 qboolean GetPlayerLocation(edict_t *self, char *buf)

@@ -145,6 +145,9 @@ void Cmd_Jmod_f (edict_t *ent)
 		gi.cprintf(ent, PRINT_HIGH, " jmod start <[collection/]name> - spawn where a stored jump starts, facing its way\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod delete <[collection/]name> - remove a stored jump of yours; \"collection/\" the collection itself\n");
 		gi.cprintf(ent, PRINT_HIGH, " jmod jumps - the stored jumps of this map, from a menu\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod paths [demo] - the players' round-start routes out of an .mvd2 in demos/, from a menu\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod path <#> [ghost|pov] - route # of the listed player: drawn on the map, or its ghost\n");
+		gi.cprintf(ent, PRINT_HIGH, " jmod pathmap - every listed route on the map, numbered to click on; again or Escape puts them away\n");
 
 		return;
 	}
@@ -244,6 +247,11 @@ void Cmd_Jmod_f (edict_t *ent)
 	else if(Q_stricmp(cmd, "jumps") == 0)
 	{
 		Jmp_OpenJumpMenu(ent, NULL);
+		return;
+	}
+	else if(Q_stricmp(cmd, "paths") == 0 || Q_stricmp(cmd, "path") == 0 || Q_stricmp(cmd, "pathmap") == 0)
+	{
+		JmpPath_Cmd(ent, cmd);
 		return;
 	}
 	else if(Q_stricmp(cmd, "lca") == 0)
@@ -641,6 +649,7 @@ void Jmp_RunSpawn(edict_t *ent)
 
 	JmpMarkersUpdate(ent);
 	JmpJumpsFrame(ent);
+	JmpPath_Frame(ent);
 
 	if (!client->resp.jmp_spawn_frame)
 		return;
@@ -770,12 +779,12 @@ static const float jmp_repeats[] = { 0, 3, 5, 8, 10, 15, 20, 30 };
 
 #define JMP_COUNT(a)	(int)(sizeof(a) / sizeof((a)[0]))
 
-static const char jmp_menu_line[] = "\x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F";
+const char jmp_menu_line[] = "\x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F";
 
 static void JmpMenuShow(edict_t *ent, int step, int cur);
 static void JmpJumpsShow(edict_t *ent, int step, int cur);
 
-static void JmpMenuRow_Set(edict_t *ent, int row, int align, intptr_t arg,
+void Jmp_MenuRow(edict_t *ent, int row, int align, intptr_t arg,
 	void (*func)(edict_t *, pmenu_t *), const char *fmt, ...)
 {
 	gclient_t *client = ent->client;
@@ -889,6 +898,11 @@ static void JmpMenuItems(edict_t *ent, pmenu_t *p)
 	OpenPMItemMenu(ent);
 }
 
+void Jmp_MenuItems(edict_t *ent, pmenu_t *p)
+{
+	JmpMenuItems(ent, p);
+}
+
 // step 1: the delay, in tenths
 static void JmpMenuPickDelay(edict_t *ent, pmenu_t *p)
 {
@@ -959,19 +973,19 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 	if (client->jmp_menu_top >= n)
 		client->jmp_menu_top = max(n - 1, 0) / JMP_MENU_SPOTS * JMP_MENU_SPOTS;
 
-	JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL,
+	Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL,
 		client->jmp_menu_rec ? "*Record a jump from" : "*Pick a spawnpoint (%d)", count);
 	if (client->jmp_menu_rec) {
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuRecHere, "Start here");
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuRecHere, "Start here");
 		if (*cur < 0)
 			*cur = 3;
 	} else if (client->resp.jmp_spawn_frame)
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuStop,
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpMenuStop,
 			client->resp.jmp_spawn_repeat > 0 ? "Stop repeating" : "Stop the pending spawn");
 	// a jump is recorded from a spot picked, not from whichever
 	if (!client->jmp_menu_rec) {
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, -1, JmpMenuPickSpot, "Closest spawnpoint");
-		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpMenuPickSpot, "Random spawnpoint");
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, -1, JmpMenuPickSpot, "Closest spawnpoint");
+		Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, JmpMenuPickSpot, "Random spawnpoint");
 		if (client->jmp_menu_pick < 1 && *cur < 0)
 			*cur = client->jmp_menu_pick < 0 ? 5 : 6;
 	}
@@ -981,17 +995,17 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 		if (kind[i] == 0) {
 			// "12 Courtyard", or the bare number on a map without locations
 			JmpSpotName(arg[i], name, sizeof(name), false);
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "%2d %s", arg[i],
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "%2d %s", arg[i],
 				Q_isdigit(name[0]) ? strchr(name, ' ') + 1 : "");
 		} else if (kind[i] == 1) {
 			const char *pack = packs[arg[i]];
 
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickPack, "%s %.19s (%d)",
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickPack, "%s %.19s (%d)",
 				JmpStartsOn(ent, pack) ? "[x]" : "[ ]", pack[0] ? pack : "Jumps in no collection",
 				counts[arg[i]]);
 			continue;
 		} else {
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "    %.26s",
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, arg[i], JmpMenuPickSpot, "    %.26s",
 				client->resp.jmp_starts[arg[i] - JMP_SPOT_JUMPS].name);
 		}
 		if (*cur < 0 && arg[i] == client->jmp_menu_pick)
@@ -1000,11 +1014,11 @@ static void JmpMenuSpots(edict_t *ent, int *cur)
 
 	row = JMP_MENU_FIRST + JMP_MENU_SPOTS;
 	if (client->jmp_menu_top > 0)
-		JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_MENU_SPOTS, JmpMenuPage, "Previous page");
+		Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -JMP_MENU_SPOTS, JmpMenuPage, "Previous page");
 	if (client->jmp_menu_top + JMP_MENU_SPOTS < n)
-		JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_MENU_SPOTS, JmpMenuPage, "Next page");
+		Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, JMP_MENU_SPOTS, JmpMenuPage, "Next page");
 
-	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+	Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 	if (*cur < 0)
 		*cur = JMP_MENU_FIRST;
 }
@@ -1019,15 +1033,15 @@ static void JmpMenuValues(edict_t *ent, int *cur, const float *values, int count
 	for (i = 0; i < count; i++, row++) {
 		JmpSecsName(values[i], secs, sizeof(secs));
 		if (values[i] <= 0)
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, 0, func, "%s", zero);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, func, "%s", zero);
 		else
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, (intptr_t)(values[i] * 10 + 0.5f), func,
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, (intptr_t)(values[i] * 10 + 0.5f), func,
 				"%s%s", func == JmpMenuPickRepeat ? "every " : "", secs);
 		if (fabsf(values[i] - now) < 0.05f)
 			*cur = row;
 	}
 
-	JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuBack, "Back");
+	Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuBack, "Back");
 	if (*cur < 0)
 		*cur = JMP_MENU_CHOICE;
 }
@@ -1042,26 +1056,26 @@ static void JmpMenuShow(edict_t *ent, int step, int cur)
 	jmp_name_ent = ent;
 
 	for (i = 0; i < JMP_MENU_ROWS; i++)
-		JmpMenuRow_Set(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
-	JmpMenuRow_Set(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
+	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
 
 	client->jmp_menu_step = step;
 	if (step == 0) {
 		JmpMenuSpots(ent, &cur);
 	} else if (step == 1) {
 		JmpSpotName(client->jmp_menu_pick, name, sizeof(name), true);
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
-		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "Wait before spawning");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "Wait before spawning");
 		JmpMenuValues(ent, &cur, jmp_delays, JMP_COUNT(jmp_delays),
 			client->resp.jmp_spawn_delay, JmpMenuPickDelay, "no wait");
 	} else {
 		JmpSpotName(client->jmp_menu_pick, name, sizeof(name), true);
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", name);
 		if (client->resp.jmp_spawn_delay > 0) {
 			JmpSecsName(client->resp.jmp_spawn_delay, secs, sizeof(secs));
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "after %s, repeat", secs);
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "after %s, repeat", secs);
 		} else {
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "now, repeat");
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "now, repeat");
 		}
 		JmpMenuValues(ent, &cur, jmp_repeats, JMP_COUNT(jmp_repeats),
 			client->resp.jmp_menu_repeat, JmpMenuPickRepeat, "once, no repeat");
@@ -1109,7 +1123,6 @@ const char *Jmp_MarkerPic(void)
 	return "jmod_spawn";
 }
 
-#define JMP_MARKER_NEAR	64	// no marker on a spot this close
 
 // what is marked: the map's spawnpoints, then the listed jumps' starts
 typedef struct {
@@ -1138,11 +1151,10 @@ static int JmpPoints(edict_t *ent, jmp_point_t *pts, int *map)
 	return n;
 }
 
-#define JMP_AIM_TAN		0.045f	// a marker's radius, as the tangent of its angle on screen
 #define JMP_CLICK_MS	300		// a second click within this is a double one
 
-// the marker the view points into, as a spawn's number; 0 none
-static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
+// the one of the points the view points into, from 1; 0 none
+int Jmp_AimAt(edict_t *ent, const vec3_t *origins, int count)
 {
 	vec3_t eye, forward, d, off;
 	float along, ratio, best = 1;
@@ -1154,7 +1166,7 @@ static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
 
 	for (i = 0; i < count; i++) {
 		// the ring's centre; it is drawn the same size from 150 units out
-		VectorSubtract(pts[i].origin, eye, d);
+		VectorSubtract(origins[i], eye, d);
 		d[2] += 8;
 		along = DotProduct(d, forward);
 		if (along < JMP_MARKER_NEAR)
@@ -1163,10 +1175,24 @@ static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
 		ratio = VectorLength(off) / (JMP_AIM_TAN * max(along, 150));
 		if (ratio < best) {
 			best = ratio;
-			aim = i < map ? i + 1 : JMP_SPOT_JUMPS + i - map;
+			aim = i + 1;
 		}
 	}
 	return aim;
+}
+
+// the marker the view points into, as a spawn's number; 0 none
+static int JmpAim(edict_t *ent, jmp_point_t *pts, int count, int map)
+{
+	vec3_t origins[JMP_POINTS_MAX];
+	int i, aim;
+
+	for (i = 0; i < count; i++)
+		VectorCopy(pts[i].origin, origins[i]);
+	aim = Jmp_AimAt(ent, origins, count);
+	if (!aim)
+		return 0;
+	return aim <= map ? aim : JMP_SPOT_JUMPS + aim - 1 - map;
 }
 
 // what a click on the marker does, under the crosshair while one is aimed at
@@ -1221,6 +1247,10 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 	int spot = client->jmp_menu_aim;
 
 	client->jmp_fire_held = fire;
+
+	// the route markers take the clicks while they are up
+	if (JmpPath_Fire(ent, ucmd))
+		return;
 
 	// a click waiting to see if it is a double one
 	if (client->jmp_click_ms > 0) {
@@ -1416,6 +1446,7 @@ void Jmp_HudCleared(edict_t *ent)
 {
 	ent->client->resp.jmp_ghud_count = 0;
 	ent->client->resp.jmp_tip_on = false;
+	JmpPath_HudCleared(ent);
 }
 
 // jmod markers - the markers without the list, for a bind
@@ -1688,7 +1719,6 @@ way, to try it.
 #define JMP_REC_MAX			(JMP_REC_MAX_MS / JMP_REC_STEP_MS + 2)
 #define JMP_REC_LEAD_MS		500		// kept of the standing still before the first move
 #define JMP_PLAY_TAIL_MS	1000	// held on the last sample
-#define JMP_DESC_MAX		57		// two menu rows, indented
 #define JMP_ASK_SECS		60		// a question waits this long for its answer
 #define JMP_ASK_NAME		1
 #define JMP_ASK_DESC		2
@@ -1705,14 +1735,6 @@ way, to try it.
 #define JMP_CAM_TURN		0.2f	// its turns followed in about this many seconds
 #define JMP_FILE_VERSION	1
 
-#define JMP_KEY_FWD		1
-#define JMP_KEY_BACK	2
-#define JMP_KEY_LEFT	4
-#define JMP_KEY_RIGHT	8
-#define JMP_KEY_JUMP	16
-#define JMP_KEY_DUCK	32
-#define JMP_KEYS		6
-
 // the HUD: an element per key, in bit order, then three lines of text
 #define JMP_HUD_INFO	JMP_KEYS
 #define JMP_HUD_DESC	(JMP_KEYS + 1)
@@ -1726,27 +1748,6 @@ static const struct {
 	{ "W", 0, -88 }, { "S", 0, -76 }, { "A", -14, -76 }, { "D", 14, -76 },
 	{ "JUMP", 56, -76 }, { "DUCK", 56, -88 }
 };
-
-typedef struct {
-	int		ms;			// since the take began, on the player's own clock
-	vec3_t	origin;
-	float	pitch, yaw;	// the view's
-	short	frame;		// the model's animation frame
-	short	speed;
-	byte	keys;		// held at any time since the sample before
-	signed char	viewheight;
-} jmp_sample_t;
-
-typedef struct {
-	char	name[JMP_NAME_MAX];
-	char	pack[JMP_NAME_MAX];	// its collection, "" none
-	char	author[16];
-	char	desc[JMP_DESC_MAX];
-	int		fps;
-	int		ms;			// its length
-	int		count;
-	jmp_sample_t	*samples;
-} jmp_take_t;
 
 typedef struct {
 	int		seen;			// level.framenum it was last used at; a map change resets it
@@ -1817,6 +1818,11 @@ static const char *JmpGameDir(void)
 	cvar_t *game_cvar = gi.cvar("game", "action", 0);
 
 	return *game_cvar->string ? game_cvar->string : GAMEVERSION;
+}
+
+const char *Jmp_GameDir(void)
+{
+	return JmpGameDir();
 }
 
 // a jump's name is its file's: lower case letters, digits, - and _
@@ -3205,6 +3211,27 @@ static void JmpPlay(edict_t *ent, const char *pack, const char *name, qboolean p
 	JmpPlayStart(ent, pov);
 }
 
+// a take made elsewhere - a player's route out of a demo - played as a
+// stored one; its samples are taken over
+void Jmp_PlayTake(edict_t *ent, jmp_take_t *take, qboolean pov)
+{
+	jmp_state_t *st = JmpState(ent);
+
+	if (ent->deadflag || ent->client->pers.spectator) {
+		gi.cprintf(ent, PRINT_HIGH, "This command cannot be used by spectators\n");
+		JmpTakeFree(take);
+		return;
+	}
+	if (st->recording)
+		JmpRecStop(ent);
+	JmpPlayStop(ent, false);
+
+	JmpTakeFree(&st->play);
+	st->play = *take;
+	memset(take, 0, sizeof(*take));
+	JmpPlayStart(ent, pov);
+}
+
 // to a stored jump's start, as a spawn: stored, so recall and respawn
 // come back to it, and begun with the usual delay
 static void JmpGoStart(edict_t *ent, const char *pack, const char *name)
@@ -3270,6 +3297,7 @@ void Jmp_ClientDisconnect(edict_t *ent)
 	JmpTakeFree(&st->take);
 	JmpTakeFree(&st->play);
 	memset(st, 0, sizeof(*st));
+	JmpPath_ClientDisconnect(ent);
 }
 
 /*
@@ -3524,8 +3552,8 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 	int i, j, row, lo, hi;
 
 	for (i = 0; i < JMP_MENU_ROWS; i++)
-		JmpMenuRow_Set(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
-	JmpMenuRow_Set(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
+	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
 
 	client->jmp_menu_step = step;
 	if (step == JMP_MENU_PACKS) {
@@ -3533,7 +3561,7 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		// empty ones too, to be looked into and deleted
 		JmpListLoad();
 		j = JmpPacksAll(packs, JMP_PACKS_MAX);
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recorded jumps (%d)", jmp_list_count);
 
 		// a page of them; a fresh look opens on the page of the one last in
 		if (cur < 0)
@@ -3548,7 +3576,7 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			const char *pack = i ? packs[i - 1] : "";
 
 			JmpListRange(pack, &lo, &hi);
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpPacksPick, "%-24.24s %3d",
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPacksPick, "%-24.24s %3d",
 				i ? pack : "In no collection", hi - lo);
 			if (cur < 0 && !strcmp(pack, st->menu_pack))
 				cur = row;
@@ -3556,11 +3584,11 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 
 		row = 3 + JMP_PACKS_PAGE;
 		if (st->packs_top > 0)
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_PAGE, JmpPacksPage, "Previous page");
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_PAGE, JmpPacksPage, "Previous page");
 		if (st->packs_top + JMP_PACKS_PAGE <= j)
-			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_PAGE, JmpPacksPage, "Next page");
+			Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_PAGE, JmpPacksPage, "Next page");
 
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
 			cur = 3;
 	} else if (step == JMP_MENU_PACKDEL || step == JMP_MENU_PACKDEL2) {
@@ -3568,18 +3596,18 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		int count = JmpPackWalk(ent, st->menu_pack, &foreign, false);
 
 		if (step == JMP_MENU_PACKDEL) {
-			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete this collection?");
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s", st->menu_pack);
-			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
-			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelYes, "Yes, delete it");
+			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete this collection?");
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s", st->menu_pack);
+			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
+			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpPackDelYes, "Yes, delete it");
 		} else {
-			JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*It is not empty!");
-			JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s has", st->menu_pack);
-			JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d jump%s in it,",
+			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*It is not empty!");
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%s has", st->menu_pack);
+			Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d jump%s in it,",
 				count, count == 1 ? "" : "s");
-			JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "deleted with it.");
-			JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
-			JmpMenuRow_Set(ent, 7, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
+			Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "deleted with it.");
+			Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep them");
+			Jmp_MenuRow(ent, 7, PMENU_ALIGN_LEFT, 0, JmpPackDelAll, "Yes, delete them all");
 		}
 		if (cur < 0)
 			cur = step == JMP_MENU_PACKDEL ? 4 : 6;
@@ -3589,27 +3617,27 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		if (st->save_top >= j)
 			st->save_top = max(j - 1, 0) / JMP_PACKS_ROWS * JMP_PACKS_ROWS;
 
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Save %s to", st->ask_name);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpSaveToPick, "No collection");
-		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpSaveToNew, "A new collection...");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Save %s to", st->ask_name);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpSaveToPick, "No collection");
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpSaveToNew, "A new collection...");
 		if (st->save_find[0])
-			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search: %s (%d)", st->save_find, j);
+			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search: %s (%d)", st->save_find, j);
 		else
-			JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search the %d collections...", j);
+			Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpSaveToFind, "Search the %d collections...", j);
 
 		row = JMP_PACKS_FIRST;
 		for (i = st->save_top; i < j && row < JMP_PACKS_FIRST + JMP_PACKS_ROWS; i++, row++)
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, 1, JmpSaveToPick, "%s", packs[i]);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 1, JmpSaveToPick, "%s", packs[i]);
 		if (!j && st->save_find[0])
-			JmpMenuRow_Set(ent, JMP_PACKS_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "No collection like that");
+			Jmp_MenuRow(ent, JMP_PACKS_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "No collection like that");
 
 		row = JMP_PACKS_FIRST + JMP_PACKS_ROWS;
 		if (st->save_top > 0)
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_ROWS, JmpSaveToPage, "Previous page");
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -JMP_PACKS_ROWS, JmpSaveToPage, "Previous page");
 		if (st->save_top + JMP_PACKS_ROWS < j)
-			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_ROWS, JmpSaveToPage, "Next page");
+			Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, JMP_PACKS_ROWS, JmpSaveToPage, "Next page");
 
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpSaveToCancel, "Cancel");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpSaveToCancel, "Cancel");
 		// after a search the cursor is on what it found
 		if (cur < 0)
 			cur = st->save_find[0] && j ? JMP_PACKS_FIRST : 3;
@@ -3618,9 +3646,9 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			JmpJumpsShow(ent, JMP_MENU_JUMPS, -1);
 			return;
 		}
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete %s?", jmp_list[st->menu_pick].name);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
-		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteYes, "Yes, delete it");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Delete %s?", jmp_list[st->menu_pick].name);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "No, keep it");
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteYes, "Yes, delete it");
 		if (cur < 0)
 			cur = 3;
 	} else if (step == JMP_MENU_JUMPS) {
@@ -3642,14 +3670,14 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			st->menu_sel = st->menu_pick = Q_clip(st->menu_pick, st->menu_top,
 				min(st->menu_top + JMP_LIST_ROWS, hi) - 1);
 
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s (%d)", st->menu_pack[0] ? st->menu_pack
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s (%d)", st->menu_pack[0] ? st->menu_pack
 			: JmpListPacked() ? "In no collection" : "Recorded jumps", hi - lo);
 
 		row = JMP_LIST_FIRST;
 		for (i = st->menu_top; i < hi && i < st->menu_top + JMP_LIST_ROWS; i++) {
 			t = &jmp_list[i];
 			JmpSecs(t->ms, secs, sizeof(secs));
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, i, JmpJumpsPick, "%-15.15s %3d fps %5.5ss",
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpJumpsPick, "%-15.15s %3d fps %5.5ss",
 				t->name, t->fps, secs);
 			if (i == st->menu_sel)
 				cur = row;
@@ -3657,46 +3685,46 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 			if (i == st->menu_sel && t->desc[0]) {
 				int len = JmpDescBreak(t->desc);
 
-				JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE, len, t->desc);
+				Jmp_MenuRow(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE, len, t->desc);
 				if (t->desc[len])
-					JmpMenuRow_Set(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE,
+					Jmp_MenuRow(ent, row++, PMENU_ALIGN_LEFT, 0, NULL, "%c  %.*s", PMENU_NOTE,
 						JMP_DESC_ROW, t->desc + len + (t->desc[len] == ' '));
 			}
 		}
 		if (hi == lo)
-			JmpMenuRow_Set(ent, JMP_LIST_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "None here yet");
+			Jmp_MenuRow(ent, JMP_LIST_FIRST, PMENU_ALIGN_LEFT, 0, NULL, "None here yet");
 
 		// under the list and the two rows a description may take
 		row = JMP_LIST_FIRST + JMP_LIST_ROWS + 2;
 		if (st->menu_top > lo)
-			JmpMenuRow_Set(ent, row, PMENU_ALIGN_LEFT, -JMP_LIST_ROWS, JmpJumpsPage, "Previous page");
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -JMP_LIST_ROWS, JmpJumpsPage, "Previous page");
 		if (st->menu_top + JMP_LIST_ROWS < hi)
-			JmpMenuRow_Set(ent, row + 1, PMENU_ALIGN_LEFT, JMP_LIST_ROWS, JmpJumpsPage, "Next page");
+			Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, JMP_LIST_ROWS, JmpJumpsPage, "Next page");
 
 		if (st->menu_pack[0] && JmpPackMayDelete(ent, st->menu_pack))
-			JmpMenuRow_Set(ent, JMP_MENU_ROWS - 3, PMENU_ALIGN_LEFT, 0, JmpPackDelAsk, "Delete this collection...");
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsUp, "Back");
+			Jmp_MenuRow(ent, JMP_MENU_ROWS - 3, PMENU_ALIGN_LEFT, 0, JmpPackDelAsk, "Delete this collection...");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsUp, "Back");
 		if (cur < 0)
 			cur = JMP_MENU_ROWS - 1;
 		st->menu_cur = cur;
 	} else if (step == JMP_MENU_TAKE && st->recording) {
 		st->rec_mark = st->take.count;
 		JmpSecs(st->take.count ? st->take.samples[st->take.count - 1].ms : 0, secs, sizeof(secs));
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recording, %s seconds", secs);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpTakeSave, "Save the take...");
-		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard the take");
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeKeep, "Keep recording");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Recording, %s seconds", secs);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpTakeSave, "Save the take...");
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard the take");
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeKeep, "Keep recording");
 		if (cur < 0)
 			cur = 3;
 	} else if (step == JMP_MENU_TAKE) {
 		// the last take, not saved: that first, before another is recorded over it
 		JmpSecs(st->take.ms, secs, sizeof(secs));
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Your last take, %s seconds", secs);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch it");
-		JmpMenuRow_Set(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save it...");
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard it");
-		JmpMenuRow_Set(ent, 7, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a new one");
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Your last take, %s seconds", secs);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpJumpsLast, "Watch it");
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, JmpJumpsSave, "Save it...");
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, JmpTakeDiscard, "Discard it");
+		Jmp_MenuRow(ent, 7, PMENU_ALIGN_LEFT, 0, JmpJumpsRec, "Record a new one");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpMenuItems, "Back");
 		if (cur < 0)
 			cur = 3;
 	} else {
@@ -3706,15 +3734,15 @@ static void JmpJumpsShow(edict_t *ent, int step, int cur)
 		}
 		t = &jmp_list[st->menu_pick];
 		JmpSecs(t->ms, secs, sizeof(secs));
-		JmpMenuRow_Set(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
-		JmpMenuRow_Set(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "by %s", t->author);
-		JmpMenuRow_Set(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d fps, %s seconds", t->fps, secs);
-		JmpMenuRow_Set(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
-		JmpMenuRow_Set(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
-		JmpMenuRow_Set(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsStart, "Spawn at its start");
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%s", t->name);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "by %s", t->author);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "%d fps, %s seconds", t->fps, secs);
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 1, JmpJumpsWatch, "Watch from the player's view");
+		Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, JmpJumpsWatch, "Watch in third person");
+		Jmp_MenuRow(ent, 8, PMENU_ALIGN_LEFT, 0, JmpJumpsStart, "Spawn at its start");
 		if (JmpMayDelete(ent, t))
-			JmpMenuRow_Set(ent, 10, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteAsk, "Delete it...");
-		JmpMenuRow_Set(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
+			Jmp_MenuRow(ent, 10, PMENU_ALIGN_LEFT, 0, JmpJumpsDeleteAsk, "Delete it...");
+		Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpJumpsBack, "Back");
 		if (cur < 0)
 			cur = 5;
 	}

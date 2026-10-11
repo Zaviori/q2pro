@@ -1,0 +1,953 @@
+/*
+The jump mod's player pathing: the routes the players took at the starts
+of the rounds of a demo, to study and to run beside.
+
+"jmod paths" picks an .mvd2 out of demos/ (those of this map, newest
+first), then a player, then one of their routes - the rounds they took
+the same way from the same spawn folded into one row - or the overview:
+every route drawn on the map by the client (jpath, src/client/jpath.c),
+green at LIGHTS shading to red at ACTION!, with a numbered marker at its
+end to click on. One click draws that route with the round's other
+players around it for context, a double click sends the player's ghost
+down it, the stored-jump way (Jmp_PlayTake). The demo is parsed on both
+sides with the shared reader (shared/mvdpath.c), so the client is told
+the trails by index and comes to the same ones.
+*/
+
+#include "g_local.h"
+#include "shared/mvdpath.h"
+#include <dirent.h>
+#include <sys/stat.h>
+
+#define JMP_PATH_MAX		48		// routes listed of a player
+#define JMP_PATH_DEMOS		2048	// demos of a map looked at, the newest listed
+#define JMP_PATH_ROWS		12		// a page of demos or players
+#define JMP_PATH_ROUTE_ROWS	10		// of routes, under the overview row
+#define JMP_PATH_FIRST		3
+#define JMP_PATH_SECS		6		// shown past ACTION!, by default
+#define JMP_PATH_CLICK_MS	300		// a second click within this is a double one
+
+typedef struct {
+	char	map[MAX_QPATH];			// the demo is of this map; another map drops it
+	mvp_demo_t	*demo;
+	char	demo_name[MAX_QPATH];	// its file in demos/
+	int		player;					// index into demo->players, -1 none
+	int		frames;					// samples shown: to ACTION! and jmod_path_secs past it
+	int		routes[JMP_PATH_MAX];	// the player's unique trails, and the rounds each folds
+	int		dups[JMP_PATH_MAX];
+	int		route_count;
+
+	int		top;					// the page of the step up
+	int		pick;					// the route the route screen is of
+
+	qboolean	over;				// the overview is up: lines on the client, markers here
+	int		sel;					// the route drawn alone, -1 none
+	int		aim;					// the marker aimed at, from 1; 0 none
+	qboolean	fire_held;
+	int		click_route, click_ms;	// a click waiting to see if it is a double one
+	int		ghud[JMP_PATH_MAX * 2];	// a ring and a number per route
+	int		ghud_count;
+	int		ghud_made;				// level.framenum they were made at
+	int		ghud_key;
+	int		ghud_size[JMP_PATH_MAX];
+	int		tip[2];
+	qboolean	tip_on;
+} jmp_path_t;
+
+static jmp_path_t jmp_paths[MAX_CLIENTS];
+
+typedef struct {
+	char	name[MAX_QPATH];
+	time_t	mtime;
+} jmp_path_demo_t;
+
+static jmp_path_demo_t jmp_path_demos[JMP_PATH_DEMOS];
+static int jmp_path_demo_count;
+
+static cvar_t *jmod_path_secs;
+
+static void JmpPathShow(edict_t *ent, int step, int cur);
+
+static jmp_path_t *JmpPath(edict_t *ent)
+{
+	jmp_path_t *st = &jmp_paths[ent - g_edicts - 1];
+
+	// a new map: the demo was of the old one
+	if (strcmp(st->map, level.mapname)) {
+		MvdPath_Free(st->demo);
+		memset(st, 0, sizeof(*st));
+		Q_strncpyz(st->map, level.mapname, sizeof(st->map));
+		st->player = -1;
+		st->sel = -1;
+	}
+	return st;
+}
+
+static int JmpPathFrames(void)
+{
+	int secs;
+
+	if (!jmod_path_secs)
+		jmod_path_secs = gi.cvar("jmod_path_secs", va("%d", JMP_PATH_SECS), 0);
+	secs = Q_clip((int)jmod_path_secs->value, 0, MVP_AFTER_FRAMES / 10);
+	return MVP_ACTION_FRAMES + secs * 10;
+}
+
+// a demo's file name is what the server gave it: nothing a path or a
+// console line could be made of gets through
+static qboolean JmpPathSafeName(const char *name)
+{
+	size_t len = strlen(name);
+
+	if (!len || len >= MAX_QPATH || strstr(name, ".."))
+		return false;
+	for (; *name; name++)
+		if (*name <= ' ' || *name == '/' || *name == '\\' || *name == '"' || *name == ';' || *name == '$')
+			return false;
+	return true;
+}
+
+static qboolean JmpPathHasMap(const char *name)
+{
+	char lower[MAX_QPATH], map[MAX_QPATH];
+	int i;
+
+	for (i = 0; name[i] && i < MAX_QPATH - 1; i++)
+		lower[i] = Q_tolower(name[i]);
+	lower[i] = 0;
+	for (i = 0; level.mapname[i] && i < MAX_QPATH - 1; i++)
+		map[i] = Q_tolower(level.mapname[i]);
+	map[i] = 0;
+	return strstr(lower, map) != NULL;
+}
+
+static int JmpPathDemoCmp(const void *a, const void *b)
+{
+	const jmp_path_demo_t *da = a, *db = b;
+
+	if (da->mtime != db->mtime)
+		return da->mtime < db->mtime ? 1 : -1;
+	return strcmp(da->name, db->name);
+}
+
+// demos/ of the game: the .mvd2s with this map's name in theirs, newest first
+static void JmpPathScan(void)
+{
+	char path[MAX_OSPATH];
+	struct dirent *e;
+	struct stat sb;
+	DIR *dir;
+	size_t len;
+
+	jmp_path_demo_count = 0;
+	Q_snprintf(path, sizeof(path), "%s/demos", Jmp_GameDir());
+	dir = opendir(path);
+	if (!dir)
+		return;
+
+	while (jmp_path_demo_count < JMP_PATH_DEMOS && (e = readdir(dir)) != NULL) {
+		jmp_path_demo_t *d = &jmp_path_demos[jmp_path_demo_count];
+
+		len = strlen(e->d_name);
+		if (len < 6 || strcmp(e->d_name + len - 5, ".mvd2"))
+			continue;
+		if (!JmpPathSafeName(e->d_name) || !JmpPathHasMap(e->d_name))
+			continue;
+		Q_snprintf(path, sizeof(path), "%s/demos/%s", Jmp_GameDir(), e->d_name);
+		if (stat(path, &sb))
+			continue;
+		Q_strncpyz(d->name, e->d_name, sizeof(d->name));
+		d->mtime = sb.st_mtime;
+		jmp_path_demo_count++;
+	}
+	closedir(dir);
+	qsort(jmp_path_demos, jmp_path_demo_count, sizeof(jmp_path_demos[0]), JmpPathDemoCmp);
+}
+
+/*
+A demo's row: "hl_pickup_2024-12-23_204346_Team1_Team2_urban2_27930.mvd2"
+is "2024-12-23 20:43 Team1_Team2" - the date, the time, what came after
+them up to the map - else the name without its extension, cut to fit.
+*/
+static void JmpPathDemoLabel(const char *name, char *buf, size_t size)
+{
+	char plain[MAX_QPATH];
+	const char *p, *date = NULL, *rest, *map;
+	size_t len = strlen(name), n;
+
+	n = len > 5 ? len - 5 : len;
+	if (n >= sizeof(plain))
+		n = sizeof(plain) - 1;
+	memcpy(plain, name, n);
+	plain[n] = 0;
+
+	// a date: dddd-dd-dd, with _dddddd after it
+	for (p = plain; p[0]; p++) {
+		if (strlen(p) >= 18 && Q_isdigit(p[0]) && Q_isdigit(p[1]) && Q_isdigit(p[2]) && Q_isdigit(p[3])
+			&& p[4] == '-' && Q_isdigit(p[5]) && Q_isdigit(p[6]) && p[7] == '-' && Q_isdigit(p[8])
+			&& Q_isdigit(p[9]) && p[10] == '_' && Q_isdigit(p[11]) && Q_isdigit(p[12]) && Q_isdigit(p[13])
+			&& Q_isdigit(p[14])) {
+			date = p;
+			break;
+		}
+	}
+	if (!date) {
+		Q_strncpyz(buf, plain, size);
+		return;
+	}
+
+	rest = date + 17;
+	if (*rest == '_')
+		rest++;
+	// up to the map's name, when the name has it after the teams
+	map = Q_stristr(rest, level.mapname);
+	n = map && map > rest ? (size_t)(map - rest - 1) : strlen(rest);
+	Q_snprintf(buf, size, "%.10s %.2s:%.2s %.*s", date, date + 11, date + 13, (int)n, rest);
+}
+
+static const char *JmpPathLoc(const vec3_t origin, char *buf)
+{
+	if (!GetLocationAt(origin, buf))
+		Q_snprintf(buf, 64, "%.0f %.0f", origin[0], origin[1]);
+	return buf;
+}
+
+// the spawnpoint a route starts on, from 1; 0 none near
+static int JmpPathSpawn(const vec3_t origin)
+{
+	edict_t *spots[JMP_SPOTS_MAX];
+	vec3_t d;
+	int i, count = Jmp_Spots(spots, JMP_SPOTS_MAX);
+
+	for (i = 0; i < count; i++) {
+		VectorSubtract(spots[i]->s.origin, origin, d);
+		if (VectorLength(d) < JMP_MARKER_NEAR)
+			return i + 1;
+	}
+	return 0;
+}
+
+// where it goes: the location at the end, and at ACTION! when that is
+// another - the names are phrases of their own ("outside red building")
+static void JmpPathDesc(jmp_path_t *st, int k, char *buf, size_t size)
+{
+	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
+	char from[64], via[64], to[64];
+	vec3_t o;
+
+	MvdPath_Origin(&st->demo->samples[t->first], o);
+	JmpPathLoc(o, from);
+	MvdPath_Origin(MvdPath_At(st->demo, t, MVP_ACTION_FRAMES), o);
+	JmpPathLoc(o, via);
+	MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), o);
+	JmpPathLoc(o, to);
+
+	if (strcmp(via, to) && strcmp(via, from))
+		Q_snprintf(buf, size, "%s, by %s", to, via);
+	else
+		Q_strncpyz(buf, to, size);
+}
+
+static const char *JmpPathPlayerName(jmp_path_t *st)
+{
+	if (!st->demo || st->player < 0 || st->player >= st->demo->player_count)
+		return "";
+	return st->demo->players[st->player].name;
+}
+
+static void JmpPathRoutes(jmp_path_t *st)
+{
+	st->route_count = 0;
+	st->sel = -1;
+	if (!st->demo || st->player < 0)
+		return;
+	st->frames = JmpPathFrames();
+	st->route_count = MvdPath_Unique(st->demo, JmpPathPlayerName(st), st->frames,
+		st->routes, st->dups, JMP_PATH_MAX);
+}
+
+static qboolean JmpPathLoad(edict_t *ent, jmp_path_t *st, const char *name)
+{
+	char path[MAX_OSPATH], err[128];
+	FILE *f;
+	byte *data;
+	long len;
+	mvp_demo_t *demo;
+
+	if (!JmpPathSafeName(name)) {
+		gi.cprintf(ent, PRINT_HIGH, "That is no demo name\n");
+		return false;
+	}
+	Q_snprintf(path, sizeof(path), "%s/demos/%s", Jmp_GameDir(), name);
+	f = fopen(path, "rb");
+	if (!f) {
+		gi.cprintf(ent, PRINT_HIGH, "No %s in %s/demos\n", name, Jmp_GameDir());
+		return false;
+	}
+	fseek(f, 0, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	data = len > 0 ? malloc(len) : NULL;
+	if (!data || fread(data, 1, len, f) != (size_t)len) {
+		fclose(f);
+		free(data);
+		gi.cprintf(ent, PRINT_HIGH, "Could not read %s\n", name);
+		return false;
+	}
+	fclose(f);
+
+	demo = MvdPath_Parse(data, len, err, sizeof(err));
+	free(data);
+	if (!demo) {
+		gi.cprintf(ent, PRINT_HIGH, "%s: %s\n", name, err);
+		return false;
+	}
+	if (Q_stricmp(demo->map, level.mapname)) {
+		gi.cprintf(ent, PRINT_HIGH, "%s is of %s, not %s\n", name, demo->map, level.mapname);
+		MvdPath_Free(demo);
+		return false;
+	}
+
+	MvdPath_Free(st->demo);
+	st->demo = demo;
+	Q_strncpyz(st->demo_name, name, sizeof(st->demo_name));
+	st->player = -1;
+	st->route_count = 0;
+	st->sel = -1;
+	gi.cprintf(ent, PRINT_HIGH, "%s: %d rounds, %d players\n", name, demo->round_count, demo->player_count);
+	return true;
+}
+
+/*
+==============================================================================
+THE CLIENT'S LINES
+==============================================================================
+*/
+
+static void JmpPathStuff(edict_t *ent, const char *cmd)
+{
+	char buf[MAX_STRING_CHARS];
+
+	Q_snprintf(buf, sizeof(buf), "%s\n", cmd);
+	stuffcmd(ent, buf);
+}
+
+// the overview: every listed route
+static void JmpPathStuffShow(edict_t *ent, jmp_path_t *st)
+{
+	char cmd[MAX_STRING_CHARS], num[16];
+	int k;
+
+	Q_snprintf(cmd, sizeof(cmd), "jpath show \"%s\" %d ", st->demo_name, st->frames);
+	for (k = 0; k < st->route_count; k++) {
+		Q_snprintf(num, sizeof(num), "%s%d", k ? "," : "", st->routes[k]);
+		Q_strncatz(cmd, num, sizeof(cmd));
+	}
+	JmpPathStuff(ent, cmd);
+}
+
+// one route, the round's other players round it
+static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k)
+{
+	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
+	const mvp_round_t *r = &st->demo->rounds[t->round];
+	char cmd[MAX_STRING_CHARS], num[16];
+	int i, n = 0;
+
+	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, st->frames, st->routes[k]);
+	for (i = r->trail_first; i < r->trail_first + r->trail_count; i++) {
+		if (i == st->routes[k])
+			continue;
+		Q_snprintf(num, sizeof(num), "%s%d", n++ ? "," : "", i);
+		Q_strncatz(cmd, num, sizeof(cmd));
+	}
+	JmpPathStuff(ent, cmd);
+}
+
+/*
+==============================================================================
+THE GHOST
+==============================================================================
+*/
+
+// the route as a take: the demo's ten samples a second, the keys read
+// off the movement - the demo does not have them
+static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
+{
+	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
+	const mvp_round_t *r = &st->demo->rounds[t->round];
+	int i, n = min(t->count, st->frames + 1);
+
+	memset(take, 0, sizeof(*take));
+	Q_snprintf(take->name, sizeof(take->name), "round %d", r->number);
+	Q_strncpyz(take->author, t->name, sizeof(take->author));
+	JmpPathDesc(st, k, take->desc, sizeof(take->desc));
+	take->fps = 10;
+	take->count = n;
+	take->ms = (n - 1) * 100;
+	take->samples = gi.TagMalloc(n * sizeof(jmp_sample_t), TAG_GAME);
+
+	for (i = 0; i < n; i++) {
+		const mvp_sample_t *m = &st->demo->samples[t->first + i];
+		jmp_sample_t *s = &take->samples[i];
+		vec3_t next, v, forward, right;
+		float f, r2, yaw;
+
+		s->ms = i * 100;
+		MvdPath_Origin(m, s->origin);
+		// the LIGHTS frame has the view's angles zeroed by the teleport
+		if (i == 0)
+			m = &st->demo->samples[t->first + min(2, n - 1)];
+		s->pitch = SHORT2ANGLE(m->pitch);
+		s->yaw = SHORT2ANGLE(m->yaw);
+		s->frame = m->anim;
+		s->viewheight = m->viewheight;
+		s->keys = 0;
+		s->speed = 0;
+		if (i + 1 >= n)
+			continue;
+
+		MvdPath_Origin(&st->demo->samples[t->first + i + 1], next);
+		VectorSubtract(next, s->origin, v);
+		VectorScale(v, 10, v);
+		s->speed = sqrtf(v[0] * v[0] + v[1] * v[1]);
+		yaw = DEG2RAD(s->yaw);
+		VectorSet(forward, cosf(yaw), sinf(yaw), 0);
+		VectorSet(right, sinf(yaw), -cosf(yaw), 0);
+		f = DotProduct(v, forward);
+		r2 = DotProduct(v, right);
+		if (f > 40)
+			s[1].keys |= JMP_KEY_FWD;
+		else if (f < -40)
+			s[1].keys |= JMP_KEY_BACK;
+		if (r2 > 40)
+			s[1].keys |= JMP_KEY_RIGHT;
+		else if (r2 < -40)
+			s[1].keys |= JMP_KEY_LEFT;
+		if (v[2] > 150)
+			s[1].keys |= JMP_KEY_JUMP;
+		if (st->demo->samples[t->first + i + 1].viewheight < 16)
+			s[1].keys |= JMP_KEY_DUCK;
+	}
+}
+
+static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
+{
+	jmp_take_t take;
+
+	if (k < 0 || k >= st->route_count)
+		return;
+	if (st->over) {
+		st->sel = k;
+		JmpPathStuffPlay(ent, st, k);
+	}
+	JmpPathTake(st, k, &take);
+	Jmp_PlayTake(ent, &take, pov);
+}
+
+/*
+==============================================================================
+THE OVERVIEW: MARKERS AND CLICKS
+==============================================================================
+*/
+
+static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st)
+{
+	int i;
+
+	for (i = 0; i < st->ghud_count; i++)
+		Ghud_RemoveElement(ent, st->ghud[i]);
+	st->ghud_count = 0;
+}
+
+static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
+{
+	int i;
+
+	if (on == st->tip_on)
+		return;
+	st->tip_on = on;
+	for (i = 0; i < 2; i++) {
+		if (!on) {
+			Ghud_RemoveElement(ent, st->tip[i]);
+			continue;
+		}
+		st->tip[i] = Ghud_NewElement(ent, GHT_TEXT);
+		Ghud_SetAnchor(ent, st->tip[i], 0.5f, 0.5f);
+		Ghud_SetPosition(ent, st->tip[i], 0, 22 + 10 * i);
+		Ghud_SetTextFlags(ent, st->tip[i], UI_CENTER);
+		Ghud_SetColor(ent, st->tip[i], 255, 255, 255, i ? 170 : 255);
+	}
+	if (on) {
+		Ghud_SetText(ent, st->tip[0], "click: this route, with the others of its round");
+		Ghud_SetText(ent, st->tip[1], "double click: watch its ghost");
+	}
+}
+
+static void JmpPathEnd(jmp_path_t *st, int k, vec3_t out)
+{
+	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
+
+	MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), out);
+}
+
+static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
+{
+	vec3_t origins[JMP_PATH_MAX];
+	char text[32];
+	int i, count = st->route_count, hl, key, ring;
+
+	// a new map has cleared every slot, ours went with them
+	if (st->ghud_count && st->ghud_made > level.framenum)
+		st->ghud_count = 0;
+
+	if (!st->over || !count) {
+		st->aim = 0;
+		JmpPathTip(ent, st, false);
+		JmpPathMarkersClear(ent, st);
+		return;
+	}
+
+	for (i = 0; i < count; i++)
+		JmpPathEnd(st, i, origins[i]);
+	// no aiming out of a ghost's eyes
+	st->aim = (ent->svflags & SVF_NOCLIENT) ? 0 : Jmp_AimAt(ent, origins, count);
+	JmpPathTip(ent, st, st->aim != 0);
+	hl = st->aim ? st->aim : st->sel + 1;
+
+	// sized by distance, as the spawn markers are: the client scales a
+	// 3D image by 300 / distance
+	for (i = 0; i < count && 2 * i < st->ghud_count; i++) {
+		vec3_t d;
+		int want, *had = &st->ghud_size[i];
+
+		VectorSubtract(origins[i], ent->s.origin, d);
+		want = (i + 1 == hl ? JMP_MARKER_HL : JMP_MARKER_PX) * max(VectorLength(d), 150) / 300;
+		want = min(want, 30000);
+		if (abs(want - *had) * 10 > *had) {
+			*had = want;
+			Ghud_SetSize(ent, st->ghud[2 * i], want, want);
+		}
+	}
+
+	key = (hl << 16) | count;
+	if (st->ghud_count && key == st->ghud_key)
+		return;
+	st->ghud_key = key;
+	memset(st->ghud_size, 0, sizeof(st->ghud_size));
+
+	if (!st->ghud_count) {
+		ring = gi.imageindex((char *)Jmp_MarkerPic());
+		st->ghud_made = level.framenum;
+		for (i = 0; i < count; i++) {
+			int el = Ghud_NewElement(ent, GHT_IMG);
+
+			Ghud_SetFlags(ent, el, GHF_3DPOS);
+			Ghud_SetPosition3D(ent, el, origins[i][0], origins[i][1], origins[i][2] + 8);
+			Ghud_SetInt(ent, el, ring);
+			Ghud_SetSize(ent, el, JMP_MARKER_PX, JMP_MARKER_PX);
+			st->ghud[st->ghud_count++] = el;
+
+			el = Ghud_NewElement(ent, GHT_TEXT);
+			Ghud_SetFlags(ent, el, GHF_3DPOS);
+			Ghud_SetPosition3D(ent, el, origins[i][0], origins[i][1], origins[i][2] + 72);
+			Ghud_SetTextFlags(ent, el, UI_CENTER);
+			st->ghud[st->ghud_count++] = el;
+		}
+	}
+
+	for (i = 0; i < count && 2 * i + 1 < st->ghud_count; i++) {
+		int el_ring = st->ghud[2 * i], el = st->ghud[2 * i + 1];
+		const mvp_trail_t *t = &st->demo->trails[st->routes[i]];
+
+		if (i + 1 == hl) {
+			Q_snprintf(text, sizeof(text), "> %d: round %d <", i + 1, st->demo->rounds[t->round].number);
+			Ghud_SetColor(ent, el, 255, 220, 0, 255);
+			Ghud_SetColor(ent, el_ring, 255, 220, 0, 255);
+		} else {
+			Q_snprintf(text, sizeof(text), "%d", i + 1);
+			Ghud_SetColor(ent, el, 255, 255, 255, 255);
+			Ghud_SetColor(ent, el_ring, 255, 150, 60, 255);
+		}
+		Ghud_SetText(ent, el, text);
+	}
+}
+
+static void JmpPathOver(edict_t *ent, jmp_path_t *st, qboolean on)
+{
+	if (on && !st->route_count) {
+		gi.cprintf(ent, PRINT_HIGH, "No routes listed: jmod paths picks a demo and a player\n");
+		return;
+	}
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	st->over = on;
+	st->sel = -1;
+	st->click_ms = 0;
+	if (on) {
+		JmpPathStuffShow(ent, st);
+		gi.cprintf(ent, PRINT_HIGH, "%d routes of %s on the map: fire on a number for one, twice for its ghost. Escape puts them away\n",
+			st->route_count, JmpPathPlayerName(st));
+	} else {
+		JmpPathStuff(ent, "jpath off");
+	}
+	JmpPathMarkers(ent, st);
+}
+
+// one route drawn, the others of its round round it
+static void JmpPathOne(edict_t *ent, jmp_path_t *st, int k)
+{
+	if (k < 0 || k >= st->route_count)
+		return;
+	if (!st->over) {
+		if (ent->client->layout == LAYOUT_MENU)
+			PMenu_Close(ent);
+		st->over = true;
+		gi.cprintf(ent, PRINT_HIGH, "Route %d of %s on the map; Escape puts it away\n", k + 1, JmpPathPlayerName(st));
+	}
+	st->sel = k;
+	JmpPathStuffPlay(ent, st, k);
+	JmpPathMarkers(ent, st);
+}
+
+// with the overview up the markers are buttons: a click draws that
+// route, a second one in time sends its ghost. Called with every command.
+qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
+{
+	jmp_path_t *st = JmpPath(ent);
+	gclient_t *client = ent->client;
+	qboolean fire = (ucmd->buttons & BUTTON_ATTACK) != 0;
+	qboolean pressed = fire && !st->fire_held;
+	int k = st->aim - 1;
+
+	st->fire_held = fire;
+	if (!st->over || client->layout == LAYOUT_MENU || (ent->svflags & SVF_NOCLIENT))
+		return false;
+
+	if (st->click_ms > 0) {
+		st->click_ms -= ucmd->msec;
+		if (pressed && k == st->click_route) {
+			st->click_ms = 0;
+			client->latched_buttons &= ~BUTTON_ATTACK;
+			JmpPathGhost(ent, st, k, false);
+			return true;
+		} else if (pressed) {
+			st->click_ms = 0;
+		} else if (st->click_ms <= 0) {
+			st->click_ms = 0;
+			JmpPathOne(ent, st, st->click_route);
+			return true;
+		}
+	}
+
+	if (!pressed || k < 0)
+		return true;
+	client->latched_buttons &= ~BUTTON_ATTACK;
+	st->click_route = k;
+	st->click_ms = JMP_PATH_CLICK_MS;
+	return true;
+}
+
+qboolean JmpPath_Escape(edict_t *ent)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (!st->over)
+		return false;
+	JmpPathOver(ent, st, false);
+	return true;
+}
+
+void JmpPath_Frame(edict_t *ent)
+{
+	JmpPathMarkers(ent, JmpPath(ent));
+}
+
+void JmpPath_HudCleared(edict_t *ent)
+{
+	jmp_path_t *st = &jmp_paths[ent - g_edicts - 1];
+
+	st->ghud_count = 0;
+	st->tip_on = false;
+}
+
+void JmpPath_ClientDisconnect(edict_t *ent)
+{
+	jmp_path_t *st = &jmp_paths[ent - g_edicts - 1];
+
+	MvdPath_Free(st->demo);
+	memset(st, 0, sizeof(*st));
+}
+
+/*
+==============================================================================
+THE MENUS
+==============================================================================
+*/
+
+static void JmpPathPickDemo(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+	int i = (int)(intptr_t)p->arg;
+
+	if (i < 0) {
+		// the one loaded
+		JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+		return;
+	}
+	if (i >= jmp_path_demo_count)
+		return;
+	if (!JmpPathLoad(ent, st, jmp_path_demos[i].name)) {
+		JmpPathShow(ent, JMP_MENU_PATHS, p - ent->client->jmp_menu);
+		return;
+	}
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+}
+
+static void JmpPathPickPlayer(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+	int i = (int)(intptr_t)p->arg;
+
+	if (!st->demo || i < 0 || i >= st->demo->player_count)
+		return;
+	st->player = i;
+	JmpPathRoutes(st);
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_ROUTES, -1);
+}
+
+static void JmpPathPickRoute(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	st->pick = (int)(intptr_t)p->arg;
+	JmpPathShow(ent, JMP_MENU_PATH_ROUTE, -1);
+}
+
+static void JmpPathMenuOver(edict_t *ent, pmenu_t *p)
+{
+	JmpPathOver(ent, JmpPath(ent), true);
+}
+
+static void JmpPathMenuOne(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	JmpPathOne(ent, st, st->pick);
+}
+
+static void JmpPathMenuGhost(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	JmpPathGhost(ent, st, st->pick, (int)(intptr_t)p->arg != 0);
+}
+
+static void JmpPathPage(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	st->top = max(st->top + (int)(intptr_t)p->arg, 0);
+	JmpPathShow(ent, ent->client->jmp_menu_step, p - ent->client->jmp_menu);
+}
+
+static void JmpPathBack(edict_t *ent, pmenu_t *p)
+{
+	int step = ent->client->jmp_menu_step;
+
+	JmpPath(ent)->top = 0;
+	if (step == JMP_MENU_PATHS)
+		Jmp_MenuItems(ent, p);
+	else
+		JmpPathShow(ent, step - 1, -1);
+}
+
+// "Previous page" and "Next page" under a list of n, a page of size at a time
+static void JmpPathPaging(edict_t *ent, jmp_path_t *st, int row, int n, int size)
+{
+	if (st->top > 0)
+		Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -size, JmpPathPage, "Previous page");
+	if (st->top + size < n)
+		Jmp_MenuRow(ent, row + 1, PMENU_ALIGN_LEFT, size, JmpPathPage, "Next page");
+}
+
+static void JmpPathShow(edict_t *ent, int step, int cur)
+{
+	jmp_path_t *st = JmpPath(ent);
+	gclient_t *client = ent->client;
+	char label[64], desc[64], loc[64];
+	int i, row, n;
+
+	for (i = 0; i < JMP_MENU_ROWS; i++)
+		Jmp_MenuRow(ent, i, PMENU_ALIGN_LEFT, 0, NULL, NULL);
+	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
+
+	// a step needs what the one before it picked
+	if (step >= JMP_MENU_PATH_PLAYERS && !st->demo)
+		step = JMP_MENU_PATHS;
+	if (step >= JMP_MENU_PATH_ROUTES && st->player < 0)
+		step = JMP_MENU_PATH_PLAYERS;
+	if (step >= JMP_MENU_PATH_ROUTE && (st->pick < 0 || st->pick >= st->route_count))
+		step = JMP_MENU_PATH_ROUTES;
+	if (step != client->jmp_menu_step)
+		cur = -1;
+	client->jmp_menu_step = step;
+
+	if (step == JMP_MENU_PATHS) {
+		JmpPathScan();
+		n = jmp_path_demo_count;
+		if (st->top >= n)
+			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %s", level.mapname);
+		row = JMP_PATH_FIRST;
+		if (st->demo) {
+			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.23s", label);
+			if (cur < 0)
+				cur = row;
+			row += 2;
+		}
+		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
+			JmpPathDemoLabel(jmp_path_demos[i].name, label, sizeof(label));
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickDemo, "%.31s", label);
+			if (cur < 0)
+				cur = row;
+		}
+		if (!n)
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No .mvd2 of %s in demos/", level.mapname);
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
+	} else if (step == JMP_MENU_PATH_PLAYERS) {
+		n = st->demo->player_count;
+		if (st->top >= n)
+			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
+		JmpPathDemoLabel(st->demo_name, label, sizeof(label));
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.30s", label);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "%d rounds. Whose routes?", st->demo->round_count);
+		row = JMP_PATH_FIRST + 1;
+		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
+			const mvp_player_t *pl = &st->demo->players[i];
+
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickPlayer, "%-18.18s %2d round%s",
+				pl->name, pl->trails, pl->trails == 1 ? "" : "s");
+			if (cur < 0 && (i == st->player || (st->player < 0 && i == st->top)))
+				cur = row;
+		}
+		if (!n)
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "Nobody played a round in it");
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + 1 + JMP_PATH_ROWS + 1, n, JMP_PATH_ROWS);
+	} else if (step == JMP_MENU_PATH_ROUTES) {
+		n = st->route_count;
+		if (st->top >= n)
+			st->top = max(n - 1, 0) / JMP_PATH_ROUTE_ROWS * JMP_PATH_ROUTE_ROWS;
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.20s: %d route%s", JmpPathPlayerName(st),
+			n, n == 1 ? "" : "s");
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "of %d rounds, to %d s past ACTION!",
+			st->demo->players[st->player].trails, (st->frames - MVP_ACTION_FRAMES) / 10);
+		Jmp_MenuRow(ent, JMP_PATH_FIRST + 1, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All of them on the map");
+		row = JMP_PATH_FIRST + 3;
+		for (i = st->top; i < n && i < st->top + JMP_PATH_ROUTE_ROWS; i++, row++) {
+			const mvp_trail_t *t = &st->demo->trails[st->routes[i]];
+
+			JmpPathDesc(st, i, desc, sizeof(desc));
+			if (st->dups[i])
+				Q_snprintf(label, sizeof(label), "R%d x%d", st->demo->rounds[t->round].number, st->dups[i] + 1);
+			else
+				Q_snprintf(label, sizeof(label), "R%d", st->demo->rounds[t->round].number);
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickRoute, "%2d %-6.6s %.21s", i + 1, label, desc);
+			if (cur < 0 && i == st->pick)
+				cur = row;
+		}
+		if (!n)
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No whole round of theirs");
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + 3 + JMP_PATH_ROUTE_ROWS + 1, n, JMP_PATH_ROUTE_ROWS);
+		if (cur < 0)
+			cur = JMP_PATH_FIRST + 1;
+	} else {
+		const mvp_trail_t *t = &st->demo->trails[st->routes[st->pick]];
+		const mvp_round_t *r = &st->demo->rounds[t->round];
+		vec3_t o;
+		int spawn, ms = (min(t->count, st->frames + 1) - 1) * 100;
+
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%d: round %d, %.16s", st->pick + 1, r->number, t->name);
+		MvdPath_Origin(&st->demo->samples[t->first], o);
+		spawn = JmpPathSpawn(o);
+		if (spawn)
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "spawn %d: %.22s", spawn, JmpPathLoc(o, loc));
+		else
+			Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, NULL, "LIGHTS: %.23s", JmpPathLoc(o, loc));
+		MvdPath_Origin(MvdPath_At(st->demo, t, MVP_ACTION_FRAMES), o);
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, NULL, "ACTION!: %.22s", JmpPathLoc(o, loc));
+		MvdPath_Origin(MvdPath_At(st->demo, t, st->frames), o);
+		Jmp_MenuRow(ent, 4, PMENU_ALIGN_LEFT, 0, NULL, "%s: %.22s", t->died && t->count <= st->frames ? "died" : "then",
+			JmpPathLoc(o, loc));
+		Jmp_MenuRow(ent, 5, PMENU_ALIGN_LEFT, 0, NULL, "%d.%d seconds%s", ms / 1000, ms % 1000 / 100,
+			t->died && t->count <= st->frames ? ", cut by the death" : "");
+		if (st->dups[st->pick])
+			Jmp_MenuRow(ent, 6, PMENU_ALIGN_LEFT, 0, NULL, "taken the same way %d times", st->dups[st->pick] + 1);
+		Jmp_MenuRow(ent, 8, PMENU_ALIGN_LEFT, 0, JmpPathMenuOne, "Draw it on the map");
+		Jmp_MenuRow(ent, 9, PMENU_ALIGN_LEFT, 0, JmpPathMenuGhost, "Watch its ghost, third person");
+		Jmp_MenuRow(ent, 10, PMENU_ALIGN_LEFT, 1, JmpPathMenuGhost, "Watch from the player's view");
+		Jmp_MenuRow(ent, 12, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All the routes on the map");
+		if (cur < 0)
+			cur = 8;
+	}
+
+	Jmp_MenuRow(ent, JMP_MENU_ROWS - 1, PMENU_ALIGN_LEFT, 0, JmpPathBack, "Back");
+	if (cur < 0)
+		cur = JMP_PATH_FIRST;
+
+	if (client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	PMenu_Open(ent, client->jmp_menu, cur, JMP_MENU_ROWS);
+}
+
+// from the jmod item menu, and "jmod paths"
+void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p)
+{
+	if (Jmp_OpenTakeMenu(ent))
+		return;
+	JmpPath(ent)->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATHS, -1);
+}
+
+// jmod paths [demo] | jmod path <#> [ghost|pov] | jmod pathmap
+void JmpPath_Cmd(edict_t *ent, const char *cmd)
+{
+	jmp_path_t *st = JmpPath(ent);
+	const char *arg = gi.argc() > 2 ? gi.argv(2) : "";
+	int k;
+
+	if (!Q_stricmp(cmd, "pathmap")) {
+		JmpPathOver(ent, st, !st->over);
+		return;
+	}
+	if (!Q_stricmp(cmd, "path")) {
+		k = atoi(arg) - 1;
+		if (!arg[0] || k < 0 || k >= st->route_count) {
+			gi.cprintf(ent, PRINT_HIGH, "Usage: jmod path <1-%d> [ghost|pov]: a route of %s\n",
+				st->route_count, st->route_count ? JmpPathPlayerName(st) : "the player jmod paths picks");
+			return;
+		}
+		arg = gi.argc() > 3 ? gi.argv(3) : "";
+		if (!Q_stricmp(arg, "ghost"))
+			JmpPathGhost(ent, st, k, false);
+		else if (!Q_stricmp(arg, "pov"))
+			JmpPathGhost(ent, st, k, true);
+		else
+			JmpPathOne(ent, st, k);
+		return;
+	}
+
+	if (!arg[0]) {
+		Jmp_OpenPathMenu(ent, NULL);
+		return;
+	}
+	if (!JmpPathLoad(ent, st, arg))
+		return;
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+}

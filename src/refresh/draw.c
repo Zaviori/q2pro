@@ -418,9 +418,10 @@ int R_DrawString(int x, int y, int flags, size_t maxlen, const char *s, qhandle_
     return x;
 }
 
-#if USE_DEBUG
-
+// the debug texts (debug.c) draw with it in every build
 qhandle_t r_charset;
+
+#if USE_DEBUG
 
 static void Draw_Stringf(int x, int y, const char *fmt, ...)
 {

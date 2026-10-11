@@ -2229,7 +2229,8 @@ static void CL_Jmod_c(genctx_t *ctx, int argnum)
         "store", "recall", "reset", "clear", "noclip", "goto",
         "spawnp", "spawnc", "spawns", "respawn", "delay", "repeat", "stop", "cancel",
         "lca", "laser", "slippers", "menu", "markers",
-        "rec", "save", "play", "start", "delete", "jumps", NULL
+        "rec", "save", "play", "start", "delete", "jumps",
+        "paths", "path", "pathmap", NULL
     };
 
     if (argnum == 1) {
@@ -2764,6 +2765,7 @@ static void CL_InitLocal(void)
     CL_GTV_Init();
 
     Cmd_Register(c_client);
+    JPath_Init();
 
     for (i = 0; i < MAX_LOCAL_SERVERS; i++) {
         var = Cvar_Get(va("adr%i", i), "", CVAR_ARCHIVE);
