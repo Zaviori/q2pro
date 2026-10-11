@@ -110,11 +110,13 @@ typedef enum {
 
 #if USE_CURL
 bool HTTP_FetchStart(const char *url, const char *path, bool gunzip);
+bool HTTP_FetchStartRange(const char *url, int64_t bytes);
 fetch_state_t HTTP_FetchState(int64_t *got, int64_t *total, char *err, size_t errlen);
 int HTTP_FetchTake(void **data);
 void HTTP_FetchCancel(void);
 #else
 #define HTTP_FetchStart(url, path, gunzip)          false
+#define HTTP_FetchStartRange(url, bytes)            false
 #define HTTP_FetchState(got, total, err, errlen)    FETCH_IDLE
 #define HTTP_FetchTake(data)                        0
 #define HTTP_FetchCancel()                          (void)0
