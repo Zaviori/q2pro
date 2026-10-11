@@ -1127,17 +1127,24 @@ void ToggleSlippers(edict_t *ent, pmenu_t *p)
 
 
 //PaTMaN - Item Menu
+// in the vote menu's frame, as the jump menus are (Jmp_MenuFrame)
 pmenu_t pmitemmenu[] = {
-  {"*Jump Menu                  (command binds)",		PMENU_ALIGN_LEFT,	NULL, NULL					},
-  { "-----------------------------------------------",	PMENU_ALIGN_LEFT,	NULL, NULL					},
+  { "*Jump Menu",										PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
+  { "the command to bind beside each",					PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { (char *)jmp_menu_line,								PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { "Respawn to Closest Spawn   (jmod spawnc)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoPC_f_compat  	},
   { "Respawn to Random Spawn    (jmod spawnp)",			PMENU_ALIGN_LEFT,	NULL, Cmd_GotoP_f_compat   	},
   { "Spawnpoints...             (jmod spawns)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenSpawnMenu   	},
   { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
   { "Record a jump...           (jmod rec)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenRecordMenu   	},
   { "Recorded jumps...          (jmod jumps)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenJumpMenu   	},
-  { "View player pathing...     (jmod paths)",		PMENU_ALIGN_LEFT,	NULL, Jmp_OpenPathMenu   	},
-
+  { "View player pathing...     (jmod paths)",			PMENU_ALIGN_LEFT,	NULL, Jmp_OpenPathMenu   	},
+  { NULL,												PMENU_ALIGN_LEFT,	NULL, NULL					},
+  { (char *)jmp_menu_line,								PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { "Use arrows to move cursor",						PMENU_ALIGN_CENTER,	NULL, NULL					},
+  { "ENTER to select, TAB to exit",						PMENU_ALIGN_CENTER,	NULL, NULL					},
 };
 
 
@@ -1146,7 +1153,7 @@ void OpenPMItemMenu(edict_t *ent)
 	// a take running: what to do with it comes first
 	if (jump->value && Jmp_OpenTakeMenu(ent))
 		return;
-	PMenu_Open(ent, pmitemmenu, 2, sizeof(pmitemmenu) / sizeof(pmenu_t));
+	PMenu_Open(ent, pmitemmenu, 5, sizeof(pmitemmenu) / sizeof(pmenu_t));
 }
 
 //End PaTMaN's jmod add

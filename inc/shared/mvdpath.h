@@ -24,6 +24,7 @@ typedef struct {
     short   pitch, yaw;     // the view's, as angle16
     short   anim;           // the model's animation frame
     signed char viewheight; // the view's height over the origin, in units
+    byte    weapon;         // the weapon model held (the vwep index), 0 for none
 } mvp_sample_t;
 
 typedef struct {

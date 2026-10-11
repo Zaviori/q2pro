@@ -197,6 +197,8 @@ typedef struct {
 typedef struct {
     bool        inuse;
     short       frame;
+    int         skinnum;    // the weapon held is its high byte (the mod's vwep)
+    byte        model2;     // 255 while a weapon is held
 } es_t;
 
 typedef struct {
@@ -360,8 +362,11 @@ static void parse_entities(parser_t *ps, rd_t *r)
 
         if (bits & U_MODEL)
             rd_byte(r);
-        if (bits & U_MODEL2)
-            rd_byte(r);
+        if (bits & U_MODEL2) {
+            int m2 = rd_byte(r);
+            if (e)
+                e->model2 = m2;
+        }
         if (bits & U_MODEL3)
             rd_byte(r);
         if (bits & U_MODEL4)
@@ -370,12 +375,17 @@ static void parse_entities(parser_t *ps, rd_t *r)
             frame = rd_byte(r);
         if (bits & U_FRAME16)
             frame = rd_word(r);
-        if ((bits & (U_SKIN8 | U_SKIN16)) == (U_SKIN8 | U_SKIN16))
-            rd_long(r);
-        else if (bits & U_SKIN8)
-            rd_byte(r);
-        else if (bits & U_SKIN16)
-            rd_word(r);
+        if (bits & (U_SKIN8 | U_SKIN16)) {
+            int skin;
+            if ((bits & (U_SKIN8 | U_SKIN16)) == (U_SKIN8 | U_SKIN16))
+                skin = rd_long(r);
+            else if (bits & U_SKIN8)
+                skin = rd_byte(r);
+            else
+                skin = rd_word(r);
+            if (e)
+                e->skinnum = skin;
+        }
         if ((bits & (U_EFFECTS8 | U_EFFECTS16)) == (U_EFFECTS8 | U_EFFECTS16))
             rd_long(r);
         else if (bits & U_EFFECTS8)
@@ -430,6 +440,7 @@ static void sample(const parser_t *ps, int slot, mvp_sample_t *s)
     s->yaw = p->angles[1];
     s->anim = ps->es[slot + 1].frame;
     s->viewheight = p->viewheight;
+    s->weapon = ps->es[slot + 1].model2 == 255 ? (ps->es[slot + 1].skinnum >> 8) & 255 : 0;
 }
 
 // the open round's trails into the demo, the short ones dropped

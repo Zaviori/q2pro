@@ -1,4 +1,5 @@
-#define JMP_MENU_ROWS	20
+#define JMP_MENU_ROWS	20	// a builder's rows: 0 the title, 2 the subtitle, 3 on the entries
+#define JMP_MENU_FRAME	(JMP_MENU_ROWS + 6)	// with the frame's: the bars, the blanks and the help (Jmp_MenuFrame)
 #define JMP_SPOTS_MAX	40				// spawnpoints jmod lists
 #define JMP_STARTS_MAX	24				// stored jumps' starts listed with them
 #define JMP_STARTS_PACKS	4			// collections whose starts are, at a time
@@ -39,6 +40,7 @@ typedef struct {
 	short	speed;
 	byte	keys;		// held at any time since the sample before
 	signed char	viewheight;
+	byte	weapon;		// the weapon model held (the mod's vwep index), 0 for none
 } jmp_sample_t;
 
 typedef struct {
@@ -74,6 +76,10 @@ void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
 qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
 void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
+qboolean Jmp_SpawnEscape(edict_t *ent);
+int Jmp_MenuRowAt(int row);
+int Jmp_MenuRowOf(edict_t *ent, const pmenu_t *p);
+void Jmp_MenuFrame(edict_t *ent);
 qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
 qboolean JmpPath_SpawnCtrl(edict_t *ent);
 void JmpPath_Spawned(edict_t *ent);

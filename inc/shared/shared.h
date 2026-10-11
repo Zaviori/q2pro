@@ -1540,6 +1540,7 @@ enum {
 #define LAYOUTS_INTERMISSION    BIT(3)
 #define LAYOUTS_HELP            BIT(4)
 #define LAYOUTS_HIDE_CROSSHAIR  BIT(5)
+#define LAYOUTS_ESCAPE          BIT(6)      // ours: Escape sent on as putaway (jmod's drills)
 
 // dmflags->value flags
 #define DF_NO_HEALTH        BIT(0)
