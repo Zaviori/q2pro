@@ -257,6 +257,11 @@ void Cmd_Jmod_f (edict_t *ent)
 		ent->client->jmp_shift = gi.argc() >= 3 && atoi(gi.argv(2)) != 0;
 		return;
 	}
+	else if(Q_stricmp(cmd, "ctrlkey") == 0)
+	{
+		ent->client->jmp_ctrl = gi.argc() >= 3 && atoi(gi.argv(2)) != 0;
+		return;
+	}
 	else if(Q_stricmp(cmd, "paths") == 0 || Q_stricmp(cmd, "path") == 0 || Q_stricmp(cmd, "pathmap") == 0 || Q_stricmp(cmd, "pathspawn") == 0)
 	{
 		JmpPath_Cmd(ent, cmd);
@@ -1241,7 +1246,8 @@ static void JmpTip(edict_t *ent, qboolean on)
 	} else {
 		const char *paths = JmpPath_SpawnTip(ent);
 
-		Ghud_SetText(ent, client->resp.jmp_tip[0], "click: spawn here   double click: delay, repeat");
+		Ghud_SetText(ent, client->resp.jmp_tip[0], paths ? "click: spawn here   double click: delay, repeat   ctrl + click: another player"
+			: "click: spawn here   double click: delay, repeat");
 		Ghud_SetText(ent, client->resp.jmp_tip[1], paths ? paths : "shift + click: record a jump from here");
 	}
 }
@@ -1298,7 +1304,10 @@ void Jmp_MenuFire(edict_t *ent, usercmd_t *ucmd)
 		return;
 	client->latched_buttons &= ~BUTTON_ATTACK;
 
-	// with a player's routes listed, shift on a spawn marker draws his from there
+	// with a player's routes listed, shift on a spawn marker draws his from
+	// there, and ctrl on one asks for another player
+	if (client->jmp_ctrl && JmpPath_SpawnCtrl(ent))
+		return;
 	if (shift && JmpPath_SpawnPick(ent, spot))
 		return;
 

@@ -1154,6 +1154,21 @@ qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
 	return true;
 }
 
+// ctrl+fire on a spawn marker while a player is picked: the players
+// menu, to pick another. False when it is not the pathing's click to take.
+qboolean JmpPath_SpawnCtrl(edict_t *ent)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (!st->spawn_mode || !st->demo)
+		return false;
+	if (st->over)
+		JmpPathOver(ent, st, false);
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+	return true;
+}
+
 // the spawn markers' tooltip while a player is picked
 const char *JmpPath_SpawnTip(edict_t *ent)
 {
