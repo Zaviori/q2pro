@@ -811,7 +811,8 @@ static void S3_PeekParse(const byte *data, size_t len, char *players, size_t siz
         skin = strchr(string, '\\');
         if (skin)
             *skin++ = 0;
-        if (string[0] && info.numPlayers < MAX_CLIENTS) {
+        if (string[0] && info.numPlayers < MAX_CLIENTS
+            && Q_stricmp(string, "spec") && Q_stricmp(string, "[MVDSPEC]")) {   // the server's spectator slots
             Q_strlcpy(info.players[info.numPlayers].name, string, MAX_CLIENT_NAME);
             Q_strlcpy(info.players[info.numPlayers].skin, skin ? skin : "", MAX_QPATH);
             info.numPlayers++;
