@@ -47,6 +47,9 @@ DEMOS MENU
 #define COL_MAP     3
 #define COL_POV     4
 #define COL_MAX     5
+#define COL_PLAYERS 5   // past the columns drawn: the players, for the status line and the filter
+
+#define DEMO_CACHE_VERSION  '2' // after the hash: the players came in
 
 typedef struct {
     unsigned    type;
@@ -71,6 +74,7 @@ typedef struct {
     int             widest_map, widest_pov;
     uint64_t        total_bytes;
     char            status[32];
+    char            players[MAX_STRING_CHARS];  // the status line of the demo under the cursor
 } m_demos_t;
 
 static m_demos_t    m_demos;
@@ -103,6 +107,12 @@ static void BuildName(const file_info_t *info, char **cache)
                 *p = 0;
                 Q_strlcpy(demo.pov, s, sizeof(demo.pov));
                 s = p + 1;
+                p = strchr(s, '\\');
+                if (p) {
+                    *p = 0;
+                    Q_strlcpy(demo.players, s, sizeof(demo.players));
+                    s = p + 1;
+                }
             }
         }
         *cache = s;
@@ -144,7 +154,7 @@ static void BuildName(const file_info_t *info, char **cache)
     Com_FormatSize(buffer, sizeof(buffer), info->size);
 
     e = UI_FormatColumns(DEMO_EXTRASIZE,
-                         info->name, date, buffer, demo.map, demo.pov, NULL);
+                         info->name, date, buffer, demo.map, demo.pov, demo.players, NULL);
     e->type = ENTRY_DEMO;
     e->size = info->size;
     e->mtime = info->mtime;
@@ -191,8 +201,8 @@ static char *LoadCache(void **list)
         hash[i] = (c1 << 4) | c2;
     }
 
-    if (cache[32] != '\\') {
-        goto fail;
+    if (len < 35 || cache[32] != '\\' || cache[33] != DEMO_CACHE_VERSION || cache[34] != '\\') {
+        goto fail;      // an older cache: read the demos again
     }
 
     if (memcmp(hash, m_demos.hash, 16)) {
@@ -229,13 +239,13 @@ static void WriteCache(void)
     for (i = 0; i < 16; i++) {
         FS_FPrintf(f, "%02x", m_demos.hash[i]);
     }
-    FS_FPrintf(f, "\\");
+    FS_FPrintf(f, "\\%c\\", DEMO_CACHE_VERSION);
 
     for (i = m_demos.numDirs; i < m_demos.list.numItems; i++) {
         e = m_demos.list.items[i];
         map = UI_GetColumn(e->name, COL_MAP);
         pov = UI_GetColumn(e->name, COL_POV);
-        FS_FPrintf(f, "%s\\%s\\", map, pov);
+        FS_FPrintf(f, "%s\\%s\\%s\\", map, pov, UI_GetColumn(e->name, COL_PLAYERS));
     }
     FS_CloseFile(f);
 }
@@ -268,6 +278,11 @@ static menuSound_t Change(menuCommon_t *self)
     switch (e->type) {
     case ENTRY_DEMO:
         m_demos.menu.status = "Press Enter to play demo";
+        if (*UI_GetColumn(e->name, COL_PLAYERS)) {
+            Q_snprintf(m_demos.players, sizeof(m_demos.players), "Enter plays it. In it: %s",
+                       UI_GetColumn(e->name, COL_PLAYERS));
+            m_demos.menu.status = m_demos.players;
+        }
         break;
     case ENTRY_S3:
         m_demos.menu.status = "Press Enter to list the demos on aq2world";
@@ -280,12 +295,22 @@ static menuSound_t Change(menuCommon_t *self)
     return QMS_SILENT;
 }
 
+// by the name, or by who is in it
+static int DemoScore(const demoEntry_t *e)
+{
+    int s1 = Fuzzy_Score(m_demos.filter, e->name), s2 = -1;
+
+    if (e->type == ENTRY_DEMO)
+        s2 = Fuzzy_Score(m_demos.filter, UI_GetColumn((char *)e->name, COL_PLAYERS));
+    return max(s1, s2);
+}
+
 static int scorecmp(const void *p1, const void *p2)
 {
     const demoEntry_t *e1 = *(const demoEntry_t **)p1;
     const demoEntry_t *e2 = *(const demoEntry_t **)p2;
-    int s1 = Fuzzy_Score(m_demos.filter, e1->name);
-    int s2 = Fuzzy_Score(m_demos.filter, e2->name);
+    int s1 = DemoScore(e1);
+    int s2 = DemoScore(e2);
 
     if (s1 != s2)
         return s2 - s1;
@@ -301,8 +326,7 @@ static void ApplyFilter(void)
 
     for (i = 0; i < m_demos.numAll; i++) {
         e = m_demos.all[i];
-        if (!*m_demos.filter || e->type == ENTRY_UP || e->type == ENTRY_S3 ||
-            Fuzzy_Score(m_demos.filter, e->name) >= 0)
+        if (!*m_demos.filter || e->type == ENTRY_UP || e->type == ENTRY_S3 || DemoScore(e) >= 0)
             m_demos.list.items[n++] = e;
         if (i + 1 == m_demos.allDirs)
             m_demos.numDirs = n;
@@ -389,7 +413,7 @@ static void BuildList(void)
     if (demolist) {
         CalcHash(demolist);
         if ((cache = LoadCache(demolist)) != NULL) {
-            p = cache + 32 + 1;
+            p = cache + 32 + 3;
             for (i = 0; i < numDemos; i++) {
                 BuildName(demolist[i], &p);
             }

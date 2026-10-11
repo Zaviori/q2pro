@@ -1152,6 +1152,17 @@ static void parse_info_string(demoInfo_t *info, int clientNum, int index, const 
                 *p = 0;
             }
         }
+        // the name before the skin, onto the list of everybody's
+        p = strchr(string, '\\');
+        if (p) {
+            *p = 0;
+        }
+        if (string[0]) {
+            if (info->players[0]) {
+                Q_strlcat(info->players, " ", sizeof(info->players));
+            }
+            Q_strlcat(info->players, string, sizeof(info->players));
+        }
     } else if (index == csr->models + 1) {
         Com_ParseMapName(info->map, string, sizeof(info->map));
     }
