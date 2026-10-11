@@ -305,7 +305,9 @@ static void JPath_Lines(const mvp_trail_t *t, float upto, int alpha, float brigh
     vec3_t a, b, head;
     int i, n = min(t->count, jpath.frames + 1), whole = (int)upto, from = JPath_From(t, upto);
 
-    if (jpath_kills->integer)
+    // the kill rays with a round selected - its others drawn - and that
+    // round's alone, which is every trail drawn then
+    if (jpath_kills->integer && jpath.other_count > 0)
         JPath_KillRays(t, upto, depth, lift);
     if (from < 0 || from >= n)
         return;
