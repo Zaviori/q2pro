@@ -300,7 +300,15 @@ static void JPath_KillRays(const mvp_trail_t *t, float upto, bool depth, float l
         R_AddDebugLine(eye, him, MakeColor(255, 170, 0, 230 * fade), 0, depth);
         R_AddDebugPoint(him, 10, MakeColor(255, 170, 0, 230 * fade), 0, depth);
         if (jpath_icon_count < JPATH_ICONS_MAX) {
-            LerpVector(eye, him, 0.12f, mid);   // by the shooter's end
+            // at the shooter's side of the ray: a step along it from his eye
+            {
+                vec3_t dir;
+                float len;
+
+                VectorSubtract(him, eye, dir);
+                len = VectorNormalize(dir);
+                VectorMA(eye, min(len * 0.5f, 20), dir, mid);
+            }
             VectorCopy(mid, jpath_icons[jpath_icon_count].org);
             jpath_icons[jpath_icon_count].pic = JPath_WeaponIcon(s[shot].weapon);
             jpath_icons[jpath_icon_count].alpha = fade;
