@@ -55,8 +55,12 @@ row a moment, and kept with the listing.
 #define S3_MAX_KEYS     4096        // of a month
 #define S3_MAX_PAGES    8           // listings of a thousand a month may take
 #define S3_CACHE_DIR    "s3cache"
-#define S3_TTL_NOW      (10 * 60)   // seconds a listing of this month is good for
-#define S3_TTL_PAST     (24 * 60 * 60)
+// seconds a month's listing is good for before the bucket is asked
+// again: the month being played gains demos, a past one is done. The
+// players read for a row are kept through a new listing whatever the
+// age - they never change, and all of them come to well under a megabyte
+#define S3_TTL_NOW      (60 * 60)
+#define S3_TTL_PAST     (365 * 24 * 60 * 60)
 #define S3_PAGES_KEPT   8           // months kept in memory
 #define S3_KEY_MAX      192         // a key with its directory: longer than MAX_QPATH
 #define S3_PLAYERS_MAX  256         // the players' note
