@@ -86,7 +86,7 @@ typedef struct {
 	int		ghud_made;				// level.framenum they were made at
 	int		ghud_key;
 	int		ghud_size[JMP_PATH_MAX];
-	int		tip[5];
+	int		tip[4];
 	qboolean	tip_on;
 } jmp_path_t;
 
