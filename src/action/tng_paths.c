@@ -50,6 +50,8 @@ typedef struct {
 	char	demo_name[MAX_OSPATH];	// its file in demos/: a server demo's name is longer than MAX_QPATH
 	int		player;					// index into demo->players, -1 none
 	int		frames;					// samples shown: to ACTION! and jmod_path_secs past it
+	int		run_frames;				// samples the ghosts and the lines run to: frames, or what alt+fire's question answered
+	int		ask_route;				// the route alt+fire asked the question for
 	int		routes[JMP_PATH_MAX];	// the player's unique trails, and the rounds each folds
 	int		dups[JMP_PATH_MAX];
 	int		route_count;
@@ -361,6 +363,7 @@ static void JmpPathRoutes(jmp_path_t *st)
 	if (!st->demo || st->player < 0)
 		return;
 	st->frames = JmpPathFrames();
+	st->run_frames = st->frames;
 	st->route_count = MvdPath_Unique(st->demo, JmpPathPlayerName(st), st->frames,
 		st->routes, st->dups, JMP_PATH_MAX);
 	for (k = 0; k < st->route_count; k++) {
@@ -459,7 +462,7 @@ static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k, qboolean other
 	char cmd[MAX_STRING_CHARS], num[16];
 	int i, n = 0;
 
-	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, st->frames, st->routes[k]);
+	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, st->run_frames, st->routes[k]);
 	for (i = r->trail_first; others && i < r->trail_first + r->trail_count; i++) {
 		if (i == st->routes[k])
 			continue;
@@ -481,7 +484,7 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 {
 	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
 	const mvp_round_t *r = &st->demo->rounds[t->round];
-	int i, n = min(t->count, st->frames + 1);
+	int i, n = min(t->count, st->run_frames + 1);
 
 	memset(take, 0, sizeof(*take));
 	Q_snprintf(take->name, sizeof(take->name), "round %d", r->number);
@@ -558,6 +561,7 @@ static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 	st->solo = k;
 	st->train = -1;
 	st->round_view = false;
+	st->run_frames = st->frames;
 	JmpPathFilter(st);
 	st->over = true;
 	st->sel = k;
@@ -584,8 +588,9 @@ static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 
 // alt+fire on a route's marker: the round as it went - the route and
 // the others' drawn, every ghost running - watched from wherever he
-// stands. Escape brings the set back, as from a follow.
-static void JmpPathRound(edict_t *ent, jmp_path_t *st, int k)
+// stands, for as long as the question before it answered. Escape
+// brings the set back, as from a follow.
+static void JmpPathRound(edict_t *ent, jmp_path_t *st, int k, int secs)
 {
 	const mvp_trail_t *t;
 
@@ -593,6 +598,7 @@ static void JmpPathRound(edict_t *ent, jmp_path_t *st, int k)
 		return;
 	if (ent->client->layout == LAYOUT_MENU)
 		PMenu_Close(ent);
+	st->run_frames = MVP_ACTION_FRAMES + Q_clip(secs, 0, MVP_AFTER_FRAMES / 10) * 10;
 	Jmp_PlayEscape(ent);
 	t = &st->demo->trails[st->routes[k]];
 	st->solo = k;
@@ -631,6 +637,7 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	st->solo = k;
 	st->train = k;
 	st->round_view = false;
+	st->run_frames = st->frames;
 	st->train_others = 0;
 	st->train_preset = false;
 	JmpPathFilter(st);
@@ -644,7 +651,7 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	JmpPathGhostsSpawn(ent, st, true);
 
 	t = &st->demo->trails[st->routes[k]];
-	n = min(t->count, st->frames + 1);
+	n = min(t->count, st->run_frames + 1);
 	MvdPath_Origin(&st->demo->samples[t->first], origin);
 	m = &st->demo->samples[t->first + min(2, n - 1)];	// the LIGHTS frame has the angles zeroed
 	gi.cprintf(ent, PRINT_HIGH, "Drilling route %d of %s: the ghost sets off whenever you spawn. Escape ends it\n",
@@ -831,7 +838,7 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, q
 
 skull:
 
-	if (t->died && t->count <= st->frames + 1) {
+	if (t->died && t->count <= st->run_frames + 1) {
 		skull = G_Spawn();
 		skull->classname = "jmp_path_skull";
 		skull->owner = ent;
@@ -912,7 +919,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 
 	if (!st->ghost_count || !st->demo)
 		return;
-	period = st->frames * 100 + JMP_PATH_GHOST_HOLD_MS;
+	period = st->run_frames * 100 + JMP_PATH_GHOST_HOLD_MS;
 	ms = fmodf((level.time - st->ghost_t0) * 1000, period);
 	whole = (int)(ms / 100);
 	frac = ms / 100 - whole;
@@ -936,7 +943,7 @@ static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 
 		if (!ghost || !ghost->inuse)
 			continue;
-		n = min(t->count, st->frames + 1);
+		n = min(t->count, st->run_frames + 1);
 		k = min(whole, n - 1);
 		// at his death the ghost goes and the skull stays, until the next run
 		dead = skull && whole >= n - 1;
@@ -1176,7 +1183,9 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 	if (client->jmp_alt) {
 		if (pressed && k >= 0) {
 			client->latched_buttons &= ~BUTTON_ATTACK;
-			JmpPathRound(ent, st, k);
+			// how much of the round to run comes first
+			st->ask_route = k;
+			JmpPathShow(ent, JMP_MENU_PATH_SECS, -1);
 			return true;
 		}
 		return false;
@@ -1518,6 +1527,14 @@ static void JmpPathMenuOver(edict_t *ent, pmenu_t *p)
 	JmpPathOver(ent, JmpPath(ent), true);
 }
 
+// alt+fire's question answered: the round run that far
+static void JmpPathPickSecs(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	JmpPathRound(ent, st, st->ask_route, (int)(intptr_t)p->arg);
+}
+
 // the row on how far past ACTION! the routes go: Enter steps it up,
 // round to the shortest; the routes are folded afresh over the new span
 static void JmpPathMenuSecs(edict_t *ent, pmenu_t *p)
@@ -1582,6 +1599,8 @@ static void JmpPathBack(edict_t *ent, pmenu_t *p)
 		Jmp_MenuItems(ent, p);
 	else if (step == JMP_MENU_PATH_FOUND)
 		JmpPathShow(ent, JMP_MENU_PATHS, -1);
+	else if (step == JMP_MENU_PATH_SECS)
+		PMenu_Close(ent);	// back to the markers
 	else
 		JmpPathShow(ent, step - 1, -1);
 }
@@ -1615,6 +1634,8 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		step = JMP_MENU_PATHS;
 	if (step >= JMP_MENU_PATH_ROUTES && step != JMP_MENU_PATH_FOUND && st->player < 0)
 		step = JMP_MENU_PATH_PLAYERS;
+	if (step == JMP_MENU_PATH_SECS && !st->route_count)
+		step = JMP_MENU_PATH_ROUTES;
 	if (step == JMP_MENU_PATH_ROUTE && (st->pick < 0 || st->pick >= st->route_count))
 		step = JMP_MENU_PATH_ROUTES;
 	if (step != client->jmp_menu_step)
@@ -1718,6 +1739,24 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		JmpPathPaging(ent, st, JMP_PATH_FIRST + 3 + JMP_PATH_ROUTE_ROWS + 1, n, JMP_PATH_ROUTE_ROWS);
 		if (cur < 0)
 			cur = JMP_PATH_FIRST + 1;
+	} else if (step == JMP_MENU_PATH_SECS) {
+		// alt+fire on a route: how much of the round to run
+		const mvp_trail_t *t = &st->demo->trails[st->routes[Q_clip(st->ask_route, 0, max(st->route_count - 1, 0))]];
+		int now = (st->run_frames - MVP_ACTION_FRAMES) / 10;
+		int count = sizeof(jmp_path_secs_steps) / sizeof(jmp_path_secs_steps[0]);
+
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Round %d, the whole round", st->demo->rounds[t->round].number);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "How much of it?");
+		for (i = 0; i < count; i++) {
+			int secs = jmp_path_secs_steps[i];
+
+			Jmp_MenuRow(ent, JMP_PATH_FIRST + i, PMENU_ALIGN_LEFT, secs, JmpPathPickSecs,
+				secs >= MVP_AFTER_FRAMES / 10 ? "To the round's end" : "To %d s past ACTION!", secs);
+			if (cur < 0 && secs >= now)
+				cur = JMP_PATH_FIRST + i;
+		}
+		if (cur < 0)
+			cur = JMP_PATH_FIRST;
 	} else {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->pick]];
 		const mvp_round_t *r = &st->demo->rounds[t->round];

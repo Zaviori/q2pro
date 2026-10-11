@@ -44,8 +44,9 @@ pick **View player pathing...**, or type `jmod paths`.
    console); Shift+Alt+fire drills it with the round's others running
    from the start. Escape ends the drill. Alt+fire on a route's number
    shows what the other players did that round - the route and theirs
-   drawn, every ghost running - from wherever you stand; Escape brings
-   the set back. `jmod
+   drawn, every ghost running - from wherever you stand, after a menu
+   asks how much of the round to run (3 s past ACTION! to the round's
+   end); Escape brings the set back. `jmod
    pathmap` draws every route without ghosts.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's
