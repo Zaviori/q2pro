@@ -51,7 +51,10 @@ pick **View player pathing...**, or type `jmod paths`.
      (teammates blue, the others grey) for context.
    - **Watch its ghost** - the player's ghost runs the route, third person
      or from their view, exactly as a recorded jump plays: the demo's
-     model animation included, the keys read off the movement.
+     model animation included, the keys read off the movement. The HUD
+     says "from the demo" where a recorded jump's fps would be, and an
+     MVD badge (`action/pics/mvd.png`) sits over the keyboard, since the
+     keys shown are only guessed.
    - **All the routes on the map** - the overview.
 
 The **overview** draws every listed route at once, green at LIGHTS

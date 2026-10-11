@@ -18,6 +18,7 @@ typedef struct {
 	char	pack[JMP_NAME_MAX];
 } jmp_start_t;
 #define JMP_MARKER_PX	40				// its size on screen
+#define JMP_MVD_PX		44				// the MVD badge over the playback HUD's keys
 #define JMP_MARKER_HL	56				// the highlighted one's
 #define JMP_MARKER_NEAR	64				// no marker on a spot this close
 #define JMP_AIM_TAN		0.045f			// a marker's radius, as the tangent of its angle on screen
@@ -54,6 +55,7 @@ typedef struct {
 	jmp_sample_t	*samples;
 	int		skinnum;	// the ghost's player skin slot, when skinset; else the watcher's
 	qboolean	skinset;
+	qboolean	mvd;		// out of a server demo: ten samples a second, the keys guessed
 } jmp_take_t;
 
 // the jmod menus share the client's rows (jmp_menu): what builds them

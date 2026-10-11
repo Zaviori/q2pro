@@ -466,6 +466,7 @@ static void JmpPathTake(jmp_path_t *st, int k, jmp_take_t *take)
 	Q_strncpyz(take->author, t->name, sizeof(take->author));
 	JmpPathDesc(st, k, take->desc, sizeof(take->desc));
 	take->fps = 10;
+	take->mvd = true;
 	take->count = n;
 	take->ms = (n - 1) * 100;
 	take->skinnum = JmpPathSkin(st, t, 0);
