@@ -649,7 +649,7 @@ qboolean JmpPath_Status(edict_t *ent, char *row0, char *row1, char *row2, size_t
 	}
 	if (st->spawn_mode && ent->client->resp.jmp_markers && ent->client->layout != LAYOUT_MENU) {
 		Q_snprintf(row0, size, "%.16s's routes: pick a spawn", name);
-		Q_strncpyz(row1, "shift click: show routes   Esc: remove markers", size);
+		Q_strncpyz(row1, "shift + click on a marker: show routes   Esc: remove markers", size);
 		return true;
 	}
 	return false;
