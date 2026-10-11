@@ -1618,7 +1618,18 @@ void CL_ParseServerMessage(void)
 					break;
 
 				ghud_element_t *element = &(cl.ghud[hud_index]);
+				short was[3] = { element->pos[0], element->pos[1], element->pos[2] };
+				bool had = (element->flags & (GHF_INUSE | GHF_3DPOS)) == (GHF_INUSE | GHF_3DPOS);
 				MSG_ParseGhud(element);
+				// a label in the world that moved: from where it was, over a frame
+				if (had && (element->flags & GHF_3DPOS)
+					&& (was[0] != element->pos[0] || was[1] != element->pos[1] || was[2] != element->pos[2])) {
+					VectorCopy(was, cl.ghud_lerp[hud_index].from);
+					cl.ghud_lerp[hud_index].at = cls.realtime;
+					cl.ghud_lerp[hud_index].on = true;
+				} else if (!had) {
+					cl.ghud_lerp[hud_index].on = false;
+				}
 			}
 #else
 			goto badbyte;

@@ -3191,11 +3191,26 @@ static void SCR_DrawGhud(void)
 
             float v[4], tempv[4], out[4];
 
-            // get position
+            // get position: on the way from the one before, over a
+            // server frame, as the entities move (a name over a ghost)
             v[0] = element->pos[0];
             v[1] = element->pos[1];
             v[2] = element->pos[2];
             v[3] = 1;
+            {
+                int idx = element - cl.ghud;
+
+                if (idx >= 0 && idx < MAX_GHUDS && cl.ghud_lerp[idx].on) {
+                    float f = CL_FRAMETIME > 0 ? (float)(cls.realtime - cl.ghud_lerp[idx].at) / CL_FRAMETIME : 1;
+
+                    if (f < 1) {
+                        f = max(f, 0);
+                        v[0] = cl.ghud_lerp[idx].from[0] + (v[0] - cl.ghud_lerp[idx].from[0]) * f;
+                        v[1] = cl.ghud_lerp[idx].from[1] + (v[1] - cl.ghud_lerp[idx].from[1]) * f;
+                        v[2] = cl.ghud_lerp[idx].from[2] + (v[2] - cl.ghud_lerp[idx].from[2]) * f;
+                    }
+                }
+            }
 
             Matrix4x4_CM_Transform4(r_viewmatrix, v, tempv);
 

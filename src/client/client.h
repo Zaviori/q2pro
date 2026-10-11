@@ -260,6 +260,13 @@ typedef struct {
 
 #ifdef AQTION_EXTENSION
 	ghud_3delement_t *ghud_3dlist;
+	// a label in the world moves once a server frame: drawn on the way
+	// from where it was to where it is, as the entities are
+	struct {
+		short       from[3];
+		unsigned    at;         // cls.realtime the move came in
+		bool        on;
+	} ghud_lerp[MAX_GHUDS];
 	ghud_element_t ghud[MAX_GHUDS];
 #endif
 
