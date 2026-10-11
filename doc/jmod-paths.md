@@ -35,7 +35,11 @@ click within a third of a second sends its ghost. Escape puts the lines
 and markers away (a ghost's Escape ends the ghost first).
 
 Console forms: `jmod path <#> [ghost|pov]` for route `#` of the listed
-player, `jmod pathmap` to toggle the overview.
+player, `jmod pathmap` to toggle the overview. The demo browser's
+Shift+Enter on a server demo (and the aq2world listing's) starts its map
+this way with the menu already open on it: the client sets
+`jmod_paths_open` to the demo's name before the map command, and the
+game reads it once as the player comes in.
 
 `jmod_path_secs` (6) is how many seconds past ACTION! a route is followed,
 up to 15. On the client, `jpath_depth 0` draws the lines through walls
