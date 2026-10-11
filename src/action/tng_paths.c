@@ -102,6 +102,16 @@ static int jmp_path_demo_count;
 
 static cvar_t *jmod_path_secs;
 static cvar_t *jmod_path_lca;		// 0: the ghosts set off without "LIGHTS... CAMERA... ACTION!"
+static cvar_t *jmod_paths_open;		// a demo's name the client set before the map (JmpPathAutoOpen)
+
+// at the game's start, so the console knows them (its completion and
+// its fuzzy search list the cvars registered) before anything uses them
+void JmpPath_InitCvars(void)
+{
+	jmod_path_secs = gi.cvar("jmod_path_secs", va("%d", JMP_PATH_SECS), 0);
+	jmod_path_lca = gi.cvar("jmod_path_lca", "1", 0);
+	jmod_paths_open = gi.cvar("jmod_paths_open", "", 0);
+}
 
 static void JmpPathShow(edict_t *ent, int step, int cur);
 
@@ -1150,7 +1160,6 @@ qboolean JmpPath_Escape(edict_t *ent)
 // into a map's routes. Read once, then cleared.
 static void JmpPathAutoOpen(edict_t *ent)
 {
-	static cvar_t *jmod_paths_open;
 	jmp_path_t *st = JmpPath(ent);
 	char name[MAX_OSPATH];
 

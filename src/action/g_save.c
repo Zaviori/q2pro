@@ -593,6 +593,7 @@ void InitGame( void )
 		}
 	}
 	jump = gi.cvar ("jump", "0", /*CVAR_SERVERINFO | CVAR_SERVERINFO_EXT|*/ CVAR_LATCH | CVAR_SERVERINFO_EXT); // jumping mod -- removed from serverinfo 2022
+	JmpPath_InitCvars();
 
 	warmup = gi.cvar( "warmup", "0", CVAR_LATCH | CVAR_SERVERINFO_EXT );
 	warmup_bots = gi.cvar( "warmup_bots", "0", CVAR_LATCH );
