@@ -21,6 +21,11 @@ unit.
 | Shift+Enter | its map in the jump mod with the pathing menu open on the demo (after the download, when it is not there yet) |
 | F5 | list the month again, whatever the cache has |
 
+`aq2world <filter>` opens the list with the filter typed in; `aq2world
+map <name>` locks it on that map, exactly, over the last three months
+(some maps get a game a month), which is how the jump mod's pathing menu
+opens it. Left/Right move the window's latest month.
+
 The columns are the time played (as the server named the file), the
 teams, the map, the size and whether it is in `demos/` already (the
 laptop's mirror prefixes its copies with `hl_`; those count); a row that
