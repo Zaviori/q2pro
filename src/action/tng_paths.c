@@ -135,6 +135,10 @@ static jmp_path_t *JmpPath(edict_t *ent)
 	return st;
 }
 
+// the whole round is parsed; jmod_path_secs is how much of it past
+// ACTION! is shown and run, up to the whole of it (MVP_AFTER_FRAMES)
+static const int jmp_path_secs_steps[] = { 3, 6, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300 };
+
 static int JmpPathFrames(void)
 {
 	int secs;
@@ -1514,6 +1518,26 @@ static void JmpPathMenuOver(edict_t *ent, pmenu_t *p)
 	JmpPathOver(ent, JmpPath(ent), true);
 }
 
+// the row on how far past ACTION! the routes go: Enter steps it up,
+// round to the shortest; the routes are folded afresh over the new span
+static void JmpPathMenuSecs(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+	int i, n = sizeof(jmp_path_secs_steps) / sizeof(jmp_path_secs_steps[0]);
+	int now = (st->frames - MVP_ACTION_FRAMES) / 10, next = jmp_path_secs_steps[0];
+
+	for (i = 0; i < n; i++)
+		if (jmp_path_secs_steps[i] > now) {
+			next = jmp_path_secs_steps[i];
+			break;
+		}
+	gi.cvar_set("jmod_path_secs", va("%d", next));
+	if (st->over)
+		JmpPathOver(ent, st, false);
+	JmpPathRoutes(st);
+	JmpPathShow(ent, JMP_MENU_PATH_ROUTES, Jmp_MenuRowOf(ent, p));
+}
+
 static void JmpPathMenuAllSpawns(edict_t *ent, pmenu_t *p)
 {
 	jmp_path_t *st = JmpPath(ent);
@@ -1668,8 +1692,10 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		else
 			Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.24s: %d route%s", JmpPathPlayerName(st),
 				n, n == 1 ? "" : "s");
-		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "of %d rounds, to %d s past ACTION!",
-			st->demo->players[st->player].trails, (st->frames - MVP_ACTION_FRAMES) / 10);
+		Jmp_MenuRow(ent, 2, PMENU_ALIGN_CENTER, 0, NULL, "of %d rounds", st->demo->players[st->player].trails);
+		Jmp_MenuRow(ent, JMP_PATH_FIRST, PMENU_ALIGN_LEFT, 0, JmpPathMenuSecs,
+			(st->frames - MVP_ACTION_FRAMES) / 10 >= MVP_AFTER_FRAMES / 10 ? "Shown to the round's end"
+			: "Shown to %d s past ACTION!", (st->frames - MVP_ACTION_FRAMES) / 10);
 		Jmp_MenuRow(ent, JMP_PATH_FIRST + 1, PMENU_ALIGN_LEFT, 0, JmpPathMenuOver, "All of them on the map");
 		if (st->spawn_filter)
 			Jmp_MenuRow(ent, JMP_PATH_FIRST + 2, PMENU_ALIGN_LEFT, 0, JmpPathMenuAllSpawns, "From every spawn");
