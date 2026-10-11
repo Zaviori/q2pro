@@ -75,6 +75,7 @@ void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
 qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
 void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
+qboolean Jmp_SpawnEscape(edict_t *ent);
 qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
 qboolean JmpPath_SpawnCtrl(edict_t *ent);
 void JmpPath_Spawned(edict_t *ent);

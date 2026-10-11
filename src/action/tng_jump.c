@@ -69,6 +69,9 @@ void Jmp_SetStats(edict_t *ent)
 		ent->client->ps.stats[STAT_LAYOUTS] |= 1;
 	if (ent->client->showinventory && ent->health > 0)
 		ent->client->ps.stats[STAT_LAYOUTS] |= 2;
+	// a spawn pending - a drill, a repeat: Escape comes to the game, to stop it
+	if (ent->client->resp.jmp_spawn_frame)
+		ent->client->ps.stats[STAT_LAYOUTS] |= LAYOUTS_ESCAPE;
 
 	SetIDView (ent);
 
@@ -657,6 +660,45 @@ static void JmpJumpsFrame(edict_t *ent);
 
 // called every frame for each client: counts a pending spawn down, and
 // keeps the spawnpoint labels
+static void JmpSecsName(float secs, char *buf, size_t size);
+
+// the line at the bottom while a spawn is pending, and off again after
+static void JmpSpawnTip(edict_t *ent)
+{
+	gclient_t *client = ent->client;
+	char text[96], secs[16];
+	int kind = !client->resp.jmp_spawn_frame ? 0 : client->resp.jmp_spawn_repeat > 0 ? 2 : 1;
+
+	if (kind == client->resp.jmp_spawn_tip_kind)
+		return;
+	if (client->resp.jmp_spawn_tip_kind)
+		Ghud_RemoveElement(ent, client->resp.jmp_spawn_tip);
+	client->resp.jmp_spawn_tip_kind = kind;
+	if (!kind)
+		return;
+	if (kind == 2) {
+		JmpSecsName(client->resp.jmp_spawn_repeat, secs, sizeof(secs));
+		Q_snprintf(text, sizeof(text), "Spawning again every %s - Escape stops it", secs);
+	} else {
+		Q_strncpyz(text, "Spawning in a moment - Escape stops it", sizeof(text));
+	}
+	client->resp.jmp_spawn_tip = Ghud_NewElement(ent, GHT_TEXT);
+	Ghud_SetAnchor(ent, client->resp.jmp_spawn_tip, 0.5f, 1);
+	Ghud_SetPosition(ent, client->resp.jmp_spawn_tip, 0, -30);
+	Ghud_SetTextFlags(ent, client->resp.jmp_spawn_tip, UI_CENTER);
+	Ghud_SetColor(ent, client->resp.jmp_spawn_tip, 255, 255, 255, 200);
+	Ghud_SetText(ent, client->resp.jmp_spawn_tip, text);
+}
+
+// Escape with nothing else up: a pending spawn - a drill - stops
+qboolean Jmp_SpawnEscape(edict_t *ent)
+{
+	if (!ent->client->resp.jmp_spawn_frame)
+		return false;
+	Cmd_SpawnCancel_f(ent);
+	return true;
+}
+
 void Jmp_RunSpawn(edict_t *ent)
 {
 	gclient_t *client = ent->client;
@@ -665,6 +707,7 @@ void Jmp_RunSpawn(edict_t *ent)
 	JmpMarkersUpdate(ent);
 	JmpJumpsFrame(ent);
 	JmpPath_Frame(ent);
+	JmpSpawnTip(ent);
 
 	if (!client->resp.jmp_spawn_frame)
 		return;
