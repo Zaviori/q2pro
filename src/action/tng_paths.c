@@ -987,8 +987,8 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 		}
 		return false;
 	}
-	// ctrl on a spawn marker asks for another player: Jmp_MenuFire's too
-	if (client->jmp_ctrl)
+	// alt on a spawn marker asks for another player: Jmp_MenuFire's too
+	if (client->jmp_alt)
 		return false;
 
 	if (st->click_ms > 0) {
@@ -1156,9 +1156,9 @@ qboolean JmpPath_SpawnPick(edict_t *ent, int spot)
 	return true;
 }
 
-// ctrl+fire on a spawn marker while a player is picked: the players
+// alt+fire on a spawn marker while a player is picked: the players
 // menu, to pick another. False when it is not the pathing's click to take.
-qboolean JmpPath_SpawnCtrl(edict_t *ent)
+qboolean JmpPath_SpawnAlt(edict_t *ent)
 {
 	jmp_path_t *st = JmpPath(ent);
 
