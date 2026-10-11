@@ -73,6 +73,7 @@ void Jmp_PlayTake(edict_t *ent, jmp_take_t *take, qboolean pov);
 #define JMP_MENU_PATH_ROUTES	22	// the routes, duplicates folded
 #define JMP_MENU_PATH_ROUTE	23	// one of them: watch it, show it
 #define JMP_MENU_PATH_FOUND	24	// the demos a player was found in
+#define JMP_MENU_PATH_SECS	25	// alt+fire on a route: how much of the round to run
 void JmpPath_Cmd(edict_t *ent, const char *cmd);
 void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
 qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
