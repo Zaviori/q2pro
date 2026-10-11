@@ -72,6 +72,7 @@ typedef struct {
 	vec3_t	back_origin;			// where he stood when he clicked a route's marker: Escape puts him back
 	float	back_pitch, back_yaw;
 	qboolean back_set;
+	qboolean round_view;			// alt+fire on a route's marker: the whole round drawn and running, nobody followed
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -90,7 +91,7 @@ typedef struct {
 	int		ghud_made;				// level.framenum they were made at
 	int		ghud_key;
 	int		ghud_size[JMP_PATH_MAX];
-	int		tip[5];
+	int		tip[6];
 	qboolean	tip_on;
 } jmp_path_t;
 
@@ -550,6 +551,7 @@ static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 		PMenu_Close(ent);
 	st->solo = k;
 	st->train = -1;
+	st->round_view = false;
 	JmpPathFilter(st);
 	st->over = true;
 	st->sel = k;
@@ -574,6 +576,34 @@ static void JmpPathGhost(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 	JmpPathSolo(ent, st, k, pov);
 }
 
+// alt+fire on a route's marker: the round as it went - the route and
+// the others' drawn, every ghost running - watched from wherever he
+// stands. Escape brings the set back, as from a follow.
+static void JmpPathRound(edict_t *ent, jmp_path_t *st, int k)
+{
+	const mvp_trail_t *t;
+
+	if (k < 0 || k >= st->route_count)
+		return;
+	if (ent->client->layout == LAYOUT_MENU)
+		PMenu_Close(ent);
+	Jmp_PlayEscape(ent);
+	t = &st->demo->trails[st->routes[k]];
+	st->solo = k;
+	st->train = -1;
+	st->round_view = true;
+	JmpPathFilter(st);
+	st->over = true;
+	st->sel = k;
+	st->click_ms = 0;
+	gi.cprintf(ent, PRINT_HIGH, "Round %d of %s, the whole round running. Escape brings the others back\n",
+		st->demo->rounds[t->round].number, JmpPathPlayerName(st));
+	JmpPathStuffPlay(ent, st, k, true);
+	JmpPathMarkersClear(ent, st);
+	JmpPathMarkers(ent, st);
+	JmpPathGhostsSpawn(ent, st, true);
+}
+
 /*
 A route to drill (shift+fire on its number, or jmod path <#> train):
 the route drawn, its ghost dim beside you and off again every time you
@@ -594,6 +624,7 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	Jmp_PlayEscape(ent);		// a ghost being followed lets go
 	st->solo = k;
 	st->train = k;
+	st->round_view = false;
 	st->train_others = 0;
 	st->train_preset = false;
 	JmpPathFilter(st);
@@ -656,6 +687,13 @@ qboolean JmpPath_Status(edict_t *ent, char rows[][64], const char *spawn)
 		if (spawn[0])
 			Q_strncpyz(rows[1], spawn, size);
 		Q_strncpyz(rows[2], "Esc: end the drill", size);
+		return true;
+	}
+	if (st->round_view && st->solo >= 0 && st->over) {
+		const mvp_trail_t *t = &st->demo->trails[st->routes[st->solo]];
+
+		Q_snprintf(rows[0], size, "Round %d of %.16s, the whole round running", st->demo->rounds[t->round].number, name);
+		Q_strncpyz(rows[1], "Esc: back to the routes", size);
 		return true;
 	}
 	if (st->over && st->vis_count) {
@@ -915,9 +953,10 @@ static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st)
 // the route markers' tooltip: the spawn markers' four rows (Jmp_TipRows)
 static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 {
-	static const char *const rows[5] = {
+	static const char *const rows[6] = {
 		"Click: follow this route from the player's view",
 		"Fire while following: third person and back",
+		"Alt + click: show what the other players did that round",
 		"Shift + click: drill it beside its ghost",
 		"Shift + alt + click: drill it with the other players' ghosts",
 		"Esc: back to the routes",
@@ -1096,9 +1135,16 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 		}
 		return false;
 	}
-	// alt on a spawn marker asks for another player: Jmp_MenuFire's too
-	if (client->jmp_alt)
+	// alt on a route's number shows its round; on a spawn marker it asks
+	// for another player, which is Jmp_MenuFire's
+	if (client->jmp_alt) {
+		if (pressed && k >= 0) {
+			client->latched_buttons &= ~BUTTON_ATTACK;
+			JmpPathRound(ent, st, k);
+			return true;
+		}
 		return false;
+	}
 
 	if (st->click_ms > 0) {
 		st->click_ms -= ucmd->msec;
@@ -1143,6 +1189,7 @@ qboolean JmpPath_Escape(edict_t *ent)
 		if (!st->back_set || !Jmp_PlayStopTo(ent, st->back_origin, st->back_pitch, st->back_yaw))
 			Jmp_PlayEscape(ent);
 		st->back_set = false;
+		st->round_view = false;
 		st->solo = -1;
 		JmpPathFilter(st);
 		JmpPathOver(ent, st, false);
