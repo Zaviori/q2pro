@@ -17,7 +17,6 @@ the trails by index and comes to the same ones.
 #include "g_local.h"
 #include "shared/mvdpath.h"
 #include <dirent.h>
-#include <sys/stat.h>
 
 #define JMP_PATH_MAX		48		// routes listed of a player
 #define JMP_PATH_DEMOS		2048	// demos of a map looked at, the newest listed
@@ -135,7 +134,7 @@ static void JmpPathScan(void)
 {
 	char path[MAX_OSPATH];
 	struct dirent *e;
-	struct stat sb;
+	Q_STATBUF sb;
 	DIR *dir;
 	size_t len;
 
@@ -154,7 +153,7 @@ static void JmpPathScan(void)
 		if (!JmpPathSafeName(e->d_name) || !JmpPathHasMap(e->d_name))
 			continue;
 		Q_snprintf(path, sizeof(path), "%s/demos/%s", Jmp_GameDir(), e->d_name);
-		if (stat(path, &sb))
+		if (os_stat(path, &sb))
 			continue;
 		Q_strncpyz(d->name, e->d_name, sizeof(d->name));
 		d->mtime = sb.st_mtime;
