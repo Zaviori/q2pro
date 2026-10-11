@@ -15,7 +15,11 @@ pick **View player pathing...**, or type `jmod paths`.
    <file>` loads one by name. A demo of another map is refused. **Get one
    from aq2world...** opens the client's aq2world listing (`aq2world
    <filter>`) filtered on the map's name: Enter downloads a demo into
-   `demos/`, and it is on this list afterwards.
+   `demos/`, and it is on this list afterwards. **Find a player in
+   them...** asks for a name and searches every demo of the map for it
+   (fuzzily, off each demo's head alone, so it is quick); the games he
+   is in are listed, the closest names first, and picking one opens on
+   his routes.
 2. **A player.** Everybody who played a round in it, most rounds first.
    Picking one puts the spawnpoint markers up: Shift+fire on a marker
    draws that player's routes from that spawn (`jmod pathspawn <#>` is

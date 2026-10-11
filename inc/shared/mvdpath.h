@@ -69,6 +69,12 @@ typedef struct {
 mvp_demo_t *MvdPath_Parse(const byte *data, size_t len, char *err, size_t errlen);
 void MvdPath_Free(mvp_demo_t *demo);
 
+// The players named in the demo's first block, which carries every
+// skin at the start: the names into names[], how many. Needs only the
+// head of the file - the first block is under 64 KB. For a search over
+// many demos without parsing them whole.
+int MvdPath_Names(const byte *data, size_t len, char (*names)[MVP_NAME_MAX], int max);
+
 // The trails of one player (by name) with the duplicates folded: the
 // rounds they took a route already listed, from the same spawn, are
 // counted on its row. Returns how many were listed, their trail indices

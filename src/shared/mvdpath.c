@@ -835,6 +835,51 @@ fail:
     return NULL;
 }
 
+int MvdPath_Names(const byte *data, size_t len, char (*names)[MVP_NAME_MAX], int max)
+{
+    rd_t r;
+    char text[MAX_STRING_CHARS], *bs;
+    int blocklen, cmd, version, flags, index, n = 0;
+    size_t cs;
+
+    if (len < 6 || memcmp(data, MVD_MAGIC_STR, 4))
+        return 0;
+    blocklen = data[4] | (data[5] << 8);
+    r.d = data;
+    r.p = 6;
+    r.end = len < 6 + (size_t)blocklen ? len : 6 + blocklen;
+    r.bad = false;
+
+    cmd = rd_byte(&r);
+    if ((cmd & 31) != mvd_serverdata || rd_long(&r) != MVD_PROTOCOL)
+        return 0;
+    version = rd_word(&r);
+    flags = version >= MVD_VERSION_FLAGS ? rd_word(&r) : cmd >> 5;
+    if (flags & MVF_EXTLIMITS_BIT)
+        return 0;
+    rd_long(&r);
+    rd_string(&r, NULL, 0);
+    rd_short(&r);
+    while (!r.bad && n < max) {
+        index = rd_word(&r);
+        if (index == CS_END_IDX)
+            break;
+        rd_string(&r, text, sizeof(text));
+        if (index < CS_PLAYERSKINS_IDX || index >= CS_PLAYERSKINS_IDX + MAX_CLIENTS)
+            continue;
+        bs = strchr(text, '\\');
+        cs = bs ? (size_t)(bs - text) : strlen(text);
+        if (!cs)
+            continue;
+        if (cs >= MVP_NAME_MAX)
+            cs = MVP_NAME_MAX - 1;
+        memcpy(names[n], text, cs);
+        names[n][cs] = 0;
+        n++;
+    }
+    return n;
+}
+
 // the distance between two samples, in units
 static float sample_dist(const mvp_sample_t *a, const mvp_sample_t *b)
 {

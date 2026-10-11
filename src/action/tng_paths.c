@@ -16,10 +16,13 @@ the trails by index and comes to the same ones.
 
 #include "g_local.h"
 #include "shared/mvdpath.h"
+#include "common/fuzzy.h"
 #include <dirent.h>
 
 #define JMP_PATH_MAX		48		// routes listed of a player
 #define JMP_PATH_DEMOS		2048	// demos of a map looked at, the newest listed
+#define JMP_PATH_FOUND		64		// demos a player is found in, the closest names first
+#define JMP_PATH_HEAD		(72 << 10)	// read of a demo for its players: the first block is in there
 #define JMP_PATH_ROWS		12		// a page of demos or players
 #define JMP_PATH_ROUTE_ROWS	10		// of routes, under the overview row
 #define JMP_PATH_FIRST		3
@@ -28,6 +31,18 @@ the trails by index and comes to the same ones.
 #define JMP_PATH_GHOST_HOLD_MS	1500	// the ghosts stand at their ends this long, then set off again
 #define JMP_PATH_GHOSTS		96		// ghosts at once: the routes' own, then the rounds' opponents
 #define JMP_PATH_SKULL		"models/objects/gibs/skull/tris.md2"	// where a ghost's player died
+
+typedef struct {
+	char	name[MAX_OSPATH];
+	time_t	mtime;
+} jmp_path_demo_t;
+
+// a demo a player was found in, and the name of his that matched
+typedef struct {
+	int		demo;					// index into jmp_path_demos
+	int		score;
+	char	name[MVP_NAME_MAX];
+} jmp_path_found_t;
 
 typedef struct {
 	char	map[MAX_QPATH];			// the demo is of this map; another map drops it
@@ -53,6 +68,9 @@ typedef struct {
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
+	char	find[MVP_NAME_MAX];		// the player looked for over the map's demos
+	int		found_count;			// what the search found
+	jmp_path_found_t	found[JMP_PATH_FOUND];
 
 	qboolean	over;				// the overview is up: lines on the client, markers here
 	int		sel;					// the route drawn alone, -1 none
@@ -71,10 +89,6 @@ typedef struct {
 
 static jmp_path_t jmp_paths[MAX_CLIENTS];
 
-typedef struct {
-	char	name[MAX_OSPATH];
-	time_t	mtime;
-} jmp_path_demo_t;
 
 static jmp_path_demo_t jmp_path_demos[JMP_PATH_DEMOS];
 static int jmp_path_demo_count;
@@ -1075,6 +1089,103 @@ static void JmpPathMenuAq2world(edict_t *ent, pmenu_t *p)
 	JmpPathStuff(ent, cmd);
 }
 
+/*
+A player found over the map's demos: each demo's first block names its
+players, read off its head alone, and the name typed is matched fuzzily
+against them, as the browsers filter. The demos he is in come up a list,
+the closest names first, and one picked opens on his routes.
+*/
+static void JmpPathMenuFind(edict_t *ent, pmenu_t *p)
+{
+	Jmp_AskPathPlayer(ent);
+}
+
+void JmpPath_FindAnswer(edict_t *ent, const char *text)
+{
+	jmp_path_t *st = JmpPath(ent);
+	char names[MAX_CLIENTS][MVP_NAME_MAX], path[MAX_OSPATH];
+	static byte head[JMP_PATH_HEAD];
+	FILE *f;
+	size_t len, n = 0;
+	int i, k, count, score, best, bestk;
+
+	for (; text && *text && n + 1 < sizeof(st->find); text++)
+		if (*text > 32 && *text < 127 && *text != '"')
+			st->find[n++] = *text;
+	st->find[n] = 0;
+	if (!n) {
+		JmpPathShow(ent, JMP_MENU_PATHS, -1);
+		return;
+	}
+
+	JmpPathScan();
+	st->found_count = 0;
+	for (i = 0; i < jmp_path_demo_count && st->found_count < JMP_PATH_FOUND; i++) {
+		Q_snprintf(path, sizeof(path), "%s/demos/%s", Jmp_GameDir(), jmp_path_demos[i].name);
+		f = fopen(path, "rb");
+		if (!f)
+			continue;
+		len = fread(head, 1, sizeof(head), f);
+		fclose(f);
+		count = MvdPath_Names(head, len, names, MAX_CLIENTS);
+		best = -1;
+		bestk = -1;
+		for (k = 0; k < count; k++) {
+			score = Fuzzy_Score(st->find, names[k]);
+			if (score > best) {
+				best = score;
+				bestk = k;
+			}
+		}
+		if (best < 0)
+			continue;
+		st->found[st->found_count].demo = i;
+		st->found[st->found_count].score = best;
+		Q_strncpyz(st->found[st->found_count].name, names[bestk], MVP_NAME_MAX);
+		st->found_count++;
+	}
+	// the closest names first; among equals the newest, as scanned
+	for (i = 1; i < st->found_count; i++) {
+		int j = i;
+
+		while (j > 0 && st->found[j - 1].score < st->found[j].score) {
+			jmp_path_found_t t = st->found[j - 1];
+			st->found[j - 1] = st->found[j];
+			st->found[j] = t;
+			j--;
+		}
+	}
+	st->top = 0;
+	JmpPathShow(ent, JMP_MENU_PATH_FOUND, -1);
+}
+
+// a demo found: loaded, and his routes
+static void JmpPathPickFound(edict_t *ent, pmenu_t *p)
+{
+	jmp_path_t *st = JmpPath(ent);
+	int i = (int)(intptr_t)p->arg, k;
+
+	if (i < 0 || i >= st->found_count || st->found[i].demo >= jmp_path_demo_count)
+		return;
+	if (!JmpPathLoad(ent, st, jmp_path_demos[st->found[i].demo].name)) {
+		JmpPathShow(ent, JMP_MENU_PATH_FOUND, p - ent->client->jmp_menu);
+		return;
+	}
+	for (k = 0; k < st->demo->player_count; k++)
+		if (!strcmp(st->demo->players[k].name, st->found[i].name))
+			break;
+	if (k == st->demo->player_count) {
+		// in at the start, out before a whole round: the players menu then
+		st->top = 0;
+		JmpPathShow(ent, JMP_MENU_PATH_PLAYERS, -1);
+		return;
+	}
+	st->player = k;
+	JmpPathRoutes(st);
+	st->top = 0;
+	JmpPathSpawnMode(ent, st);
+}
+
 static void JmpPathPickPlayer(edict_t *ent, pmenu_t *p)
 {
 	jmp_path_t *st = JmpPath(ent);
@@ -1143,6 +1254,8 @@ static void JmpPathBack(edict_t *ent, pmenu_t *p)
 	JmpPath(ent)->top = 0;
 	if (step == JMP_MENU_PATHS)
 		Jmp_MenuItems(ent, p);
+	else if (step == JMP_MENU_PATH_FOUND)
+		JmpPathShow(ent, JMP_MENU_PATHS, -1);
 	else
 		JmpPathShow(ent, step - 1, -1);
 }
@@ -1173,11 +1286,11 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 	Jmp_MenuRow(ent, 1, PMENU_ALIGN_CENTER, 0, NULL, "%s", jmp_menu_line);
 
 	// a step needs what the one before it picked
-	if (step >= JMP_MENU_PATH_PLAYERS && !st->demo)
+	if (step >= JMP_MENU_PATH_PLAYERS && step != JMP_MENU_PATH_FOUND && !st->demo)
 		step = JMP_MENU_PATHS;
-	if (step >= JMP_MENU_PATH_ROUTES && st->player < 0)
+	if (step >= JMP_MENU_PATH_ROUTES && step != JMP_MENU_PATH_FOUND && st->player < 0)
 		step = JMP_MENU_PATH_PLAYERS;
-	if (step >= JMP_MENU_PATH_ROUTE && (st->pick < 0 || st->pick >= st->route_count))
+	if (step == JMP_MENU_PATH_ROUTE && (st->pick < 0 || st->pick >= st->route_count))
 		step = JMP_MENU_PATH_ROUTES;
 	if (step != client->jmp_menu_step)
 		cur = -1;
@@ -1190,7 +1303,8 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
 		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*Player pathing: a demo of %.13s", level.mapname);
 		Jmp_MenuRow(ent, 2, PMENU_ALIGN_LEFT, 0, JmpPathMenuAq2world, "Get one from aq2world...");
-		row = JMP_PATH_FIRST + 1;
+		Jmp_MenuRow(ent, 3, PMENU_ALIGN_LEFT, 0, JmpPathMenuFind, "Find a player in them...");
+		row = JMP_PATH_FIRST + 2;
 		if (st->demo) {
 			JmpPathDemoLabel(st->demo_name, label, sizeof(label));
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, -1, JmpPathPickDemo, "Loaded: %.31s", label);
@@ -1206,7 +1320,23 @@ static void JmpPathShow(edict_t *ent, int step, int cur)
 		}
 		if (!n)
 			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "No .mvd2 of %.16s in demos/", level.mapname);
-		JmpPathPaging(ent, st, JMP_PATH_FIRST + 1 + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + 2 + JMP_PATH_ROWS + 2, n, JMP_PATH_ROWS);
+	} else if (step == JMP_MENU_PATH_FOUND) {
+		n = st->found_count;
+		if (st->top >= n)
+			st->top = max(n - 1, 0) / JMP_PATH_ROWS * JMP_PATH_ROWS;
+		Jmp_MenuRow(ent, 0, PMENU_ALIGN_CENTER, 0, NULL, "*%.16s: %d demo%s of %.12s", st->find, n,
+			n == 1 ? "" : "s", level.mapname);
+		row = JMP_PATH_FIRST;
+		for (i = st->top; i < n && i < st->top + JMP_PATH_ROWS; i++, row++) {
+			JmpPathDemoLabel(jmp_path_demos[st->found[i].demo].name, label, sizeof(label));
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, i, JmpPathPickFound, "%-22.22s %.16s", label, st->found[i].name);
+			if (cur < 0)
+				cur = row;
+		}
+		if (!n)
+			Jmp_MenuRow(ent, row, PMENU_ALIGN_LEFT, 0, NULL, "Nobody like that in the demos here");
+		JmpPathPaging(ent, st, JMP_PATH_FIRST + JMP_PATH_ROWS + 1, n, JMP_PATH_ROWS);
 	} else if (step == JMP_MENU_PATH_PLAYERS) {
 		n = st->demo->player_count;
 		if (st->top >= n)

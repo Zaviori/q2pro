@@ -1739,6 +1739,7 @@ way, to try it.
 #define JMP_ASK_DESC		2
 #define JMP_ASK_PACK		3		// the name of a new collection
 #define JMP_ASK_FIND		4		// what to search the collections for
+#define JMP_ASK_PATHPLAYER	5		// whose routes, across the map's demos (tng_paths.c)
 #define JMP_PACKS_ROWS		8		// collections on a page of the save menu
 #define JMP_PACKS_FIRST		7		// the row of the first one
 #define JMP_PACKS_PAGE		12		// rows on a page of the collections screen
@@ -2460,8 +2461,16 @@ static void JmpAsk(edict_t *ent, int ask)
 		stuffcmd(ent, "messageprompt \"Name the jump\" \"Letters, digits, - and _\" jmod answer\n");
 	else if (ask == JMP_ASK_PACK)
 		stuffcmd(ent, "messageprompt \"Name the new collection\" \"Letters, digits, - and _\" jmod answer\n");
+	else if (ask == JMP_ASK_PATHPLAYER)
+		stuffcmd(ent, "messageprompt \"Find a player\" \"A few letters of the name; the map's demos are searched\" jmod answer\n");
 	else
 		stuffcmd(ent, "messageprompt \"Search the collections\" \"A few letters of the name\" jmod answer\n");
+}
+
+// the pathing's question: whose routes, over the map's demos
+void Jmp_AskPathPlayer(edict_t *ent)
+{
+	JmpAsk(ent, JMP_ASK_PATHPLAYER);
 }
 
 // the name is free in its collection, or the player's own to overwrite
@@ -2584,7 +2593,15 @@ static void JmpAnswerText(edict_t *ent, const char *text)
 	int ask = st->ask;
 
 	st->ask = 0;
-	if (!ask || level.framenum > st->ask_frame || !st->take.count)
+	if (!ask || level.framenum > st->ask_frame)
+		return;
+
+	// the pathing's: a player over the map's demos
+	if (ask == JMP_ASK_PATHPLAYER) {
+		JmpPath_FindAnswer(ent, text);
+		return;
+	}
+	if (!st->take.count)
 		return;
 
 	// the save menu's search: back to the menu with it, or without on Escape
@@ -2646,7 +2663,8 @@ qboolean Jmp_Answer(edict_t *ent)
 	if (!Q_stricmp(gi.argv(0), "messageprompt")) {
 		gi.centerprintf(ent, st->ask == JMP_ASK_NAME ? "Name the jump\n"
 			: st->ask == JMP_ASK_PACK ? "Name the new collection\n"
-			: st->ask == JMP_ASK_FIND ? "Search the collections\n" : "Describe the jump\n");
+			: st->ask == JMP_ASK_FIND ? "Search the collections\n"
+			: st->ask == JMP_ASK_PATHPLAYER ? "Find a player\n" : "Describe the jump\n");
 		gi.cprintf(ent, PRINT_HIGH, "%s\n", st->ask == JMP_ASK_NAME || st->ask == JMP_ASK_PACK
 			? "A name: letters, digits, - and _. Type it and press Enter"
 			: st->ask == JMP_ASK_FIND ? "A few letters of the collection's name. Type them and press Enter"

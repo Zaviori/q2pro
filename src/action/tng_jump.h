@@ -68,12 +68,15 @@ void Jmp_PlayTake(edict_t *ent, jmp_take_t *take, qboolean pov);
 #define JMP_MENU_PATH_PLAYERS	21	// whose routes
 #define JMP_MENU_PATH_ROUTES	22	// the routes, duplicates folded
 #define JMP_MENU_PATH_ROUTE	23	// one of them: watch it, show it
+#define JMP_MENU_PATH_FOUND	24	// the demos a player was found in
 void JmpPath_Cmd(edict_t *ent, const char *cmd);
 void Jmp_OpenPathMenu(edict_t *ent, pmenu_t *p);
 qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd);
 void JmpPath_Frame(edict_t *ent);
 qboolean JmpPath_Escape(edict_t *ent);
 qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
+void JmpPath_FindAnswer(edict_t *ent, const char *text);
+void Jmp_AskPathPlayer(edict_t *ent);
 const char *JmpPath_SpawnTip(edict_t *ent);
 void JmpPath_HudCleared(edict_t *ent);
 void JmpPath_ClientDisconnect(edict_t *ent);
