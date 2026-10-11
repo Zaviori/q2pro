@@ -1184,6 +1184,12 @@ the closest names first, and one picked opens on his routes.
 */
 static void JmpPathMenuFind(edict_t *ent, pmenu_t *p)
 {
+	JmpPathScan();
+	if (!jmp_path_demo_count) {
+		gi.cprintf(ent, PRINT_HIGH, "No demos of %s in demos/ to search: get one from aq2world first\n", level.mapname);
+		gi.centerprintf(ent, "No demos of %s to search\n", level.mapname);
+		return;
+	}
 	Jmp_AskPathPlayer(ent);
 }
 
