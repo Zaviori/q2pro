@@ -14,7 +14,8 @@ pick **View player pathing...**, or type `jmod paths`.
    directory whose name carries this map's name, newest first. `jmod paths
    <file>` loads one by name. A demo of another map is refused.
    **Download a recent pickup game of this map...** opens the client's
-   aq2world listing (`aq2world <filter>`) filtered on the map's name:
+   aq2world listing (`aq2world map <name>`) locked on the map, exactly,
+   over the last three months:
    Enter downloads a demo into `demos/`, and it is on this list
    afterwards, to see what was jumped in it. **Search for player in
    local demos...** asks for a name and searches every demo of the map for it
