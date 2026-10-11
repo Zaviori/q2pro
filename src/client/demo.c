@@ -1145,6 +1145,13 @@ done:
     cls.demo.seeking = false;
 }
 
+// the server's spectator slots in a server demo: "spec" and the MVD
+// dummy, players of no game, left off the lists
+bool Demo_IsSpectator(const char *name)
+{
+    return !Q_stricmp(name, "spec") || !Q_stricmp(name, "[MVDSPEC]");
+}
+
 static void parse_info_string(demoInfo_t *info, int clientNum, int index, const cs_remap_t *csr)
 {
     char string[MAX_QPATH], *p;
@@ -1164,7 +1171,7 @@ static void parse_info_string(demoInfo_t *info, int clientNum, int index, const 
         if (p) {
             *p++ = 0;
         }
-        if (string[0] && info->numPlayers < MAX_CLIENTS) {
+        if (string[0] && info->numPlayers < MAX_CLIENTS && !Demo_IsSpectator(string)) {
             Q_strlcpy(info->players[info->numPlayers].name, string, MAX_CLIENT_NAME);
             Q_strlcpy(info->players[info->numPlayers].skin, p ? p : "", MAX_QPATH);
             info->numPlayers++;
