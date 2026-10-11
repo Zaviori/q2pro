@@ -39,6 +39,7 @@ DEMOS MENU
 #define ENTRY_UP    1
 #define ENTRY_DN    2
 #define ENTRY_DEMO  3
+#define ENTRY_S3    4   // the aq2world listing, on top of the root
 
 #define COL_NAME    0
 #define COL_DATE    1
@@ -268,6 +269,9 @@ static menuSound_t Change(menuCommon_t *self)
     case ENTRY_DEMO:
         m_demos.menu.status = "Press Enter to play demo";
         break;
+    case ENTRY_S3:
+        m_demos.menu.status = "Press Enter to list the demos on aq2world";
+        break;
     default:
         m_demos.menu.status = "Press Enter to change directory";
         break;
@@ -297,7 +301,7 @@ static void ApplyFilter(void)
 
     for (i = 0; i < m_demos.numAll; i++) {
         e = m_demos.all[i];
-        if (!*m_demos.filter || e->type == ENTRY_UP ||
+        if (!*m_demos.filter || e->type == ENTRY_UP || e->type == ENTRY_S3 ||
             Fuzzy_Score(m_demos.filter, e->name) >= 0)
             m_demos.list.items[n++] = e;
         if (i + 1 == m_demos.allDirs)
@@ -311,7 +315,12 @@ static void ApplyFilter(void)
 
     if (*m_demos.filter) {
         dirs = m_demos.numDirs;
-        i = (dirs && ((demoEntry_t *)m_demos.list.items[0])->type == ENTRY_UP);
+        // the aq2world row and ".." stay on top
+        for (i = 0; i < dirs; i++) {
+            int type = ((demoEntry_t *)m_demos.list.items[i])->type;
+            if (type != ENTRY_UP && type != ENTRY_S3)
+                break;
+        }
         qsort(m_demos.list.items + i, dirs - i, sizeof(void *), scorecmp);
         qsort(m_demos.list.items + dirs, n - dirs, sizeof(void *), scorecmp);
         // the best demo under the cursor, past ".."
@@ -347,7 +356,7 @@ static void BuildList(void)
     numDemos = min(numDemos, MAX_LISTED_FILES - numDirs);
 
     // alloc entries
-    m_demos.list.items = UI_Malloc(sizeof(demoEntry_t *) * (numDirs + numDemos + 1));
+    m_demos.list.items = UI_Malloc(sizeof(demoEntry_t *) * (numDirs + numDemos + 2));
     m_demos.list.numItems = 0;
     m_demos.list.curvalue = 0;
     m_demos.list.prestep = 0;
@@ -359,6 +368,9 @@ static void BuildList(void)
     // start with minimum size
     m_demos.menu.size(&m_demos.menu);
 
+    if (!strcmp(m_demos.browse, "/demos")) {
+        BuildDir("aq2world: the servers' demos...", ENTRY_S3);
+    }
     if (strcmp(m_demos.browse, "/")) {
         BuildDir("..", ENTRY_UP);
     }
@@ -531,6 +543,9 @@ static menuSound_t Activate(menuCommon_t *self)
         return EnterDirectory(e);
     case ENTRY_DEMO:
         return PlayDemo(e);
+    case ENTRY_S3:
+        UI_PushMenu(UI_FindMenu("s3demos"));
+        return QMS_IN;
     }
 
     return QMS_NOTHANDLED;

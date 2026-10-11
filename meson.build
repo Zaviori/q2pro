@@ -72,6 +72,7 @@ client_src = [
 
 ui_src = [
   'src/client/ui/demos.c',
+  'src/client/ui/s3demos.c',
   'src/client/ui/menu.c',
   'src/client/ui/playerconfig.c',
   'src/client/ui/playermodels.c',

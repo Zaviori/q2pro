@@ -382,6 +382,356 @@ int HTTP_FetchFile(const char *url, void **data)
 #endif
 
 /*
+=====================================================================
+
+ONE FETCH IN THE BACKGROUND
+
+A URL into memory (a listing) or into a file (a demo, gunzipped as it
+lands), on a thread of its own, polled from the menu that asked for it.
+One at a time: the demo browser's aq2world listing is the user.
+
+=====================================================================
+*/
+
+#if USE_ZLIB
+#include <zlib.h>
+#endif
+
+#define FETCH_MAX_MEM   (32 << 20)
+#define FETCH_CHUNK     (64 << 10)
+
+static struct {
+    atomic_int  state;              // fetch_state_t
+    atomic_int  cancel;
+    pthread_t   thread;
+    bool        joined;
+
+    char        url[MAX_STRING_CHARS];
+    char        path[MAX_OSPATH];   // "" for memory
+    char        part[MAX_OSPATH];   // written here, moved to path when whole
+    bool        gunzip;
+
+    char        *data;              // memory
+    size_t      size, cap;
+    FILE        *file;
+#if USE_ZLIB
+    z_stream    zs;
+    bool        zs_init;
+    byte        *zbuf;
+#endif
+
+    pthread_mutex_t mutex;          // got, total, error
+    int64_t     got, total;
+    char        error[128];
+} fetch;
+
+static void fetch_error(const char *msg)
+{
+    pthread_mutex_lock(&fetch.mutex);
+    Q_strlcpy(fetch.error, msg, sizeof(fetch.error));
+    pthread_mutex_unlock(&fetch.mutex);
+}
+
+static int fetch_progress(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+    if (atomic_load(&fetch.cancel))
+        return 1;
+    pthread_mutex_lock(&fetch.mutex);
+    fetch.got = dlnow;
+    fetch.total = dltotal;
+    pthread_mutex_unlock(&fetch.mutex);
+    return 0;
+}
+
+static bool fetch_out(const void *ptr, size_t bytes)
+{
+    if (fetch.file)
+        return fwrite(ptr, 1, bytes, fetch.file) == bytes;
+    if (bytes > FETCH_MAX_MEM - fetch.size)
+        return false;
+    if (fetch.size + bytes + 1 > fetch.cap) {
+        size_t cap = fetch.cap ? fetch.cap : MIN_DLSIZE;
+        char *q;
+
+        while (cap < fetch.size + bytes + 1)
+            cap *= 2;
+        q = realloc(fetch.data, cap);
+        if (!q)
+            return false;
+        fetch.data = q;
+        fetch.cap = cap;
+    }
+    memcpy(fetch.data + fetch.size, ptr, bytes);
+    fetch.size += bytes;
+    fetch.data[fetch.size] = 0;
+    return true;
+}
+
+static size_t fetch_write(void *ptr, size_t size, size_t nmemb, void *stream)
+{
+    size_t bytes = size * nmemb;
+
+    if (!bytes)
+        return 0;
+#if USE_ZLIB
+    if (fetch.gunzip) {
+        fetch.zs.next_in = ptr;
+        fetch.zs.avail_in = bytes;
+        do {
+            int ret;
+
+            fetch.zs.next_out = fetch.zbuf;
+            fetch.zs.avail_out = FETCH_CHUNK;
+            ret = inflate(&fetch.zs, Z_NO_FLUSH);
+            if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
+                fetch_error("not a gzip file");
+                return 0;
+            }
+            if (!fetch_out(fetch.zbuf, FETCH_CHUNK - fetch.zs.avail_out)) {
+                fetch_error("write failed");
+                return 0;
+            }
+            if (ret == Z_STREAM_END)
+                break;
+        } while (fetch.zs.avail_out == 0);
+        return bytes;
+    }
+#endif
+    if (!fetch_out(ptr, bytes)) {
+        fetch_error(fetch.file ? "write failed" : "too big");
+        return 0;
+    }
+    return bytes;
+}
+
+static void *fetch_func(void *arg)
+{
+    CURL *curl = curl_easy_init();
+    CURLcode ret;
+    long response = 0;
+    bool ok;
+
+    if (!curl) {
+        fetch_error("curl_easy_init failed");
+        atomic_store(&fetch.state, FETCH_FAILED);
+        return NULL;
+    }
+
+    if (cl_http_insecure->integer) {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+#if USE_DEBUG
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, cl_http_debug->integer | 0L);
+#endif
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, fetch_progress);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, fetch_write);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_PROXY, http_proxy());
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, com_version->string);
+    curl_easy_setopt(curl, CURLOPT_URL, fetch.url);
+    curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS | 0L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+
+    ret = curl_easy_perform(curl);
+    if (ret == CURLE_HTTP_RETURNED_ERROR)
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response);
+    curl_easy_cleanup(curl);
+
+    ok = ret == CURLE_OK;
+    if (!ok && !fetch.error[0])
+        fetch_error(ret == CURLE_HTTP_RETURNED_ERROR ? http_strerror(response)
+                    : ret == CURLE_ABORTED_BY_CALLBACK ? "cancelled" : curl_easy_strerror(ret));
+
+#if USE_ZLIB
+    if (fetch.zs_init) {
+        if (ok && fetch.zs.total_in == 0) {
+            fetch_error("empty");
+            ok = false;
+        }
+        inflateEnd(&fetch.zs);
+        fetch.zs_init = false;
+    }
+#endif
+    if (fetch.file) {
+        if (fclose(fetch.file))
+            ok = false;
+        fetch.file = NULL;
+        if (ok) {
+            remove(fetch.path);
+            if (rename(fetch.part, fetch.path)) {
+                fetch_error("could not move the file into place");
+                ok = false;
+            }
+        }
+        if (!ok)
+            remove(fetch.part);
+    }
+
+    atomic_store(&fetch.state, ok ? FETCH_DONE : FETCH_FAILED);
+    return NULL;
+}
+
+// a fetch running or waiting to be taken
+static bool fetch_busy(void)
+{
+    return atomic_load(&fetch.state) != FETCH_IDLE;
+}
+
+static void fetch_reset(void)
+{
+    free(fetch.data);
+    fetch.data = NULL;
+    fetch.size = fetch.cap = 0;
+#if USE_ZLIB
+    free(fetch.zbuf);
+    fetch.zbuf = NULL;
+#endif
+    fetch.error[0] = 0;
+    fetch.got = fetch.total = 0;
+    atomic_store(&fetch.cancel, false);
+    atomic_store(&fetch.state, FETCH_IDLE);
+}
+
+/*
+===============
+HTTP_FetchStart
+
+Into memory with a NULL path, else into the file at path - under the
+game directory, made whole before it appears there, gunzipped on the
+way if asked. False when another fetch is up or curl is not.
+===============
+*/
+bool HTTP_FetchStart(const char *url, const char *path, bool gunzip)
+{
+    if (!curl_initialized || fetch_busy())
+        return false;
+
+    fetch_reset();
+    if (!fetch.joined) {
+        static bool mutex_init;
+
+        if (!mutex_init) {
+            pthread_mutex_init(&fetch.mutex, NULL);
+            mutex_init = true;
+        }
+        fetch.joined = true;
+    }
+
+    Q_strlcpy(fetch.url, url, sizeof(fetch.url));
+    fetch.path[0] = fetch.part[0] = 0;
+    fetch.gunzip = false;
+    if (path) {
+        if (Q_snprintf(fetch.path, sizeof(fetch.path), "%s/%s", fs_gamedir, path) >= sizeof(fetch.path)
+            || Q_snprintf(fetch.part, sizeof(fetch.part), "%s.part", fetch.path) >= sizeof(fetch.part)) {
+            fetch_error("path too long");
+            return false;
+        }
+        if (FS_CreatePath(fetch.part)) {
+            fetch_error("could not make the directory");
+            return false;
+        }
+        fetch.file = fopen(fetch.part, "wb");
+        if (!fetch.file) {
+            fetch_error("could not open the file for writing");
+            return false;
+        }
+#if USE_ZLIB
+        if (gunzip) {
+            memset(&fetch.zs, 0, sizeof(fetch.zs));
+            if (inflateInit2(&fetch.zs, 15 + 16) != Z_OK) {
+                fclose(fetch.file);
+                fetch.file = NULL;
+                remove(fetch.part);
+                fetch_error("zlib init failed");
+                return false;
+            }
+            fetch.zs_init = true;
+            fetch.zbuf = malloc(FETCH_CHUNK);
+            fetch.gunzip = true;
+        }
+#endif
+    }
+
+    atomic_store(&fetch.state, FETCH_RUNNING);
+    fetch.joined = false;
+    if (pthread_create(&fetch.thread, NULL, fetch_func, NULL)) {
+        fetch.joined = true;
+        if (fetch.file) {
+            fclose(fetch.file);
+            fetch.file = NULL;
+            remove(fetch.part);
+        }
+        fetch_error("could not start the thread");
+        atomic_store(&fetch.state, FETCH_FAILED);
+        return false;
+    }
+    return true;
+}
+
+// where it is: the state, the bytes so far and in all (0 unknown), the error
+fetch_state_t HTTP_FetchState(int64_t *got, int64_t *total, char *err, size_t errlen)
+{
+    fetch_state_t state = atomic_load(&fetch.state);
+
+    if (state != FETCH_RUNNING && !fetch.joined) {
+        pthread_join(fetch.thread, NULL);
+        fetch.joined = true;
+    }
+    pthread_mutex_lock(&fetch.mutex);
+    if (got)
+        *got = fetch.got;
+    if (total)
+        *total = fetch.total;
+    if (err)
+        Q_strlcpy(err, fetch.error, errlen);
+    pthread_mutex_unlock(&fetch.mutex);
+    return state;
+}
+
+/*
+===============
+HTTP_FetchTake
+
+A finished fetch is taken: a memory fetch's bytes (NUL terminated, freed
+with HTTP_FreeFile) are handed over, the size returned; a failed one or a
+file fetch gives NULL and 0. The fetch is free for the next.
+===============
+*/
+int HTTP_FetchTake(void **data)
+{
+    int size = 0;
+
+    if (data)
+        *data = NULL;
+    if (atomic_load(&fetch.state) == FETCH_RUNNING)
+        return 0;
+    HTTP_FetchState(NULL, NULL, NULL, 0);   // joined
+    if (atomic_load(&fetch.state) == FETCH_DONE && data && fetch.data) {
+        *data = fetch.data;
+        size = fetch.size;
+        fetch.data = NULL;
+    }
+    fetch_reset();
+    return size;
+}
+
+void HTTP_FetchCancel(void)
+{
+    if (atomic_load(&fetch.state) == FETCH_RUNNING) {
+        atomic_store(&fetch.cancel, true);
+        pthread_join(fetch.thread, NULL);
+        fetch.joined = true;
+    }
+    fetch_reset();
+}
+
+/*
 ===============
 HTTP_CleanupDownloads
 
@@ -464,6 +814,7 @@ void HTTP_Shutdown(void)
         return;
 
     HTTP_CleanupDownloads();
+    HTTP_FetchCancel();
 
     curl_global_cleanup();
     curl_initialized = false;
