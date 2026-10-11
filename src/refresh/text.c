@@ -351,6 +351,8 @@ or grey letter keeps none, so plain text is not dimmed by its shading.
 Both halves are sampled: the high half is the charset's alt letters (the
 green), used where the font stands in for conchars (TEXT_CHARSET).
 */
+static void text_charset_upload(const byte *pic, int w, int h);
+
 void Text_SampleCharset(const byte *pic, int w, int h)
 {
     int cw = w / 16, ch = h / 16;
@@ -358,6 +360,7 @@ void Text_SampleCharset(const byte *pic, int w, int h)
     memset(text_tints, 0, sizeof(text_tints));
     if (cw < 1 || ch < 1)
         return;
+    text_charset_upload(pic, w, h);
 
     for (int c = 0; c < 256; c++) {
         const byte *cell = pic + ((c >> 4) * ch * w + (c & 15) * cw) * 4;
@@ -414,10 +417,46 @@ static inline uint32_t text_letter_color(int flags, uint32_t color, int c)
 
 // The conchars image the icons come from, looked up by name each string -
 // a hash hit once loaded, and never a handle gone stale across a map load
+/*
+The charset's own texture is filtered nearest, as the pics are, and has
+no mipmaps: an icon shrunk from its 32-pixel cell to the size the text
+draws it at came out jagged. The icons are drawn from a copy of the
+same pixels, uploaded here as the charset loads, filtered and mipmapped.
+*/
+static GLuint text_charset_tex;
+
+static void text_charset_upload(const byte *pic, int w, int h)
+{
+    GL_Flush2D();
+    if (!text_charset_tex)
+        qglGenTextures(1, &text_charset_tex);
+    GL_ForceTexture(TMU_TEXTURE, text_charset_tex);
+    qglTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pic);
+    if (qglGenerateMipmap) {
+        qglGenerateMipmap(GL_TEXTURE_2D);
+        qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    } else {
+        qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
+    qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+static void text_charset_free(void)
+{
+    if (text_charset_tex)
+        qglDeleteTextures(1, &text_charset_tex);
+    text_charset_tex = 0;
+}
+
 static GLuint text_charset(void)
 {
-    qhandle_t h = R_RegisterFont("conchars");
+    qhandle_t h;
 
+    if (text_charset_tex)
+        return text_charset_tex;
+    h = R_RegisterFont("conchars");
     return h ? IMG_ForHandle(h)->texnum : 0;
 }
 
@@ -851,6 +890,7 @@ void Text_Init(void)
 // unless the whole renderer is.
 void Text_Shutdown(bool total)
 {
+    text_charset_free();
     text_free_sizes();
     if (total)
         text_free_fonts();
