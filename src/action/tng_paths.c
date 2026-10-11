@@ -634,7 +634,7 @@ qboolean JmpPath_Status(edict_t *ent, char rows[][64], const char *spawn)
 			st->train_others == 2 ? ", the round with it" : st->train_others == 1 ? ", the round's routes dim" : "");
 		if (spawn[0])
 			Q_strncpyz(rows[1], spawn, size);
-		Q_strncpyz(rows[2], "Escape: end the drill", size);
+		Q_strncpyz(rows[2], "Esc: end the drill", size);
 		return true;
 	}
 	if (st->over && st->vis_count) {
@@ -643,14 +643,14 @@ qboolean JmpPath_Status(edict_t *ent, char rows[][64], const char *spawn)
 				st->vis_count, st->vis_count == 1 ? "" : "s", st->spawn_filter);
 		else
 			Q_snprintf(rows[0], size, "All %d of %.16s's routes on the map", st->vis_count, name);
-		Q_strncpyz(rows[1], "click at a number to follow the route", size);
-		Q_strncpyz(rows[2], "shift + click on a marker to drill it", size);
+		Q_strncpyz(rows[1], "Click at a number to follow the route", size);
+		Q_strncpyz(rows[2], "Shift + click on a marker to drill it", size);
 		Q_strncpyz(rows[3], "Esc: remove markers and stop", size);
 		return true;
 	}
 	if (st->spawn_mode && ent->client->resp.jmp_markers && ent->client->layout != LAYOUT_MENU) {
 		Q_snprintf(rows[0], size, "%.16s's routes: pick a spawn", name);
-		Q_strncpyz(rows[1], "shift + click on a marker: show routes", size);
+		Q_strncpyz(rows[1], "Shift + click on a marker: show routes", size);
 		Q_strncpyz(rows[2], "Esc: remove markers", size);
 		return true;
 	}
@@ -886,9 +886,9 @@ static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st)
 static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 {
 	static const char *const rows[4] = {
-		"click: follow this route from the player's view",
-		"fire while following: third person and back",
-		"shift + click: drill it beside its ghost",
+		"Click: follow this route from the player's view",
+		"Fire while following: third person and back",
+		"Shift + click: drill it beside its ghost",
 		"Esc: back to the routes",
 	};
 
@@ -1251,7 +1251,7 @@ qboolean JmpPath_SpawnTip(edict_t *ent, char *shift, size_t size)
 
 	if (!st->spawn_mode || !st->route_count)
 		return false;
-	Q_snprintf(shift, size, "shift + click: %.16s's routes from here", JmpPathPlayerName(st));
+	Q_snprintf(shift, size, "Shift + click: %.16s's routes from here", JmpPathPlayerName(st));
 	return true;
 }
 
