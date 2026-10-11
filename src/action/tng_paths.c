@@ -44,6 +44,7 @@ typedef struct {
 	edict_t	*ghosts[JMP_PATH_MAX];	// a ghost running each route shown from the spawn picked
 	int		ghost_count;
 	float	ghost_t0;				// level.time they set off
+	int		ghost_lca;				// LIGHTS, CAMERA, ACTION! said this run: 0 to 3
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -558,11 +559,32 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st)
 		st->ghosts[st->ghost_count++] = ghost;
 	}
 	st->ghost_t0 = level.time;
+	st->ghost_lca = 0;
+}
+
+// the round's start as the ghosts run it: LIGHTS as they set off, CAMERA
+// two seconds in, ACTION! where the demo had it
+static void JmpPathGhostsLca(edict_t *ent, jmp_path_t *st, float ms)
+{
+	static const struct {
+		const char *text, *sound;
+		float ms;
+	} lca[3] = {
+		{ "LIGHTS...", "atl/lights.wav", 0 },
+		{ "CAMERA...", "atl/camera.wav", 2000 },
+		{ "ACTION!", "atl/action.wav", MVP_ACTION_FRAMES * 100 },
+	};
+
+	while (st->ghost_lca < 3 && ms >= lca[st->ghost_lca].ms) {
+		gi.centerprintf(ent, "%s\n", lca[st->ghost_lca].text);
+		unicastSound(ent, gi.soundindex((char *)lca[st->ghost_lca].sound), 1.0f);
+		st->ghost_lca++;
+	}
 }
 
 // each frame: along their routes, ten samples a second, held at the
 // end a moment and off again together
-static void JmpPathGhostsFrame(jmp_path_t *st)
+static void JmpPathGhostsFrame(edict_t *ent, jmp_path_t *st)
 {
 	float ms, period, frac, pitch, yaw;
 	int i, k, n, whole;
@@ -573,6 +595,9 @@ static void JmpPathGhostsFrame(jmp_path_t *st)
 	ms = fmodf((level.time - st->ghost_t0) * 1000, period);
 	whole = (int)(ms / 100);
 	frac = ms / 100 - whole;
+	if (whole == 0 && ms < 100)
+		st->ghost_lca = 0;		// off again
+	JmpPathGhostsLca(ent, st, ms);
 
 	for (i = 0; i < st->ghost_count && i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
@@ -854,7 +879,7 @@ void JmpPath_Frame(edict_t *ent)
 {
 	JmpPathAutoOpen(ent);
 	JmpPathMarkers(ent, JmpPath(ent));
-	JmpPathGhostsFrame(JmpPath(ent));
+	JmpPathGhostsFrame(ent, JmpPath(ent));
 }
 
 void JmpPath_HudCleared(edict_t *ent)
