@@ -34,10 +34,12 @@ pick **View player pathing...**, or type `jmod paths`.
    opponents running as ghosts in their team's colours; Escape lets go
    of the ghost, Escape again brings the spawn's set back, and once more
    takes the lines and ghosts down. Shift+fire on a route's number
-   **drills** it: the route stays drawn, its ghost runs dim beside you
-   and sets off again every time you spawn, and the spawn menu asks how
-   long until you spawn at the route's start and how often again (`jmod
-   path <#> train` from the console); Escape ends the drill. `jmod
+   **drills** it: the route alone stays drawn, its ghost runs dim beside
+   you and sets off again every time you spawn, and the spawn menu asks
+   how long until you spawn at the route's start, how often again, and
+   whether to draw the round's others with it - their routes dim, or
+   their ghosts too, weapons and all (`jmod path <#> train` from the
+   console); Escape ends the drill. `jmod
    pathmap` draws every route without ghosts.
 3. **Their routes.** One row per route, the rounds in which they ran the
    same route from the same spawn folded into it (`R7 x3`: round 7's

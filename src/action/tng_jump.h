@@ -84,6 +84,8 @@ int Jmp_MenuRowOf(edict_t *ent, const pmenu_t *p);
 void Jmp_MenuFrame(edict_t *ent);
 qboolean JmpPath_SpawnPick(edict_t *ent, int spot);
 qboolean JmpPath_SpawnAlt(edict_t *ent);
+int JmpPath_AskOthers(edict_t *ent);
+void JmpPath_DrillOthers(edict_t *ent, int mode);
 void JmpPath_Spawned(edict_t *ent);
 void Jmp_AskDrill(edict_t *ent, const vec3_t origin, float pitch, float yaw);
 void JmpPath_FindAnswer(edict_t *ent, const char *text);

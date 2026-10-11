@@ -67,6 +67,7 @@ typedef struct {
 	int		ghost_lca;				// LIGHTS, CAMERA, ACTION! said this run: 0 to 3
 	int		solo;					// a route picked alone, as an index into routes; -1 none
 	int		train;					// the route drilled: its ghost dim, off again at each spawn; -1 none
+	int		train_others;			// the drill's company: 0 the route alone, 1 the round's other routes, 2 their ghosts too
 
 	int		top;					// the page of the step up
 	int		pick;					// the route the route screen is of
@@ -427,7 +428,8 @@ static void JmpPathStuffShow(edict_t *ent, jmp_path_t *st)
 }
 
 // one route, the round's other players round it
-static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k)
+// the route run on the client, with the round's others drawn dim or not
+static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k, qboolean others)
 {
 	const mvp_trail_t *t = &st->demo->trails[st->routes[k]];
 	const mvp_round_t *r = &st->demo->rounds[t->round];
@@ -435,7 +437,7 @@ static void JmpPathStuffPlay(edict_t *ent, jmp_path_t *st, int k)
 	int i, n = 0;
 
 	Q_snprintf(cmd, sizeof(cmd), "jpath play \"%s\" %d %d ", st->demo_name, st->frames, st->routes[k]);
-	for (i = r->trail_first; i < r->trail_first + r->trail_count; i++) {
+	for (i = r->trail_first; others && i < r->trail_first + r->trail_count; i++) {
 		if (i == st->routes[k])
 			continue;
 		Q_snprintf(num, sizeof(num), "%s%d", n++ ? "," : "", i);
@@ -537,7 +539,7 @@ static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 	st->click_ms = 0;
 	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s: fire for third person and back, Escape to let go; Escape again brings the others back\n",
 		st->demo->rounds[st->demo->trails[st->routes[k]].round].number, JmpPathPlayerName(st));
-	JmpPathStuffPlay(ent, st, k);
+	JmpPathStuffPlay(ent, st, k, true);
 	JmpPathMarkersClear(ent, st);
 	JmpPathMarkers(ent, st);
 	JmpPathGhostsSpawn(ent, st, false);
@@ -570,13 +572,15 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	Jmp_PlayEscape(ent);		// a ghost being followed lets go
 	st->solo = k;
 	st->train = k;
+	st->train_others = 0;
 	JmpPathFilter(st);
 	st->over = true;
 	st->sel = k;
 	st->click_ms = 0;
-	JmpPathStuffPlay(ent, st, k);
+	// the route and its ghost alone: no markers, none of the round's
+	// others until the spawn menu's last step asks for them
+	JmpPathStuffPlay(ent, st, k, false);
 	JmpPathMarkersClear(ent, st);
-	JmpPathMarkers(ent, st);
 	JmpPathGhostsSpawn(ent, st, true);
 
 	t = &st->demo->trails[st->routes[k]];
@@ -586,6 +590,29 @@ static void JmpPathTrain(edict_t *ent, jmp_path_t *st, int k)
 	gi.cprintf(ent, PRINT_HIGH, "Drilling route %d of %s: the ghost sets off whenever you spawn. Escape ends it\n",
 		st->demo->rounds[t->round].number, JmpPathPlayerName(st));
 	Jmp_AskDrill(ent, origin, SHORT2ANGLE(m->pitch), SHORT2ANGLE(m->yaw));
+}
+
+// the spawn menu's last step for a drill: the round's others drawn or
+// not. 0 when it is not a drill's spawn, else the mode so far plus one.
+int JmpPath_AskOthers(edict_t *ent)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (st->train < 0 || !st->over)
+		return 0;
+	return st->train_others + 1;
+}
+
+// the answer: the round's other routes drawn dim (1), their ghosts too (2)
+void JmpPath_DrillOthers(edict_t *ent, int mode)
+{
+	jmp_path_t *st = JmpPath(ent);
+
+	if (st->train < 0 || !st->over)
+		return;
+	st->train_others = Q_clip(mode, 0, 2);
+	JmpPathStuffPlay(ent, st, st->train, st->train_others >= 1);
+	JmpPathGhostsSpawn(ent, st, true);
 }
 
 // a jmod spawn landed: a drill's ghost sets off with it
@@ -699,13 +726,17 @@ static void JmpPathGhostsSpawn(edict_t *ent, jmp_path_t *st, qboolean own)
 	JmpPathGhostsClear(st);
 	for (i = 0; own && i < st->vis_count; i++)
 		JmpPathGhostAdd(ent, st, st->routes[st->vis[i]], st->train >= 0);
+	// a route followed runs with its round's opponents; a drill with the
+	// whole round, when its spawn menu asked for them
 	for (i = 0; st->solo >= 0 && i < st->vis_count; i++) {
 		const mvp_trail_t *t = &st->demo->trails[st->routes[st->vis[i]]];
 		const mvp_round_t *r = &st->demo->rounds[t->round];
 
-		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++)
-			if (st->train < 0 && st->demo->trails[k].team != t->team)
+		for (k = r->trail_first; k < r->trail_first + r->trail_count; k++) {
+			if (st->train < 0 ? st->demo->trails[k].team != t->team
+				: st->train_others >= 2 && k != st->routes[st->vis[i]])
 				JmpPathGhostAdd(ent, st, k, false);
+		}
 	}
 	st->ghost_t0 = level.time;
 	st->ghost_ms = -1;
@@ -844,7 +875,7 @@ static void JmpPathMarkers(edict_t *ent, jmp_path_t *st)
 	if (st->ghud_count && st->ghud_made > level.framenum)
 		st->ghud_count = 0;
 
-	if (!st->over || !count) {
+	if (!st->over || !count || st->train >= 0) {	// a drill has no markers
 		st->aim = 0;
 		st->aim_sent = -1;
 		JmpPathTip(ent, st, false);
