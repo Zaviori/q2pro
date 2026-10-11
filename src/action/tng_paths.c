@@ -86,7 +86,7 @@ typedef struct {
 	int		ghud_made;				// level.framenum they were made at
 	int		ghud_key;
 	int		ghud_size[JMP_PATH_MAX];
-	int		tip[4];
+	int		tip[5];
 	qboolean	tip_on;
 } jmp_path_t;
 
@@ -885,10 +885,11 @@ static void JmpPathMarkersClear(edict_t *ent, jmp_path_t *st)
 // the route markers' tooltip: the spawn markers' four rows (Jmp_TipRows)
 static void JmpPathTip(edict_t *ent, jmp_path_t *st, qboolean on)
 {
-	static const char *const rows[4] = {
+	static const char *const rows[5] = {
 		"Click: follow this route from the player's view",
 		"Fire while following: third person and back",
 		"Shift + click: drill it beside its ghost",
+		"Shift + alt + click: drill it with the round's others",
 		"Esc: back to the routes",
 	};
 
@@ -1050,12 +1051,15 @@ qboolean JmpPath_Fire(edict_t *ent, usercmd_t *ucmd)
 	st->fire_held = fire;
 	if (!st->over || client->layout == LAYOUT_MENU || (ent->svflags & SVF_NOCLIENT))
 		return false;
-	// shift on a route's number drills it; on a spawn marker it is the
-	// routes from that spawn, which is Jmp_MenuFire's
+	// shift on a route's number drills it - with alt as well, the
+	// round's others run with it; on a spawn marker it is the routes
+	// from that spawn, which is Jmp_MenuFire's
 	if (ucmd->impulse == IMPULSE_SHIFT || client->jmp_shift) {
 		if (pressed && k >= 0) {
 			client->latched_buttons &= ~BUTTON_ATTACK;
 			JmpPathTrain(ent, st, k);
+			if (client->jmp_alt)
+				JmpPath_DrillOthers(ent, 2);
 			return true;
 		}
 		return false;
