@@ -714,6 +714,12 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
 #ifdef MVP_DEBUG
             fprintf(stderr, "frame %d: unknown op %d at %zu of %zu\n", ps->frame, op, r->p, r->end);
 #endif
+            // past the frame it is the datagram: what is not known of
+            // it is left, the frame stands
+            if (framed) {
+                r->p = r->end;
+                break;
+            }
             r->bad = true;
             break;
         }
@@ -722,10 +728,8 @@ static bool parse_block(parser_t *ps, rd_t *r, char *err, size_t errlen)
             fprintf(stderr, "frame %d: bad after op %d at %zu of %zu\n", ps->frame, op, r->p, r->end);
 #endif
 
-        // the frame is the last thing read of a block: whatever follows
-        // is the datagram, with nothing in it for us
-        if (framed)
-            break;
+        // the frame is followed by the datagram: the block's multicasts,
+        // read for the muzzle flashes (the shots), which belong to it
     }
 
     if (r->bad)
