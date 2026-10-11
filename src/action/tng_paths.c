@@ -539,7 +539,7 @@ static void JmpPathSolo(edict_t *ent, jmp_path_t *st, int k, qboolean pov)
 	st->over = true;
 	st->sel = k;
 	st->click_ms = 0;
-	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s: fire for third person and back, Escape to let go; Escape again brings the others back\n",
+	gi.cprintf(ent, PRINT_HIGH, "Route %d of %s: fire for third person and back, Escape brings the others back\n",
 		st->demo->rounds[st->demo->trails[st->routes[k]].round].number, JmpPathPlayerName(st));
 	JmpPathStuffPlay(ent, st, k, true);
 	JmpPathMarkersClear(ent, st);
@@ -1106,7 +1106,9 @@ qboolean JmpPath_Escape(edict_t *ent)
 		Cmd_SpawnCancel_f(ent);
 	}
 	if (st->solo >= 0) {
-		// back to the set the route was picked from
+		// back to the set the route was picked from, the follow let go
+		// and the round's ghosts with it - one Escape, not two
+		Jmp_PlayEscape(ent);
 		st->solo = -1;
 		JmpPathFilter(st);
 		JmpPathOver(ent, st, false);
