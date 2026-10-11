@@ -414,6 +414,9 @@ void UI_Draw(unsigned realtime)
 
     uis.realtime = realtime;
 
+    // the aq2world demos' download goes on behind any screen
+    S3_Frame();
+
     if (!(Key_GetDest() & KEY_MENU)) {
         return;
     }

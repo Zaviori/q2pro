@@ -1310,36 +1310,43 @@ static menuSound_t S3_CharEvent(menuFrameWork_t *self, int key)
     return QMS_SILENT;
 }
 
-// each frame: a listing, a download or a peek under way is followed
-static void S3_Draw(menuFrameWork_t *self)
+// every frame, menu up or not: a listing, a download or a peek under
+// way is followed - a download goes on after the menu is left, and a
+// map it was to start comes up all the same
+void S3_Frame(void)
 {
     fetch_state_t state;
     int64_t got, total;
     char size[16];
+
+    if (!S3_Busy())
+        return;
+    state = HTTP_FetchState(&got, &total, NULL, 0);
+    if (state == FETCH_DONE || state == FETCH_FAILED) {
+        if (m_s3.listing)
+            S3_ListGot();
+        else if (m_s3.fetching)
+            S3_FetchDone();
+        else
+            S3_PeekDone();
+        // a month asked for during the download
+        if (uis.activeMenu == &m_s3.menu && !S3_Busy() && !S3_PageFind(m_s3.source, m_s3.month, true))
+            S3_ListStart();
+    } else if (m_s3.fetching && uis.realtime - m_s3.fetch_shown > 200) {
+        m_s3.fetch_shown = uis.realtime;
+        Com_FormatSize(size, sizeof(size), got);
+        if (total > 0)
+            Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %d%%, %s",
+                       m_s3.fetch_local, (int)(got * 100 / total), size);
+        else
+            Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %s", m_s3.fetch_local, size);
+    }
+}
+
+static void S3_Draw(menuFrameWork_t *self)
+{
     s3entry_t *e;
 
-    if (S3_Busy()) {
-        state = HTTP_FetchState(&got, &total, NULL, 0);
-        if (state == FETCH_DONE || state == FETCH_FAILED) {
-            if (m_s3.listing)
-                S3_ListGot();
-            else if (m_s3.fetching)
-                S3_FetchDone();
-            else
-                S3_PeekDone();
-            // a month asked for during the download
-            if (!S3_Busy() && !S3_PageFind(m_s3.source, m_s3.month, true))
-                S3_ListStart();
-        } else if (m_s3.fetching && uis.realtime - m_s3.fetch_shown > 200) {
-            m_s3.fetch_shown = uis.realtime;
-            Com_FormatSize(size, sizeof(size), got);
-            if (total > 0)
-                Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %d%%, %s",
-                           m_s3.fetch_local, (int)(got * 100 / total), size);
-            else
-                Q_snprintf(m_s3.note, sizeof(m_s3.note), "downloading %s: %s", m_s3.fetch_local, size);
-        }
-    }
     S3_Rest();
 
     // the players under the demo the cursor is on
