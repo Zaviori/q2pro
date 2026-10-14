@@ -104,6 +104,16 @@ if exist "%SRC%\pics\" (
         )
         echo   %SRC%\pics\xhair\*  ^-^>  %DEST%\action\pics\xhair\
     )
+    rem and the icon cells redrawn
+    if exist "%SRC%\pics\glyph\" (
+        if not exist "%DEST%\action\pics\glyph\" mkdir "%DEST%\action\pics\glyph"
+        copy /y "%SRC%\pics\glyph\*" "%DEST%\action\pics\glyph\" >nul
+        if errorlevel 1 (
+            echo ERROR: failed to copy the glyphs
+            exit /b 1
+        )
+        echo   %SRC%\pics\glyph\*  ^-^>  %DEST%\action\pics\glyph\
+    )
 )
 
 echo Done.

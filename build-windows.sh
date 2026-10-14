@@ -63,6 +63,9 @@ cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SRCDIR/action/pics/mvd.png" "$SHARE
 # the sharp crosshairs (tools/xhair-gen.py); without them ch_sharp draws the pak's pixel art
 mkdir -p "$SHAREDIR/pics/xhair"
 cp -f "$SRCDIR"/action/pics/xhair/*.png "$SHAREDIR/pics/xhair/"
+# and the icon cells redrawn (tools/glyph-gen.py): the kill report's skull
+mkdir -p "$SHAREDIR/pics/glyph"
+cp -f "$SRCDIR"/action/pics/glyph/*.png "$SHAREDIR/pics/glyph/"
 
 echo "Staged in $SHAREDIR:"
 ls -l "$SHAREDIR/gamex86_64x.dll" "$SHAREDIR/q2prox.exe" "$SHAREDIR/install-windows.bat" \
