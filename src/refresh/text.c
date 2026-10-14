@@ -443,11 +443,14 @@ static void text_charset_upload(const byte *pic, int w, int h)
     qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
 
+static qhandle_t text_glyph_pic[128];   // an icon cell's own pic: 0 untried, -1 none (text_glyph)
+
 static void text_charset_free(void)
 {
     if (text_charset_tex)
         qglDeleteTextures(1, &text_charset_tex);
     text_charset_tex = 0;
+    memset(text_glyph_pic, 0, sizeof(text_glyph_pic));
 }
 
 static GLuint text_charset(void)
@@ -458,6 +461,33 @@ static GLuint text_charset(void)
         return text_charset_tex;
     h = R_RegisterFont("conchars");
     return h ? IMG_ForHandle(h)->texnum : 0;
+}
+
+/*
+An icon's cell can be stood in for by a pic of its own, pics/glyph/<byte>.png,
+drawn in the cell's place at whatever size it comes, mipmapped - the
+way the sharp crosshairs stand in for the pcx. The first is the kill
+report's skull, byte 6, whose skull sits a pixel high of its disc in the
+pak's charset (tools/glyph-gen.py). Looked up once per byte; the handles
+are permanent, and forgotten with the charset copy on shutdown.
+*/
+static GLuint text_glyph(int b, float *s1, float *t1, float *s2, float *t2)
+{
+    const image_t *img;
+
+    if (!text_glyph_pic[b]) {
+        qhandle_t h = R_RegisterImage(va("glyph/%d.png", b), IT_PIC,
+                                      IF_PERMANENT | IF_OPTIONAL | IF_MIPMAP);
+        text_glyph_pic[b] = h ? h : -1;
+    }
+    if (text_glyph_pic[b] == -1)
+        return 0;
+    img = IMG_ForHandle(text_glyph_pic[b]);
+    *s1 = img->sl;
+    *t1 = img->tl;
+    *s2 = img->sh;
+    *t2 = img->th;
+    return img->texnum;
 }
 
 // A byte the font has no letter for but the charset has a picture: the
@@ -782,13 +812,16 @@ int R_DrawText(int x, int y, int flags, float size, uint32_t color, uint32_t alt
                 float it = text_charset_tex && text_charset_h ? 1.0f / text_charset_h : 0;
                 float s1 = (b & 15) * 0.0625f + is, t1 = (b >> 4) * 0.0625f + it;
                 float s2 = s1 + 0.0625f - 2 * is, t2 = t1 + 0.0625f - 2 * it;
+                GLuint tex = text_glyph(b, &s1, &t1, &s2, &t2);    // its own pic, if it has one
+                if (!tex)
+                    tex = charset;
 
                 if (pass == 0)
                     GL_TextQuad((gx + shadow) * sc, (icon_y + shadow) * sc,
-                                gw * sc, icon * sc, s1, t1, s2, t2, edge, charset);
+                                gw * sc, icon * sc, s1, t1, s2, t2, edge, tex);
                 else
                     GL_TextQuad(gx * sc, icon_y * sc, gw * sc, icon * sc,
-                                s1, t1, s2, t2, icon_color, charset);
+                                s1, t1, s2, t2, icon_color, tex);
                 p += adv;
                 prev = 0;
                 continue;
@@ -840,7 +873,7 @@ static cvar_t *r_font_test;
 
 void Text_DrawTest(void)
 {
-    static const char sample[] = "zaviori [RNG] killed xeqt with M4 - HS 1234567890";
+    static const char sample[] = "zaviori [RNG] killed xeqt \006 M4 \007 HS 1234567890";
     static const float test_sizes[] = { 8, 10, 12, 16, 24 };
     float scale_was = draw.scale;
     int y = 40;
