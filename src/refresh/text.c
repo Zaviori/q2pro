@@ -475,6 +475,7 @@ static GLuint text_glyph(int b, float *s1, float *t1, float *s2, float *t2)
 {
     const image_t *img;
 
+    b &= 127;       // the high bit is the charset's alt row: the same icon
     if (!text_glyph_pic[b]) {
         qhandle_t h = R_RegisterImage(va("glyph/%d.png", b), IT_PIC,
                                       IF_PERMANENT | IF_OPTIONAL | IF_MIPMAP);
