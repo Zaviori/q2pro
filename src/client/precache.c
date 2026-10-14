@@ -236,7 +236,7 @@ void CL_RegisterBspModels(void)
     if (cl.bsp->checksum != Q_atoi(cl.configstrings[cl.csr.mapchecksum])) {
         if (cls.demo.playback) {
             Com_WPrintf("Local map version differs from demo: %i != %s\n",
-                cl.bsp->checksum, cl.configstrings[CS_MAPCHECKSUM]);
+                cl.bsp->checksum, cl.configstrings[cl.csr.mapchecksum]);
         } else {
             if (CL_MapRetryAttempted()) {
                 // We already tried to re-download, still wrong - server issue
@@ -245,11 +245,11 @@ void CL_RegisterBspModels(void)
                     "Local:  %i\n"
                     "Server: %s\n"
                     "Map: %s\n\n"
-                    "Client attempted re-download but checksum still mismatched.\n"
-                    "Server is running a different map version than available for download.\n"
-                    "Contact server admin to update map files.\n",
+                    "The copy fetched still differs: the server's own downloads (UDP), or\n"
+                    "an HTTP server of its own, must hold the version it runs. Contact the\n"
+                    "server admin.\n",
                     cl.bsp->checksum,
-                    cl.configstrings[CS_MAPCHECKSUM],
+                    cl.configstrings[cl.csr.mapchecksum],
                     cl.bsp->name);
             } else {
                 // First attempt, suggest manual fix
@@ -258,9 +258,10 @@ void CL_RegisterBspModels(void)
                     "Local:  %i\n"
                     "Server: %s\n"
                     "Map: %s\n\n"
-                    "To fix: Delete local map and reconnect to re-download.\n",
+                    "To fix: set cl_map_override 1 (with allow_download_maps 1) to play on\n"
+                    "the server's version, fetched into override/; or delete the local map.\n",
                     cl.bsp->checksum,
-                    cl.configstrings[CS_MAPCHECKSUM],
+                    cl.configstrings[cl.csr.mapchecksum],
                     cl.bsp->name);
             }
         }

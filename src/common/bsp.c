@@ -333,6 +333,22 @@ void BSP_Free(bsp_t *bsp)
     }
 }
 
+// The cached copy of `name`, if any, is not handed out by BSP_Load again:
+// whoever holds it frees it as before, and the next load reads the file
+// afresh (the server's version fetched over ours, cl_map_override)
+void BSP_Evict(const char *name)
+{
+    bsp_t *bsp;
+
+    LIST_FOR_EACH(bsp_t, bsp, &bsp_cache, entry) {
+        if (!FS_pathcmp(bsp->name, name)) {
+            List_Remove(&bsp->entry);
+            List_Init(&bsp->entry);     // BSP_Free's remove is harmless then
+            return;
+        }
+    }
+}
+
 #if USE_CLIENT
 
 int BSP_LoadMaterials(bsp_t *bsp)
