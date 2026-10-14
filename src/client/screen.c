@@ -36,6 +36,7 @@ static struct {
     bool        initialized;        // ready to draw
 
     qhandle_t   crosshair_pic;
+    qhandle_t   crosshair_hi;       // the same crosshair as vectors (pics/xhair), or 0
     int         crosshair_width, crosshair_height;
     color_t     crosshair_color;
     int         scope_width, scope_height;
@@ -139,6 +140,9 @@ static cvar_t   *ch_y;
 static cvar_t   *scr_hit_marker_time;
 
 static cvar_t   *ch_hide_while_zoomed;
+static cvar_t   *ch_sharp;
+static cvar_t   *scr_hudnum_font;
+static cvar_t   *scr_hudnum_size;
 
 vrect_t     scr_vrect;      // position of render window on screen
 
@@ -1576,9 +1580,15 @@ static void scr_crosshair_changed(cvar_t *self)
 {
     if (self->integer > 0) {
         scr.crosshair_pic = R_RegisterPic(va("ch%i", self->integer));
+        // the sharp one: the same crosshair redrawn as vectors at 8x
+        // (tools/xhair-gen.py), mipmapped so it is clean at any size. It
+        // draws in the pcx's box; missing, the pcx draws as before
+        scr.crosshair_hi = R_RegisterImage(va("xhair/ch%i.png", self->integer), IT_PIC,
+                                           IF_PERMANENT | IF_OPTIONAL | IF_MIPMAP);
         ch_scale_changed(ch_scale);
     } else {
         scr.crosshair_pic = 0;
+        scr.crosshair_hi = 0;
     }
 }
 
@@ -1717,6 +1727,10 @@ void SCR_Init(void)
     // for 8-unit text, so a large size can reach past their boxes
     scr_ghud_font = Cvar_Get("scr_ghud_font", "1", CVAR_ARCHIVE);
     scr_ghud_size = Cvar_Get("scr_ghud_size", "16", CVAR_ARCHIVE);
+    // the HUD's digits (health, ammo, scores - the num_ pics) in the bold
+    // font; 38 draws a digit the pics' 20 units tall in their 16-unit cells
+    scr_hudnum_font = Cvar_Get("scr_hudnum_font", "1", CVAR_ARCHIVE);
+    scr_hudnum_size = Cvar_Get("scr_hudnum_size", "38", CVAR_ARCHIVE);
     // the ghud's text placed in the world (GHF_3DPOS): labels over things
     // across a map, read from afar, so bigger than the HUD's own
     scr_ghud_label_size = Cvar_Get("scr_ghud_label_size", "20", CVAR_ARCHIVE);
@@ -1780,6 +1794,9 @@ void SCR_Init(void)
     ch_y = Cvar_Get("ch_y", "0", 0);
 
     ch_hide_while_zoomed = Cvar_Get("ch_hide_while_zoomed", "1", 0);
+    // the crosshair from pics/xhair (vectors, mipmapped) and the stock
+    // scope drawn as lines: sharp at any size. 0 is the pak's pixel art
+    ch_sharp = Cvar_Get("ch_sharp", "1", CVAR_ARCHIVE);
 
     scr_draw2d = Cvar_Get("scr_draw2d", "2", 0);
     scr_showturtle = Cvar_Get("scr_showturtle", "1", 0);
@@ -1942,6 +1959,21 @@ static void HUD_DrawNumber(int x, int y, int color, int width, int value)
     l = Q_scnprintf(num, sizeof(num), "%i", value);
     if (l > width)
         l = width;
+
+    if (scr_hudnum_font->integer && R_TextAvailable()) {
+        // the bold font, ending where the pics' last digit ends; sized so
+        // a digit stands the pics' 20 units in their 16-unit cells at the
+        // default size, outlined for their bevel. num_ is light grey,
+        // anum_ the dusty red
+        static const uint32_t tint[2] = { MakeColor(204, 204, 204, 255), MakeColor(184, 128, 128, 255) };
+        float size = Cvar_ClampValue(scr_hudnum_size, 8, 64);
+        // Noto's digits are .524 of the size tall, .261 below the line's top
+        int top = y + (24 - Q_rint(size * 0.524f)) / 2 - Q_rint(size * 0.261f);
+
+        R_DrawText(x + 2 + DIGIT_WIDTH * width, top, TEXT_BOLD | TEXT_RIGHT | TEXT_OUTLINE,
+                   size, tint[color], tint[color], num, l);
+        return;
+    }
     x += 2 + DIGIT_WIDTH * (width - l);
 
     ptr = num;
@@ -2376,6 +2408,55 @@ static void SCR_LayoutString(int x, int y, int flags, uint32_t color,
     }
 }
 
+/*
+The stock scope - scope2x, 4x and 6x are one picture: a red hairline
+cross on a 640x480 canvas, each arm full for 80 pixels and fading out
+by 240 - drawn as lines in its box instead of the pic: a pixel thin at
+1080p as the pic is at 1:1, and as thin at any other size instead of
+a blurred two. Custom scope packs (scopes/<name>/scopeNx) are pics
+still. Drawn in screen pixels, under the HUD scale's box.
+*/
+static const byte scope_ramp[25] = {    // the arm's alpha every 10 canvas pixels from the centre
+    254, 255, 255, 255, 255, 255, 255, 255, 251, 220, 191, 165, 141,
+    119, 99, 81, 65, 52, 40, 30, 21, 15, 9, 4, 0
+};
+#define SCOPE_RAMP_STEP 10
+#define SCOPE_CANVAS_W  640
+#define SCOPE_SEG       4       // canvas pixels per line segment
+
+static void SCR_DrawScopeLines(int x, int y, int w, int h)
+{
+    // screen pixels per canvas pixel: the pic's box over its canvas
+    float px = w / (float)SCOPE_CANVAS_W / scr.hud_scale;
+    float cx = (x + w * 0.5f) / scr.hud_scale;
+    float cy = (y + h * 0.5f) / scr.hud_scale;
+    int t = max(1, Q_rint(px));
+    int lx = floorf(cx - t * 0.5f + 0.5f);     // the vertical line's left
+    int ly = floorf(cy - t * 0.5f + 0.5f);     // the horizontal line's top
+    int d, a0, a1, s0, s1;
+    uint32_t color;
+
+    R_SetScale(1.0f);
+    for (d = 0; d < (q_countof(scope_ramp) - 1) * SCOPE_RAMP_STEP; d += SCOPE_SEG) {
+        // the ramp, linear between its samples, at the segment's middle
+        float m = (d + SCOPE_SEG * 0.5f) / SCOPE_RAMP_STEP;
+        int i = m;
+        float f = m - i;
+        a0 = scope_ramp[i];
+        a1 = scope_ramp[min(i + 1, (int)q_countof(scope_ramp) - 1)];
+        color = MakeColor(255, 0, 0, Q_rint(a0 + (a1 - a0) * f));
+        s0 = Q_rint(d * px);
+        s1 = Q_rint((d + SCOPE_SEG) * px);
+        if (s1 <= s0)
+            continue;
+        R_DrawFill32(Q_rint(cx) + s0, ly, s1 - s0, t, color);         // right
+        R_DrawFill32(Q_rint(cx) - s1, ly, s1 - s0, t, color);         // left
+        R_DrawFill32(lx, Q_rint(cy) + s0, t, s1 - s0, color);         // down
+        R_DrawFill32(lx, Q_rint(cy) - s1, t, s1 - s0, color);         // up
+    }
+    R_SetScale(scr.hud_scale);
+}
+
 static void SCR_ExecuteLayoutString(const char *s)
 {
     char    buffer[MAX_QPATH];
@@ -2464,9 +2545,12 @@ static void SCR_ExecuteLayoutString(const char *s)
 
                     int w = scr.scope_width;
                     int h = scr.scope_height;
-                    R_DrawStretchPic(x + ch_x->integer,
-                                     y + ch_y->integer,
-                                     w, h, pic);
+                    if (ch_sharp->integer && Com_WildCmp("scope?x", token))
+                        SCR_DrawScopeLines(x + ch_x->integer, y + ch_y->integer, w, h);
+                    else
+                        R_DrawStretchPic(x + ch_x->integer,
+                                         y + ch_y->integer,
+                                         w, h, pic);
                 } else {
                     R_DrawPic(x, y, pic);
                 }
@@ -2791,6 +2875,15 @@ static void SCR_DrawLoading(void)
 
     R_SetScale(scr.hud_scale);
 
+    if (R_TextAvailable()) {
+        // the plaque's word in the font: the pic is 111x25 and nothing bigger ships
+        R_SetColor(U32_WHITE);
+        R_DrawText(r_config.width * scr.hud_scale / 2, r_config.height * scr.hud_scale / 2 - 10,
+                   TEXT_BOLD | TEXT_CENTER | TEXT_OUTLINE, 16, U32_WHITE, U32_WHITE, "Loading...", MAX_STRING_CHARS);
+        R_SetScale(1.0f);
+        return;
+    }
+
     R_GetPicSize(&w, &h, scr.loading_pic);
     x = (r_config.width * scr.hud_scale - w) / 2;
     y = (r_config.height * scr.hud_scale - h) / 2;
@@ -3043,7 +3136,7 @@ static void SCR_DrawCrosshair(void)
                      y + ch_y->integer,
                      scr.crosshair_width,
                      scr.crosshair_height,
-                     scr.crosshair_pic);
+                     ch_sharp->integer && scr.crosshair_hi ? scr.crosshair_hi : scr.crosshair_pic);
 
     SCR_DrawHitMarker();
 }
