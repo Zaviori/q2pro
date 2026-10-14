@@ -41,13 +41,16 @@ off the branch it builds on) and is merged into `extras` when done.
 
 4. Package. Two assets, named by the short sha, each the client
    renamed `q2prox`, its game library renamed `gamex86_64x`, the fonts
-   and the jmod marker; everything stripped:
+   and the pics the client ships (the jmod marker, the MVD badge, the
+   sharp crosshairs, the icon cells); everything stripped:
 
        q2pro-extras-<sha>-linux-x86_64.tar.gz
            q2prox                          build/q2pro, strip
            action/gamex86_64x.so           build/gamex86_64.so, strip
            action/fonts/                   NotoSans-Regular.ttf, NotoSans-Bold.ttf, OFL.txt
-           action/pics/jmod_spawn.png
+           action/pics/jmod_spawn.png, mvd.png
+           action/pics/xhair/*.png         the twenty crosshairs
+           action/pics/glyph/*.png         the icon cells (6.png, the skull)
        q2pro-extras-<sha>-windows-x86_64.zip
            q2prox.exe                      build-windows/q2pro.exe, x86_64-w64-mingw32-strip
            action/gamex86_64x.dll          build-windows/gamex86_64.dll, x86_64-w64-mingw32-strip
@@ -61,9 +64,10 @@ off the branch it builds on) and is merged into `extras` when done.
    top of the `## New in` sections, one `###` per feature area and a
    bullet per thing a user can do or will notice, and update the
    `Built from` paragraph's sha. The intro paragraph lists the headline
-   features; extend it when vN adds one. The install, menu and cvar
-   reference below the `New in` sections is kept current, not
-   duplicated.
+   features; extend it when vN adds one. The reference - every cvar,
+   menu and key with its default - is `README.md` on the branch, kept
+   current with each feature; the notes keep the install section and
+   link to the README for the rest, so there is one copy to go stale.
 
 6. Create the release on the pushed tag. Give **no `--target`**: with
    the tag already on GitHub a short sha is refused (`422
