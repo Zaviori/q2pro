@@ -814,6 +814,8 @@ static const char ui_menu_ttf[] =
     "range \"console size\" con_text_size 8 16 1\n"
     "toggle \"game hud\" scr_ghud_font\n"
     "range \"game hud size\" scr_ghud_size 8 24 1\n"
+    "toggle \"hud digits\" scr_hudnum_font\n"
+    "range \"hud digits size\" scr_hudnum_size 24 48 1\n"
     "range \"world labels size\" scr_ghud_label_size 8 40 1\n"
     "blank\n"
     "toggle \"hit colours\" con_hitcolors\n"
@@ -871,8 +873,19 @@ static const char ui_menu_jmod[] =
     "bind \"slippers\" jmod slippers\n"
     "end\n";
 
+// The crosshair: the sharp set, and the stock knobs beside it
+static const char ui_menu_xhair[] =
+    "begin xhair\n"
+    "title \"Crosshair\"\n"
+    "toggle \"sharp crosshair & scope\" ch_sharp\n"
+    "range \"crosshair\" crosshair 0 20 1\n"
+    "range \"size\" ch_scale 0.5 4 0.5\n"
+    "toggle \"hide when scoped\" ch_hide_while_zoomed\n"
+    "end\n";
+
 static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
+    { "Crosshair", "xhair", ui_menu_xhair },
     { "Stainmaps", "stains", ui_menu_stains },
     { "Jump Mod Keys", "jmodkeys", ui_menu_jmod },
 #ifdef _WIN32

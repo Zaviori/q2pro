@@ -94,6 +94,16 @@ if exist "%SRC%\pics\" (
         exit /b 1
     )
     echo   %SRC%\pics\*  ^-^>  %DEST%\action\pics\
+    rem the sharp crosshairs, a folder of their own
+    if exist "%SRC%\pics\xhair\" (
+        if not exist "%DEST%\action\pics\xhair\" mkdir "%DEST%\action\pics\xhair"
+        copy /y "%SRC%\pics\xhair\*" "%DEST%\action\pics\xhair\" >nul
+        if errorlevel 1 (
+            echo ERROR: failed to copy the crosshairs
+            exit /b 1
+        )
+        echo   %SRC%\pics\xhair\*  ^-^>  %DEST%\action\pics\xhair\
+    )
 )
 
 echo Done.
