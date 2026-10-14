@@ -829,6 +829,9 @@ static void JmpPathGhostAdd(edict_t *ent, jmp_path_t *st, int k, qboolean dim, q
 	ghost->s.skinnum = slot >= 0 ? slot : ent - g_edicts - 1;
 	// through the walls, as the view weapon is: a route runs out of sight
 	ghost->s.renderfx = RF_TRANSLUCENT | RF_DEPTHHACK;
+	// and sent whatever the viewer's PVS: a noclip out of the world
+	// empties it, and the ghosts went with it
+	ghost->svflags |= SVF_NOCULL;
 	if (dim)
 		ghost->x.alpha = 0.3f;
 	MvdPath_Origin(&st->demo->samples[t->first], ghost->s.origin);
@@ -869,7 +872,7 @@ skull:
 		skull->solid = SOLID_NOT;
 		skull->s.modelindex = gi.modelindex(JMP_PATH_SKULL);
 		skull->s.renderfx = RF_DEPTHHACK;
-		skull->svflags |= SVF_NOCLIENT;
+		skull->svflags |= SVF_NOCLIENT | SVF_NOCULL;
 		MvdPath_Origin(&st->demo->samples[t->first + t->count - 1], skull->s.origin);
 		skull->s.origin[2] += 4;
 		VectorCopy(skull->s.origin, skull->s.old_origin);
