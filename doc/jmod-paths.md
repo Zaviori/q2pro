@@ -80,7 +80,13 @@ game reads it once as the player comes in.
 
 The routes and the ghosts are drawn through the walls: a route runs out
 of sight in a moment otherwise. `jpath_depth 1` on the client puts the
-lines behind the walls again.
+lines behind the walls again. They stay up from outside the world too:
+a noclip out of the hull leaves the viewer with an empty PVS, which
+would drop every entity from his frames, so the ghosts and skulls carry
+`SVF_NOCULL` and the server sends them regardless (the lines, names and
+markers are the client's own and never went). This needs the server
+from this tree, the built-in one of a local map or a dedicated one;
+a stock server ignores the flag and culls as before.
 
 While a ghost shoots, its weapon's HUD icon shows at the upper left of
 its name tag. The whole round is read, to five minutes. `jmod_path_secs` (6) is how

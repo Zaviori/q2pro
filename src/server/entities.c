@@ -833,8 +833,12 @@ void SV_BuildClientFrame(client_t *client)
         if (client->csr->extended && ent->s.renderfx & RF_FLARE && client->settings[CLS_NOFLARES])
             continue;
 
-        // ignore if not touching a PV leaf
-        if (ent != clent && !sv_novis->integer && !(client->csr->extended && ent->svflags & SVF_NOCULL)) {
+        // ignore if not touching a PV leaf. SVF_NOCULL is honoured on
+        // every protocol: the game is built from this tree, where the
+        // bit means nothing else (jmod's path ghosts wear it, so they
+        // are still sent to a viewer who has drifted out of the world,
+        // whose PVS is empty)
+        if (ent != clent && !sv_novis->integer && !(ent->svflags & SVF_NOCULL)) {
             // check area
             if (!CM_AreasConnected(client->cm, clientarea, ent->areanum)) {
                 // doors can legally straddle two areas, so
