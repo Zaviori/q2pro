@@ -1044,6 +1044,16 @@ allow_download::
 allow_download_maps::
     Enables automatic downloading of maps. Default value is 1.
 
+cl_map_override::
+    What to do when a map the client has differs from the server's version
+    (their checksums disagree). The server's copy can be fetched into
+    'override/' under the game directory, which is searched before the pak
+    files, and played on; the local file is left alone. Needs
+    'allow_download_maps'. Default value is 0.
+     - -1 — never: the mismatch is reported and the connection dropped
+     - 0 — ask in the console: `yes` fetches the server's version, `no` drops
+     - 1 — fetch the server's version without asking
+
 allow_download_models::
     Enables automatic downloading of non-player models, sprites and skins.
     Default value is 1.

@@ -398,6 +398,8 @@ typedef struct {
     list_t      entry;
     dltype_t    type;
     dlstate_t   state;
+    bool        override;       // saved under override/: the server's version of a file we have (cl_map_override)
+    bool        udp_only;       // from the game server itself: the HTTP layer leaves it alone
     char        path[1];
 } dlqueue_t;
 
@@ -479,7 +481,7 @@ typedef struct {
         int         percent;            // how much downloaded
         int64_t     position;           // how much downloaded (in bytes)
         qhandle_t   file;               // UDP file transfer from server
-        char        temp[MAX_QPATH + 4];// account 4 bytes for .tmp suffix
+        char        temp[MAX_QPATH + 16];// room for override/ and the .tmp suffix
 #if USE_ZLIB
         z_stream    z;                  // UDP download zlib stream
 #endif
@@ -706,6 +708,7 @@ void CL_UpdateConfigstring(int index);
 // download.c
 //
 int CL_QueueDownload(const char *path, dltype_t type);
+int CL_QueueDownloadEx(const char *path, dltype_t type, bool override, bool udp_only);
 bool CL_IgnoreDownload(const char *path);
 void CL_FinishDownload(dlqueue_t *q);
 void CL_CleanupDownloads(void);
@@ -1121,16 +1124,18 @@ void CL_InitAscii(void);
 void HTTP_Init(void);
 void HTTP_Shutdown(void);
 void HTTP_SetServer(const char *url);
-int HTTP_QueueDownload(const char *path, dltype_t type);
+int HTTP_QueueDownload(const char *path, dltype_t type, bool override);
 void HTTP_RunDownloads(void);
 void HTTP_CleanupDownloads(void);
+bool HTTP_Downloading(void);        // the HTTP layer is taking the queue's entries
 #else
 #define HTTP_Init()                     (void)0
 #define HTTP_Shutdown()                 (void)0
 #define HTTP_SetServer(url)             (void)0
-#define HTTP_QueueDownload(path, type)  Q_ERR(ENOSYS)
+#define HTTP_QueueDownload(path, type, override)  Q_ERR(ENOSYS)
 #define HTTP_RunDownloads()             (void)0
 #define HTTP_CleanupDownloads()         (void)0
+#define HTTP_Downloading()              false
 #endif
 
 //

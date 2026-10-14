@@ -2557,8 +2557,26 @@ alphacmp:
     return Q_stricmp(s1, s2);
 }
 
+// <gamedir>/override, ahead of the paks: the server's versions of maps
+// the client was asked to play on (cl_map_override) live there, and a
+// loose file beside a pak's would lose to it
+static void add_override_dir(unsigned mode)
+{
+    searchpath_t *search;
+    size_t len = strlen(fs_gamedir);
+
+    search = FS_Malloc(sizeof(*search) + len + 9);
+    search->mode = mode;
+    search->pack = NULL;
+    memcpy(search->filename, fs_gamedir, len);
+    memcpy(search->filename + len, "/override", 10);
+    search->next = fs_searchpaths;
+    fs_searchpaths = search;
+}
+
 // sets fs_gamedir, adds the directory to the head of the path,
-// then loads and adds pak*.pak, then anything else in alphabethical order.
+// then loads and adds pak*.pak, then anything else in alphabethical order,
+// then override/ ahead of them all.
 static void q_printf(2, 3) add_game_dir(unsigned mode, const char *fmt, ...)
 {
     va_list         argptr;
@@ -2600,6 +2618,7 @@ static void q_printf(2, 3) add_game_dir(unsigned mode, const char *fmt, ...)
     list.baselen = len + 1;
     Sys_ListFiles_r(&list, fs_gamedir, 0);
     if (!list.count) {
+        add_override_dir(mode);
         return;
     }
 
@@ -2634,6 +2653,8 @@ static void q_printf(2, 3) add_game_dir(unsigned mode, const char *fmt, ...)
         Z_Free(list.files[i]);
     }
     Z_Free(list.files);
+
+    add_override_dir(mode);
 }
 
 /*

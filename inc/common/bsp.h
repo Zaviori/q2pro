@@ -581,6 +581,7 @@ typedef struct {
 
 int BSP_Load(const char *name, bsp_t **bsp_p);
 void BSP_Free(bsp_t *bsp);
+void BSP_Evict(const char *name);   // a cached copy is not handed out again; freed by its holders
 const char *BSP_ErrorString(int err);
 
 #if USE_CLIENT

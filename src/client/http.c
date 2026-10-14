@@ -228,7 +228,8 @@ static bool start_download(dlqueue_t *entry, dlhandle_t *dl)
         //filelist paths are absolute
         escape_path(escaped, entry->path);
     } else {
-        len = Q_snprintf(dl->path, sizeof(dl->path), "%s/%s.tmp", fs_gamedir, entry->path);
+        len = Q_snprintf(dl->path, sizeof(dl->path), "%s/%s%s.tmp", fs_gamedir,
+                         entry->override ? "override/" : "", entry->path);
         if (len >= sizeof(dl->path)) {
             Com_EPrintf("[HTTP] Refusing oversize temporary file path.\n");
             goto fail;
@@ -924,7 +925,12 @@ Called from the precache check to queue a download. Return value of
 Q_ERR(ENOSYS) will cause standard UDP downloading to be used instead.
 ===============
 */
-int HTTP_QueueDownload(const char *path, dltype_t type)
+bool HTTP_Downloading(void)
+{
+    return curl_multi != NULL;
+}
+
+int HTTP_QueueDownload(const char *path, dltype_t type, bool override)
 {
     size_t      len;
     bool        need_list;
@@ -935,10 +941,16 @@ int HTTP_QueueDownload(const char *path, dltype_t type)
     if (!curl_multi)
         return Q_ERR(ENOSYS);
 
+    // the server's version of a file we have must come from the server
+    // itself, or an HTTP server of its own; the default repository holds
+    // the public copy, which is the one we have
+    if (override && download_default_repo)
+        return Q_ERR(ENOSYS);
+
     // first download queued, so we want the mod filelist
     need_list = LIST_EMPTY(&cls.download.queue);
 
-    ret = CL_QueueDownload(path, type);
+    ret = CL_QueueDownloadEx(path, type, override, false);
     if (ret)
         return ret;
 
@@ -1083,7 +1095,7 @@ static void rescan_queue(void)
     dlqueue_t   *q;
 
     FOR_EACH_DLQ(q) {
-        if (q->state == DL_PENDING && q->type < DL_LIST && FS_FileExists(q->path))
+        if (q->state == DL_PENDING && q->type < DL_LIST && !q->override && FS_FileExists(q->path))
             CL_FinishDownload(q);
     }
 }
@@ -1221,7 +1233,8 @@ fail2:
 
         if (dl->path[0]) {
             //rename the temp file
-            Q_snprintf(temp, sizeof(temp), "%s/%s", fs_gamedir, dl->queue->path);
+            Q_snprintf(temp, sizeof(temp), "%s/%s%s", fs_gamedir,
+                       dl->queue->override ? "override/" : "", dl->queue->path);
 
             if (rename(dl->path, temp))
                 Com_EPrintf("[HTTP] Failed to rename '%s' to '%s': %s\n",
@@ -1246,17 +1259,23 @@ fail2:
         return;
     }
 
+    // a fetch from the game server itself (udp_only) runs beside HTTP
+    // and owns the progress fields while it does
+    bool udp_running = cls.download.current && cls.download.current->udp_only;
+
     if (finished) {
-        cls.download.current = NULL;
-        cls.download.percent = 0;
-        cls.download.position = 0;
+        if (!udp_running) {
+            cls.download.current = NULL;
+            cls.download.percent = 0;
+            cls.download.position = 0;
+        }
 
         // see if we have more to dl
         CL_RequestNextDownload();
         return;
     }
 
-    if (running) {
+    if (running && !udp_running) {
         //don't care which download shows as long as something does :)
         pthread_mutex_lock(&progress_mutex);
         cls.download.current = download_current;
@@ -1297,7 +1316,7 @@ static void start_next_download(void)
 
     //not enough downloads running, queue some more!
     FOR_EACH_DLQ(q) {
-        if (q->state == DL_PENDING) {
+        if (q->state == DL_PENDING && !q->udp_only) {
             dlhandle_t *dl = get_free_handle();
             if (!dl)
                 break;

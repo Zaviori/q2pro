@@ -39,6 +39,28 @@ static int precache_sexed_total;
 // Track if we've already attempted a CRC-based map re-download
 static bool map_crc_retry_attempted = false;
 
+/*
+A map we have that differs from the server's (cl_map_override): the
+server's copy is fetched into <gamedir>/override, which the filesystem
+searches before the paks - a loose maps/foo.bsp beside a pak's loses to
+it, and the retry above, which deleted the local file and downloaded
+again, could not touch a map in a pak. 1 fetches without asking; 0 (the
+default) asks in the console, where `yes` fetches and `no` disconnects;
+-1 keeps the local map and reports the mismatch as before. The question
+holds the precache at PRECACHE_MAP until it is answered.
+*/
+static cvar_t *cl_map_override;
+static char map_ask_path[MAX_QPATH];    // the map asked about, while asking
+static bool map_asking;
+static void map_ask_clear(void);
+// The fetch: over HTTP first when there is a download server, but AQtion
+// servers advertise the public asset host by default, whose copy is the
+// one we have - so what arrived is checked against the server's checksum
+// at PRECACHE_MAP, and a second fetch goes to the game server itself.
+static char map_fetch_path[MAX_QPATH];
+static int  map_fetch_tries;
+static bool map_fetch_http;             // the last fetch went over HTTP
+
 cvar_t   *r_override_textures;
 cvar_t   *r_texture_overrides;
 
@@ -51,7 +73,7 @@ Entry will stay in queue for entire lifetime of server connection,
 to make sure each path is tried exactly once.
 ===============
 */
-int CL_QueueDownload(const char *path, dltype_t type)
+int CL_QueueDownloadEx(const char *path, dltype_t type, bool override, bool udp_only)
 {
     dlqueue_t *q;
     size_t len;
@@ -71,6 +93,8 @@ int CL_QueueDownload(const char *path, dltype_t type)
     memcpy(q->path, path, len + 1);
     q->type = type;
     q->state = DL_PENDING;
+    q->override = override;
+    q->udp_only = udp_only;
 
 #if USE_CURL
     // paks get bumped to the top and HTTP switches to single downloading.
@@ -91,6 +115,11 @@ int CL_QueueDownload(const char *path, dltype_t type)
     cls.download.pending++;
     Com_DPrintf("%s: %s [%d]\n", __func__, path, cls.download.pending);
     return Q_ERR_SUCCESS;
+}
+
+int CL_QueueDownload(const char *path, dltype_t type)
+{
+    return CL_QueueDownloadEx(path, type, false, false);
 }
 
 /*
@@ -160,6 +189,8 @@ void CL_CleanupDownloads(void)
     cls.download.pending = 0;
 
     map_crc_retry_attempted = false;  // Reset retry flag on disconnect
+    map_ask_clear();
+    map_fetch_tries = 0;
 
     cls.download.current = NULL;
     cls.download.percent = 0;
@@ -201,9 +232,10 @@ static bool start_udp_download(dlqueue_t *q)
 
     // download to a temp name, and only rename
     // to the real name when done, so if interrupted
-    // a runt file wont be left
-    memcpy(cls.download.temp, q->path, len);
-    memcpy(cls.download.temp + len, ".tmp", 5);
+    // a runt file wont be left; the server's version of a file we have
+    // goes under override/
+    Q_concat(cls.download.temp, sizeof(cls.download.temp),
+             q->override ? "override/" : "", q->path, ".tmp");
 
     // check to see if we already have a tmp for this file, if so, try to resume
     // open the file if not opened yet
@@ -259,7 +291,9 @@ void CL_StartNextDownload(void)
     }
 
     FOR_EACH_DLQ(q) {
-        if (q->state == DL_PENDING) {
+        // HTTP's entries are its own: with it up, only a fetch from the
+        // game server itself (udp_only) goes this way
+        if (q->state == DL_PENDING && (q->udp_only || !HTTP_Downloading())) {
             if (start_udp_download(q)) {
                 break;
             }
@@ -424,10 +458,12 @@ void CL_HandleDownload(const byte *data, int size, int percent, int decompressed
         cls.download.file = 0;
 
         // rename the temp file to its final name
-        ret = FS_RenameFile(cls.download.temp, q->path);
+        char dest[MAX_QPATH + 16];
+        Q_concat(dest, sizeof(dest), q->override ? "override/" : "", q->path);
+        ret = FS_RenameFile(cls.download.temp, dest);
         if (ret) {
             Com_EPrintf("[UDP] Couldn't rename %s to %s: %s\n",
-                        cls.download.temp, q->path, Q_ErrorString(ret));
+                        cls.download.temp, dest, Q_ErrorString(ret));
             finish_udp_download(NULL);
         } else {
             finish_udp_download("DONE");
@@ -459,6 +495,119 @@ bool CL_CheckDownloadExtension(const char *ext)
 }
 
 // attempts to start a download from the server if file doesn't exist.
+static void map_ask_clear(void)
+{
+    if (!map_asking)
+        return;
+    map_asking = false;
+    Cmd_RemoveCommand("yes");
+    Cmd_RemoveCommand("no");
+}
+
+// a finished entry forgotten, so the path can be queued once more
+static void queue_forget(const char *path)
+{
+    dlqueue_t *q, *n;
+
+    FOR_EACH_DLQ_SAFE(q, n) {
+        if (!FS_pathcmp(path, q->path) && q->state == DL_DONE) {
+            List_Remove(&q->entry);
+            Z_Free(q);
+        }
+    }
+}
+
+// the server's copy of the map at `path`, queued under override/: over
+// HTTP unless `udp`, from the game server itself then
+static bool map_override_fetch(const char *path, bool udp)
+{
+    int ret;
+
+    Com_Printf("Fetching the server's %s into override/%s\n", path, udp ? " from the server itself" : "");
+    Q_strlcpy(map_fetch_path, path, sizeof(map_fetch_path));
+    map_crc_retry_attempted = true;     // the load's report is about the fetched copy then
+    BSP_Evict(path);                    // a cached copy of ours must not stand in for it
+    ret = udp ? Q_ERR(ENOSYS) : HTTP_QueueDownload(path, DL_MAP, true);
+    map_fetch_http = ret == Q_ERR_SUCCESS;
+    if (ret == Q_ERR(ENOSYS)) {
+        ret = CL_QueueDownloadEx(path, DL_MAP, true, udp);
+        if (ret == Q_ERR_SUCCESS)
+            CL_StartNextDownload();
+    }
+    if (ret != Q_ERR_SUCCESS) {
+        Com_EPrintf("Couldn't queue %s: %s\n", path, Q_ErrorString(ret));
+        return false;
+    }
+    map_fetch_tries++;
+    return true;
+}
+
+// The fetched copy against the server's checksum: true to go on and load
+// it (or report it, if it is still wrong), false while a second fetch,
+// from the game server itself, is on its way
+static bool map_override_fetched(void)
+{
+    unsigned server = (unsigned)Q_atoi(cl.configstrings[cl.csr.mapchecksum]);
+    unsigned local;
+    char full[MAX_OSPATH];
+    byte *raw;
+    int len;
+
+    len = FS_LoadFile(map_fetch_path, (void **)&raw);
+    if (!raw)
+        return true;
+    local = Com_BlockChecksum(raw, len);
+    FS_FreeFile(raw);
+    if (local == server) {
+        Com_Printf("The server's %s is in override/ now\n", map_fetch_path);
+        map_fetch_tries = 0;
+        return true;
+    }
+    if (map_fetch_http && map_fetch_tries == 1) {
+        Com_Printf("The download server's %s differs from the server's as well\n", map_fetch_path);
+        Q_concat(full, sizeof(full), fs_gamedir, "/override/", map_fetch_path);
+        remove(full);       // rename() will not replace it on Windows
+        Q_strlcat(full, ".tmp", sizeof(full));
+        remove(full);       // and the UDP fetch must not resume onto its bytes
+        queue_forget(map_fetch_path);
+        return !map_override_fetch(map_fetch_path, true);
+    }
+    return true;
+}
+
+static void map_ask_yes_f(void)
+{
+    char path[MAX_QPATH];
+
+    if (!map_asking)
+        return;
+    Q_strlcpy(path, map_ask_path, sizeof(path));
+    map_ask_clear();
+    map_override_fetch(path, false);
+    CL_RequestNextDownload();
+}
+
+static void map_ask_no_f(void)
+{
+    if (!map_asking)
+        return;
+    map_ask_clear();
+    Com_Error(ERR_DROP, "Local %s kept; the server runs another version of it", map_ask_path);
+}
+
+static void map_ask(const char *path, unsigned local, unsigned server)
+{
+    Q_strlcpy(map_ask_path, path, sizeof(map_ask_path));
+    if (!map_asking) {
+        Cmd_AddCommand("yes", map_ask_yes_f);
+        Cmd_AddCommand("no", map_ask_no_f);
+    }
+    map_asking = true;
+    Com_Printf("Local %s differs from the server's (checksum %u here, %u there).\n"
+               "Fetch the server's version into override/ and play on it? Type yes or no in the console.\n"
+               "(cl_map_override 1 fetches without asking, -1 never)\n", path, local, server);
+}
+
 static int check_file_len(const char *path, size_t len, dltype_t type)
 {
     char buffer[MAX_QPATH], *ext;
@@ -509,19 +658,14 @@ static int check_file_len(const char *path, size_t len, dltype_t type)
                     FS_FreeFile(raw);
 
                     if (local_checksum != server_checksum) {
-                        char fullpath[MAX_OSPATH];
-
-                        Com_Printf("Map CRC mismatch: local=%u, server=%u — re-downloading %s\n",
-                                   local_checksum, server_checksum, buffer);
-
-                        // Delete mismatched file using absolute filesystem path
-                        Q_concat(fullpath, sizeof(fullpath), fs_gamedir, "/", buffer);
-                        remove(fullpath);
-
-                        // Mark that we've attempted retry (only once per connection)
-                        map_crc_retry_attempted = true;
-
-                        // Fall through to download logic below
+                        // ours stays where it is; the server's goes under
+                        // override/, fetched now, asked about, or not at all
+                        // (then CL_RegisterBspModels reports the mismatch)
+                        if (cl_map_override->integer > 0)
+                            map_override_fetch(buffer, false);
+                        else if (cl_map_override->integer == 0)
+                            map_ask(buffer, local_checksum, server_checksum);
+                        return Q_ERR(EEXIST);
                     } else {
                         return Q_ERR(EEXIST);  // CRC matches, skip download
                     }
@@ -550,7 +694,7 @@ static int check_file_len(const char *path, size_t len, dltype_t type)
     if (CL_IgnoreDownload(buffer))
         return Q_ERR(EPERM);
 
-    ret = HTTP_QueueDownload(buffer, type);
+    ret = HTTP_QueueDownload(buffer, type, false);
     if (ret != Q_ERR(ENOSYS))
         return ret;
 
@@ -869,11 +1013,22 @@ void CL_RequestNextDownload(void)
         // fall through
 
     case PRECACHE_MAP:
+        if (map_asking) {
+            // the console's question about the map (cl_map_override) is open
+            Com_DPrintf("%s: waiting for the map question...\n", __func__);
+            return;
+        }
+
         if (downloads_pending(DL_MAP)) {
             // map might still be downloading?
             Com_DPrintf("%s: waiting for map...\n", __func__);
             return;
         }
+
+        // the server's version fetched (cl_map_override): is it, or is
+        // a second fetch on its way?
+        if (map_fetch_tries && !map_override_fetched())
+            return;
 
         // load the map file before checking textures
         CL_RegisterBspModels();
@@ -914,6 +1069,8 @@ void CL_ResetPrecacheCheck(void)
 {
     precache_check = PRECACHE_MODELS;
     map_crc_retry_attempted = false;  // Reset retry flag for new connection
+    map_ask_clear();
+    map_fetch_tries = 0;
 }
 
 bool CL_MapRetryAttempted(void)
@@ -959,6 +1116,7 @@ static void CL_Download_f(void)
 void CL_InitDownloads(void)
 {
     Cmd_AddCommand("download", CL_Download_f);
+    cl_map_override = Cvar_Get("cl_map_override", "0", CVAR_ARCHIVE);
 
     List_Init(&cls.download.queue);
 }
