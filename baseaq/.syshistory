@@ -1,0 +1,8 @@
+echo $com_date
+echo $cmdte
+com_date
+random
+macrolist com_uptime
+com_completion_mode 2
+com_completion_mode 0
+quit

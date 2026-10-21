@@ -57,6 +57,7 @@ extern int      cvar_modified;
 void Cvar_Init(void);
 
 void Cvar_Variable_g(genctx_t *ctx);
+void Cvar_Expandable_g(genctx_t *ctx);
 void Cvar_Default_g(genctx_t *ctx);
 // attempts to match a partial variable name for command line completion
 // returns NULL if nothing fits

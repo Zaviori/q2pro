@@ -1,0 +1,812 @@
+ninja: Entering directory `build'
+[1/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_memory.c.o
+[2/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_hashtable_seed.c.o
+[3/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_strbuffer.c.o
+[4/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_error.c.o
+../subprojects/jansson-2.14/src/error.c: In function ‘jsonp_error_set_source’:
+../subprojects/jansson-2.14/src/error.c:25:9: warning: ‘__builtin_strncpy’ specified bound depends on the length of the source argument [-Wstringop-truncation]
+   25 |         strncpy(error->source, source, length + 1);
+      |         ^
+In function ‘jsonp_error_set_source’,
+    inlined from ‘jsonp_error_set_source’ at ../subprojects/jansson-2.14/src/error.c:17:6:
+../subprojects/jansson-2.14/src/error.c:23:14: note: length computed here
+   23 |     length = strlen(source);
+      |              ^~~~~~~~~~~~~~
+[5/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_dump.c.o
+[6/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_hashtable.c.o
+[7/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_utf.c.o
+[8/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_strconv.c.o
+[9/237] Compiling C object q2pro.p/src_common_crc.c.o
+[10/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_pack_unpack.c.o
+[11/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_value.c.o
+[12/237] Compiling C object q2pro.p/src_common_error.c.o
+[13/237] Compiling C object q2pro.p/src_common_common.c.o
+[14/237] Compiling C object subprojects/jansson-2.14/libjansson.a.p/src_load.c.o
+../subprojects/jansson-2.14/src/load.c: In function ‘error_set’:
+../subprojects/jansson-2.14/src/load.c:112:71: warning: ‘ near '’ directive output may be truncated writing 7 bytes into a region of size between 1 and 160 [-Wformat-truncation=]
+  112 |                 snprintf(msg_with_context, JSON_ERROR_TEXT_LENGTH, "%s near '%s'",
+      |                                                                       ^~~~~~~
+In file included from /usr/include/stdio.h:970,
+                 from ../subprojects/jansson-2.14/src/jansson.h:12,
+                 from ../subprojects/jansson-2.14/src/hashtable.h:11,
+                 from ../subprojects/jansson-2.14/src/jansson_private.h:11,
+                 from ../subprojects/jansson-2.14/src/load.c:12:
+In function ‘snprintf’,
+    inlined from ‘error_set’ at ../subprojects/jansson-2.14/src/load.c:112:17:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:68:10: note: ‘__builtin___snprintf_chk’ output 9 or more bytes (assuming 168) into a destination of size 160
+   68 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   69 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   70 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+../subprojects/jansson-2.14/src/load.c: In function ‘error_set’:
+../subprojects/jansson-2.14/src/load.c:126:71: warning: ‘ near end of file’ directive output may be truncated writing 17 bytes into a region of size between 1 and 160 [-Wformat-truncation=]
+  126 |                 snprintf(msg_with_context, JSON_ERROR_TEXT_LENGTH, "%s near end of file",
+      |                                                                       ^~~~~~~~~~~~~~~~~
+In function ‘snprintf’,
+    inlined from ‘error_set’ at ../subprojects/jansson-2.14/src/load.c:126:17:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:68:10: note: ‘__builtin___snprintf_chk’ output between 18 and 177 bytes into a destination of size 160
+   68 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   69 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   70 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+../subprojects/jansson-2.14/src/load.c: In function ‘stream_get.part.0’:
+../subprojects/jansson-2.14/src/load.c:178:35: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  178 |                 stream->buffer[i] = stream->get(stream->data);
+      |                 ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+../subprojects/jansson-2.14/src/load.c:57:10: note: at offset 5 into destination object ‘buffer’ of size 5
+   57 |     char buffer[5];
+      |          ^~~~~~
+In function ‘stream_get’,
+    inlined from ‘stream_get’ at ../subprojects/jansson-2.14/src/load.c:151:12,
+    inlined from ‘lex_get_save’ at ../subprojects/jansson-2.14/src/load.c:233:13:
+../subprojects/jansson-2.14/src/load.c:178:35: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  178 |                 stream->buffer[i] = stream->get(stream->data);
+      |                 ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+../subprojects/jansson-2.14/src/load.c: In function ‘lex_get_save’:
+../subprojects/jansson-2.14/src/load.c:57:10: note: at offset 5 into destination object ‘buffer’ of size 5
+   57 |     char buffer[5];
+      |          ^~~~~~
+In function ‘stream_get’,
+    inlined from ‘stream_get’ at ../subprojects/jansson-2.14/src/load.c:151:12,
+    inlined from ‘lex_get’ at ../subprojects/jansson-2.14/src/load.c:227:12,
+    inlined from ‘lex_scan.isra’ at ../subprojects/jansson-2.14/src/load.c:573:13:
+../subprojects/jansson-2.14/src/load.c:178:35: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  178 |                 stream->buffer[i] = stream->get(stream->data);
+      |                 ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+../subprojects/jansson-2.14/src/load.c: In function ‘lex_scan.isra’:
+../subprojects/jansson-2.14/src/load.c:57:10: note: at offset 5 into destination object ‘buffer’ of size 5
+   57 |     char buffer[5];
+      |          ^~~~~~
+[15/237] Compiling C object q2pro.p/src_common_fifo.c.o
+[16/237] Linking static target subprojects/jansson-2.14/libjansson.a
+[17/237] Compiling C object q2pro.p/src_common_field.c.o
+[18/237] Compiling C object q2pro.p/src_common_cmodel.c.o
+[19/237] Compiling C object q2pro.p/src_common_cmd.c.o
+[20/237] Compiling C object q2pro.p/src_common_mdfour.c.o
+[21/237] Compiling C object q2pro.p/src_common_cvar.c.o
+[22/237] Compiling C object q2pro.p/src_common_hash_map.c.o
+[23/237] Compiling C object q2pro.p/src_common_bsp.c.o
+[24/237] Compiling C object q2pro.p/src_common_net_chan.c.o
+[25/237] Compiling C object q2pro.p/src_common_fuzzy.c.o
+[26/237] Compiling C object q2pro.p/src_common_pmove_common.c.o
+[27/237] Compiling C object q2pro.p/src_common_pmove_new.c.o
+[28/237] Compiling C object q2pro.p/src_common_sizebuf.c.o
+[29/237] Compiling C object q2pro.p/src_common_utils.c.o
+[30/237] Compiling C object q2pro.p/src_common_math.c.o
+[31/237] Compiling C object q2pro.p/src_common_net_net.c.o
+[32/237] Compiling C object q2pro.p/src_common_prompt.c.o
+[33/237] Compiling C object q2pro.p/src_common_files.c.o
+[34/237] Compiling C object q2pro.p/src_common_zone.c.o
+[35/237] Compiling C object q2pro.p/src_unix_hunk.c.o
+[36/237] Compiling C object q2pro.p/src_shared_shared.c.o
+[37/237] Compiling C object q2pro.p/src_server_mvd_parse.c.o
+../src/server/mvd/parse.c: In function ‘MVD_ParseMulticast’:
+../src/server/mvd/parse.c:176:51: warning: ‘leaf1’ may be used uninitialized [-Wmaybe-uninitialized]
+  176 |             if (!CM_AreasConnected(&mvd->cm, leaf1->area, leaf2->area))
+      |                                              ~~~~~^~~~~~
+../src/server/mvd/parse.c:130:22: note: ‘leaf1’ was declared here
+  130 |     const mleaf_t   *leaf1, *leaf2;
+      |                      ^~~~~
+[38/237] Compiling C object q2pro.p/src_common_pmove_old.c.o
+[39/237] Compiling C object q2pro.p/src_server_mvd.c.o
+[40/237] Compiling C object q2pro.p/src_server_mvd_client.c.o
+[41/237] Compiling C object q2pro.p/src_server_save.c.o
+[42/237] Compiling C object q2pro.p/src_unix_tty.c.o
+[43/237] Compiling C object q2pro.p/src_client_ascii.c.o
+[44/237] Compiling C object q2pro.p/src_common_msg.c.o
+[45/237] Compiling C object q2pro.p/src_server_mvd_game.c.o
+[46/237] Compiling C object q2pro.p/src_client_console.c.o
+[47/237] Compiling C object q2pro.p/src_client_download.c.o
+[48/237] Compiling C object q2pro.p/src_client_effects.c.o
+../src/client/effects.c: In function ‘CL_MuzzleFlash’:
+../src/client/effects.c:298:19: warning: the comparison will always evaluate as ‘true’ for the address of ‘soundname’ will never be NULL [-Waddress]
+  298 |     if (soundname != NULL && strcmp(soundname, "\x01") != 0) {
+      |                   ^~
+../src/client/effects.c:166:17: note: ‘soundname’ declared here
+  166 |     char        soundname[MAX_QPATH] = "";  // Should fix any \x01 issues?
+      |                 ^~~~~~~~~
+../src/client/effects.c: At top level:
+../src/client/effects.c:965:13: warning: ‘CL_LogoutEffect’ defined but not used [-Wunused-function]
+  965 | static void CL_LogoutEffect(const vec3_t org, int color)
+      |             ^~~~~~~~~~~~~~~
+[49/237] Compiling C object q2pro.p/src_client_locs.c.o
+[50/237] Compiling C object q2pro.p/src_client_input.c.o
+[51/237] Compiling C object q2pro.p/src_unix_system.c.o
+[52/237] Compiling C object q2pro.p/src_client_demo.c.o
+[53/237] Compiling C object q2pro.p/src_client_keys.c.o
+[54/237] Compiling C object q2pro.p/src_client_refresh.c.o
+[55/237] Compiling C object q2pro.p/src_client_precache.c.o
+[56/237] Compiling C object q2pro.p/src_client_parse.c.o
+[57/237] Compiling C object q2pro.p/src_client_newfx.c.o
+[58/237] Compiling C object q2pro.p/src_client_entities.c.o
+[59/237] Compiling C object q2pro.p/src_client_predict.c.o
+[60/237] Compiling C object q2pro.p/src_client_sound_mem.c.o
+[61/237] Compiling C object q2pro.p/src_client_view.c.o
+[62/237] Compiling C object q2pro.p/src_common_async.c.o
+[63/237] Compiling C object q2pro.p/src_client_sound_main.c.o
+[64/237] Compiling C object q2pro.p/src_server_ghud.c.o
+[65/237] Compiling C object q2pro.p/src_client_main.c.o
+[66/237] Compiling C object q2pro.p/src_server_init.c.o
+[67/237] Compiling C object q2pro.p/src_server_game.c.o
+[68/237] Compiling C object q2pro.p/src_server_commands.c.o
+[69/237] Compiling C object q2pro.p/src_shared_m_flash.c.o
+[70/237] Compiling C object q2pro.p/src_server_send.c.o
+[71/237] Compiling C object q2pro.p/src_client_screen.c.o
+[72/237] Compiling C object q2pro.p/src_server_world.c.o
+[73/237] Compiling C object q2pro.p/src_server_user.c.o
+[74/237] Compiling C object q2pro.p/src_client_tent.c.o
+../src/client/tent.c:255:13: warning: ‘CL_RegisterAQtionSounds’ defined but not used [-Wunused-function]
+  255 | static void CL_RegisterAQtionSounds(void)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~
+[75/237] Compiling C object q2pro.p/src_server_entities.c.o
+../src/server/entities.c: In function ‘SV_Ghud_SendUpdateToClient’:
+../src/server/entities.c:162:40: warning: passing argument 1 of ‘MSG_DeltaGhud’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  162 |                 uflags = MSG_DeltaGhud(&oldframe->ghud[i], element, protocolflags);
+      |                                        ^~~~~~~~~~~~~~~~~~
+In file included from ../src/server/server.h:36,
+                 from ../src/server/entities.c:19:
+../inc/common/msg.h:180:47: note: expected ‘ghud_element_t *’ but argument is of type ‘const ghud_element_t *’
+  180 | int             MSG_DeltaGhud(ghud_element_t *from, ghud_element_t *to, int protocolmask);
+      |                               ~~~~~~~~~~~~~~~~^~~~
+[76/237] Compiling C object q2pro.p/src_client_sound_qal.c.o
+[77/237] Compiling C object q2pro.p/src_unix_video_keytables_at.c.o
+[78/237] Compiling C object q2pro.p/src_client_http.c.o
+[79/237] Compiling C object q2pro.p/src_unix_video_keytables_evdev.c.o
+[80/237] Compiling C object q2pro.p/src_client_sound_al.c.o
+[81/237] Compiling C object q2pro.p/src_unix_video_sdl.c.o
+[82/237] Compiling C object q2pro.p/src_server_main.c.o
+[83/237] Compiling C object q2pro.p/src_client_gtv.c.o
+[84/237] Compiling C object q2pro.p/src_client_ui_playerconfig.c.o
+[85/237] Compiling C object q2pro.p/src_client_cin.c.o
+[86/237] Compiling C object q2pro.p/src_unix_video_x11.c.o
+[87/237] Compiling C object q2pro.p/src_client_ui_demos.c.o
+[88/237] Compiling C object q2pro.p/src_client_ui_playermodels.c.o
+[89/237] Compiling C object q2pro.p/src_client_ui_servers.c.o
+[90/237] Compiling C object q2pro.p/src_client_ui_menu.c.o
+[91/237] Compiling C object q2pro.p/src_client_ui_ui.c.o
+[92/237] Compiling C object q2pro.p/src_refresh_hq2x.c.o
+[93/237] Compiling C object q2pro.p/src_client_ui_script.c.o
+[94/237] Compiling C object q2pro.p/src_refresh_legacy.c.o
+[95/237] Compiling C object q2pro.p/src_refresh_draw.c.o
+[96/237] Compiling C object q2pro.p/src_client_sound_dma.c.o
+[97/237] Compiling C object q2pro.p/src_unix_sound_sdl.c.o
+[98/237] Compiling C object q2pro.p/src_refresh_qgl.c.o
+[99/237] Compiling C object q2pro.p/src_refresh_sky.c.o
+[100/237] Compiling C object q2pro.p/src_refresh_state.c.o
+[101/237] Compiling C object q2pro.p/src_refresh_main.c.o
+../src/refresh/main.c: In function ‘DrawString’:
+../src/refresh/main.c:636:60: warning: argument to ‘sizeof’ in ‘strncpy’ call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+  636 |         strncpy(draw_strings[number].string, string, sizeof(string));
+      |                                                            ^
+[102/237] Compiling C object q2pro.p/src_refresh_images.c.o
+[103/237] Compiling C object q2pro.p/src_refresh_shader.c.o
+[104/237] Compiling C object q2pro.p/src_refresh_models.c.o
+[105/237] Compiling C object q2pro.p/src_refresh_tess.c.o
+[106/237] Compiling C object q2pro.p/src_refresh_world.c.o
+[107/237] Compiling C object q2pro.p/src_refresh_surf.c.o
+[108/237] Compiling C object q2proded.p/src_common_bsp.c.o
+[109/237] Compiling C object q2proded.p/src_common_error.c.o
+[110/237] Compiling C object q2proded.p/src_common_field.c.o
+[111/237] Compiling C object q2proded.p/src_common_crc.c.o
+[112/237] Compiling C object q2pro.p/src_refresh_texture.c.o
+[113/237] Compiling C object q2proded.p/src_common_cmd.c.o
+[114/237] Compiling C object q2proded.p/src_common_fifo.c.o
+[115/237] Compiling C object q2proded.p/src_common_cvar.c.o
+[116/237] Compiling C object q2proded.p/src_common_common.c.o
+[117/237] Compiling C object q2proded.p/src_common_hash_map.c.o
+[118/237] Compiling C object q2proded.p/src_common_cmodel.c.o
+[119/237] Compiling C object q2proded.p/src_common_pmove_common.c.o
+[120/237] Compiling C object q2pro.p/src_refresh_mesh.c.o
+[121/237] Compiling C object q2proded.p/src_common_mdfour.c.o
+[122/237] Compiling C object q2proded.p/src_common_fuzzy.c.o
+[123/237] Compiling C object q2proded.p/src_common_net_net.c.o
+[124/237] Compiling C object q2proded.p/src_common_net_chan.c.o
+[125/237] Compiling C object q2proded.p/src_common_math.c.o
+[126/237] Compiling C object q2proded.p/src_common_files.c.o
+[127/237] Compiling C object q2proded.p/src_common_pmove_new.c.o
+[128/237] Compiling C object q2proded.p/src_common_pmove_old.c.o
+[129/237] Compiling C object q2proded.p/src_common_prompt.c.o
+[130/237] Compiling C object q2proded.p/src_common_sizebuf.c.o
+[131/237] Compiling C object q2proded.p/src_common_utils.c.o
+[132/237] Compiling C object q2proded.p/src_common_zone.c.o
+[133/237] Compiling C object q2proded.p/src_unix_hunk.c.o
+[134/237] Compiling C object q2proded.p/src_unix_system.c.o
+[135/237] Compiling C object q2proded.p/src_shared_shared.c.o
+[136/237] Compiling C object q2proded.p/src_client_null.c.o
+[137/237] Compiling C object q2proded.p/src_server_mvd.c.o
+[138/237] Compiling C object q2proded.p/src_server_save.c.o
+[139/237] Compiling C object q2proded.p/src_server_mvd_parse.c.o
+../src/server/mvd/parse.c: In function ‘MVD_ParseMulticast’:
+../src/server/mvd/parse.c:176:51: warning: ‘leaf1’ may be used uninitialized [-Wmaybe-uninitialized]
+  176 |             if (!CM_AreasConnected(&mvd->cm, leaf1->area, leaf2->area))
+      |                                              ~~~~~^~~~~~
+../src/server/mvd/parse.c:130:22: note: ‘leaf1’ was declared here
+  130 |     const mleaf_t   *leaf1, *leaf2;
+      |                      ^~~~~
+[140/237] Compiling C object q2proded.p/src_server_ghud.c.o
+[141/237] Compiling C object q2proded.p/src_server_commands.c.o
+[142/237] Compiling C object q2proded.p/src_server_mvd_game.c.o
+[143/237] Compiling C object q2proded.p/src_unix_tty.c.o
+[144/237] Compiling C object q2proded.p/src_server_entities.c.o
+../src/server/entities.c: In function ‘SV_Ghud_SendUpdateToClient’:
+../src/server/entities.c:162:40: warning: passing argument 1 of ‘MSG_DeltaGhud’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  162 |                 uflags = MSG_DeltaGhud(&oldframe->ghud[i], element, protocolflags);
+      |                                        ^~~~~~~~~~~~~~~~~~
+In file included from ../src/server/server.h:36,
+                 from ../src/server/entities.c:19:
+../inc/common/msg.h:180:47: note: expected ‘ghud_element_t *’ but argument is of type ‘const ghud_element_t *’
+  180 | int             MSG_DeltaGhud(ghud_element_t *from, ghud_element_t *to, int protocolmask);
+      |                               ~~~~~~~~~~~~~~~~^~~~
+[145/237] Compiling C object q2proded.p/src_common_msg.c.o
+[146/237] Compiling C object q2proded.p/src_server_game.c.o
+[147/237] Compiling C object q2proded.p/src_server_init.c.o
+[148/237] Compiling C object q2proded.p/src_server_mvd_client.c.o
+[149/237] Compiling C object q2proded.p/src_server_send.c.o
+[150/237] Compiling C object q2proded.p/src_server_world.c.o
+[151/237] Compiling C object q2proded.p/src_server_user.c.o
+[152/237] Compiling C object gamex86_64.so.p/src_action_a_dom.c.o
+[153/237] Compiling C object gamex86_64.so.p/src_action_a_doorkick.c.o
+[154/237] Compiling C object q2proded.p/src_server_main.c.o
+[155/237] Compiling C object gamex86_64.so.p/src_action_a_items.c.o
+[156/237] Compiling C object gamex86_64.so.p/src_action_a_ctf.c.o
+../src/action/a_ctf.c: In function ‘CTFDynamicRespawnTimer’:
+../src/action/a_ctf.c:315:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  315 |     if (!ctf_dyn_respawn || !ctf_dyn_respawn->value)
+      |     ^~
+../src/action/a_ctf.c:318:9: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  318 |         if (ctfgame.team1 < 0 || ctfgame.team2 < 0)
+      |         ^~
+../src/action/a_ctf.c: In function ‘CTFSetupStatusbar’:
+../src/action/a_ctf.c:1622:13: warning: the comparison will always evaluate as ‘true’ for the address of ‘statusbar’ will never be NULL [-Waddress]
+ 1622 |         if (!level.statusbar)
+      |             ^
+In file included from ../src/action/a_ctf.c:50:
+../src/action/g_local.h:934:8: note: ‘statusbar’ declared here
+  934 |   char statusbar[1024];  //MAX is 1536 = (MAX_QPATH * (CS_AIRACCEL - CS_STATUSBAR))
+      |        ^~~~~~~~~
+[157/237] Compiling C object gamex86_64.so.p/src_action_a_cmds.c.o
+../src/action/a_cmds.c: In function ‘Ghost_Exist’:
+../src/action/a_cmds.c:1282:21: warning: the comparison will always evaluate as ‘true’ for the address of ‘ip’ will never be NULL [-Waddress]
+ 1282 |                 if (ghost->ip && ent->client->pers.ip && ghost->netname && ent->client->pers.netname &&
+      |                     ^~~~~
+In file included from ../src/action/a_cmds.c:134:
+../src/action/g_local.h:2868:14: note: ‘ip’ declared here
+ 2868 |         char ip[64];
+      |              ^~
+../src/action/a_cmds.c:1282:31: warning: the comparison will always evaluate as ‘true’ for the address of ‘ip’ will never be NULL [-Waddress]
+ 1282 |                 if (ghost->ip && ent->client->pers.ip && ghost->netname && ent->client->pers.netname &&
+      |                               ^~
+../src/action/g_local.h:1952:14: note: ‘ip’ declared here
+ 1952 |         char ip[64];
+      |              ^~
+../src/action/a_cmds.c:1282:55: warning: the comparison will always evaluate as ‘true’ for the address of ‘netname’ will never be NULL [-Waddress]
+ 1282 |                 if (ghost->ip && ent->client->pers.ip && ghost->netname && ent->client->pers.netname &&
+      |                                                       ^~
+../src/action/g_local.h:2867:14: note: ‘netname’ declared here
+ 2867 |         char netname[16];
+      |              ^~~~~~~
+../src/action/a_cmds.c:1282:73: warning: the comparison will always evaluate as ‘true’ for the address of ‘netname’ will never be NULL [-Waddress]
+ 1282 |                 if (ghost->ip && ent->client->pers.ip && ghost->netname && ent->client->pers.netname &&
+      |                                                                         ^~
+../src/action/g_local.h:1951:14: note: ‘netname’ declared here
+ 1951 |         char netname[16];
+      |              ^~~~~~~
+[158/237] Compiling C object gamex86_64.so.p/src_action_a_menu.c.o
+[159/237] Compiling C object gamex86_64.so.p/src_action_a_radio.c.o
+[160/237] Compiling C object gamex86_64.so.p/src_action_a_match.c.o
+[161/237] Compiling C object gamex86_64.so.p/src_action_a_xcmds.c.o
+[162/237] Compiling C object gamex86_64.so.p/src_action_a_tourney.c.o
+[163/237] Compiling C object gamex86_64.so.p/src_action_a_esp.c.o
+[164/237] Compiling C object gamex86_64.so.p/src_action_a_xgame.c.o
+../src/action/a_xgame.c: In function ‘VideoCheckClient’:
+../src/action/a_xgame.c:524:13: warning: the comparison will always evaluate as ‘true’ for the address of ‘vidref’ will never be NULL [-Waddress]
+  524 |         if (!ent->client->resp.vidref)
+      |             ^
+In file included from ../src/action/a_xgame.c:71:
+../src/action/g_local.h:2080:8: note: ‘vidref’ declared here
+ 2080 |   char vidref[16];
+      |        ^~~~~~
+[165/237] Compiling C object gamex86_64.so.p/src_action_a_game.c.o
+../src/action/a_game.c: In function ‘PrintMOTD’:
+../src/action/a_game.c:480:58: warning: the comparison will always evaluate as ‘true’ for the address of ‘custom_spawns’ will never be NULL [-Waddress]
+  480 |                         if (espsettings.custom_spawns[0] != NULL)
+      |                                                          ^~
+In file included from ../src/action/g_local.h:3043,
+                 from ../src/action/a_game.c:72:
+../src/action/a_esp.h:53:18: note: ‘custom_spawns’ declared here
+   53 |         edict_t *custom_spawns[TEAM_TOP][MAX_SPAWNS];
+      |                  ^~~~~~~~~~~~~
+[166/237] Compiling C object gamex86_64.so.p/src_action_a_xmenu.c.o
+[167/237] Compiling C object gamex86_64.so.p/src_action_a_xvote.c.o
+[168/237] Compiling C object gamex86_64.so.p/src_action_cgf_sfx_glass.c.o
+[169/237] Compiling C object gamex86_64.so.p/src_action_a_vote.c.o
+[170/237] Compiling C object gamex86_64.so.p/src_action_g_chase.c.o
+[171/237] Compiling C object gamex86_64.so.p/src_action_g_combat.c.o
+[172/237] Compiling C object gamex86_64.so.p/src_action_g_ext.c.o
+../src/action/g_ext.c: In function ‘G_CvarSync_Updated’:
+../src/action/g_ext.c:251:13: warning: unused variable ‘val_f’ [-Wunused-variable]
+  251 |         int val_f = atof(val);
+      |             ^~~~~
+[173/237] Compiling C object gamex86_64.so.p/src_action_g_cmds.c.o
+[174/237] Compiling C object gamex86_64.so.p/src_action_g_lrcon.c.o
+[175/237] Compiling C object gamex86_64.so.p/src_action_g_main.c.o
+../src/action/g_main.c: In function ‘EndDMLevel’:
+../src/action/g_main.c:1050:35: warning: the comparison will always evaluate as ‘true’ for the address of ‘nextmap’ will never be NULL [-Waddress]
+ 1050 |                 if (level.nextmap != NULL)
+      |                                   ^~
+In file included from ../src/action/g_main.c:272:
+../src/action/g_local.h:916:8: note: ‘nextmap’ declared here
+  916 |   char nextmap[MAX_QPATH];      // go here when fraglimit is hit
+      |        ^~~~~~~
+../src/action/g_main.c:1087:27: warning: the comparison will always evaluate as ‘true’ for the address of ‘nextmap’ will never be NULL [-Waddress]
+ 1087 |         if (level.nextmap != NULL && !byvote) {
+      |                           ^~
+../src/action/g_local.h:916:8: note: ‘nextmap’ declared here
+  916 |   char nextmap[MAX_QPATH];      // go here when fraglimit is hit
+      |        ^~~~~~~
+../src/action/g_main.c:924:14: warning: unused variable ‘mvdstring’ [-Wunused-variable]
+  924 |         char mvdstring[512] = "";
+      |              ^~~~~~~~~
+[176/237] Compiling C object gamex86_64.so.p/src_action_a_team.c.o
+[177/237] Compiling C object gamex86_64.so.p/src_action_g_items.c.o
+[178/237] Compiling C object gamex86_64.so.p/src_action_g_phys.c.o
+[179/237] Compiling C object gamex86_64.so.p/src_action_g_grapple.c.o
+[180/237] Compiling C object gamex86_64.so.p/src_action_g_misc.c.o
+[181/237] Compiling C object gamex86_64.so.p/src_action_g_save.c.o
+[182/237] Compiling C object gamex86_64.so.p/src_action_g_trigger.c.o
+[183/237] Compiling C object gamex86_64.so.p/src_action_g_target.c.o
+[184/237] Compiling C object gamex86_64.so.p/src_action_g_func.c.o
+[185/237] Compiling C object gamex86_64.so.p/src_action_g_utils.c.o
+[186/237] Compiling C object gamex86_64.so.p/src_action_p_antilag.c.o
+[187/237] Compiling C object gamex86_64.so.p/src_action_g_spawn.c.o
+[188/237] Compiling C object gamex86_64.so.p/src_action_g_weapon.c.o
+[189/237] Compiling C object gamex86_64.so.p/src_action_tng_balancer.c.o
+[190/237] Compiling C object gamex86_64.so.p/src_action_g_svcmds.c.o
+[191/237] Compiling C object gamex86_64.so.p/src_action_tng_flashlight.c.o
+[192/237] Compiling C object gamex86_64.so.p/src_action_p_hud.c.o
+[193/237] Compiling C object gamex86_64.so.p/src_action_tng_ini.c.o
+[194/237] Compiling C object gamex86_64.so.p/src_action_p_view.c.o
+../src/action/p_view.c: In function ‘ClientEndServerFrame’:
+../src/action/p_view.c:1443:29: warning: the comparison will always evaluate as ‘true’ for the address of ‘vidref’ will never be NULL [-Waddress]
+ 1443 |                         if (ent->client->resp.vidref && Q_stricmp(ent->client->resp.vidref, "soft"))
+      |                             ^~~
+In file included from ../src/action/p_view.c:79:
+../src/action/g_local.h:2080:8: note: ‘vidref’ declared here
+ 2080 |   char vidref[16];
+      |        ^~~~~~
+../src/action/p_view.c:1454:29: warning: the comparison will always evaluate as ‘true’ for the address of ‘vidref’ will never be NULL [-Waddress]
+ 1454 |                         if (ent->client->resp.vidref && Q_stricmp(ent->client->resp.vidref, "soft"))
+      |                             ^~~
+../src/action/g_local.h:2080:8: note: ‘vidref’ declared here
+ 2080 |   char vidref[16];
+      |        ^~~~~~
+[195/237] Compiling C object gamex86_64.so.p/src_action_tng_irc.c.o
+[196/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_compress.c.o
+../src/action/acesrc/acebot_compress.c: In function ‘Decode’:
+../src/action/acesrc/acebot_compress.c:234:9: warning: ignoring return value of ‘fread’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  234 |         fread(&version,sizeof(int),1,pIn); // read version
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/acesrc/acebot_compress.c:235:9: warning: ignoring return value of ‘fread’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  235 |         fread(&version,sizeof(int),1,pIn); // read buffersize (not needed, so repeat into version)
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[197/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_cmds.c.o
+[198/237] Compiling C object gamex86_64.so.p/src_action_tng_jump.c.o
+[199/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_items.c.o
+[200/237] Compiling C object gamex86_64.so.p/src_action_tng_stats.c.o
+[201/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_ai.c.o
+../src/action/acesrc/acebot_ai.c: In function ‘BOTLIB_PickLongRangeGoal’:
+../src/action/acesrc/acebot_ai.c:264:95: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  264 |                                 nodes_touched = BOTLIB_NodeTouchNodes(sp_origin[spot_picked], vec3_origin, 32, self->mins, self->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                                                               ^~~~~~~~~~~
+In file included from ../src/action/acesrc/../g_local.h:3101,
+                 from ../src/action/acesrc/acebot_ai.c:54:
+../src/action/acesrc/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+[202/237] Compiling C object gamex86_64.so.p/src_shared_shared.c.o
+[203/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_movement.c.o
+[204/237] Compiling C object gamex86_64.so.p/src_action_p_weapon.c.o
+[205/237] Compiling C object gamex86_64.so.p/src_action_p_client.c.o
+../src/action/p_client.c: In function ‘SelectBotSpawnPoint’:
+../src/action/p_client.c:2354:14: warning: unused variable ‘spot’ [-Wunused-variable]
+ 2354 |     edict_t *spot = NULL;
+      |              ^~~~
+../src/action/p_client.c: In function ‘ClientThink’:
+../src/action/p_client.c:4359:78: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 4359 |                         nodes_touched = BOTLIB_NodeTouchNodes(ent->s.origin, vec3_origin, 32, ent->mins, ent->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                                              ^~~~~~~~~~~
+In file included from ../src/action/g_local.h:3101,
+                 from ../src/action/p_client.c:319:
+../src/action/acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/p_client.c:4515:43: warning: variable ‘end’ set but not used [-Wunused-but-set-variable]
+ 4515 |                         vec3_t groundvec, end;
+      |                                           ^~~
+../src/action/p_client.c:5308:45: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+ 5308 |                                         if (node_added = BOTLIB_AddNode(ent->s.origin, tr.plane.normal, NODE_MOVE) != INVALID)
+      |                                             ^~~~~~~~~~
+../src/action/p_client.c:5175:23: warning: unused variable ‘speed’ [-Wunused-variable]
+ 5175 |                 float speed = VectorLength(ent->velocity); // Player speed
+      |                       ^~~~~
+[206/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_spawn.c.o
+../src/action/acesrc/acebot_spawn.c: In function ‘ACESP_RemoveBot’:
+../src/action/acesrc/acebot_spawn.c:712:68: warning: passing argument 5 of ‘player_die’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  712 |                                 player_die (bot, bot, bot, 100000, vec3_origin);
+      |                                                                    ^~~~~~~~~~~
+In file included from ../src/action/acesrc/acebot_spawn.c:44:
+../src/action/acesrc/../g_local.h:1756:37: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+ 1756 |                  int damage, vec3_t point);
+      |                              ~~~~~~~^~~~~
+../src/action/acesrc/acebot_spawn.c: In function ‘ACESP_RemoveTeamplayBot’:
+../src/action/acesrc/acebot_spawn.c:787:91: warning: passing argument 5 of ‘player_die’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  787 |                                                         player_die(bot, bot, bot, 100000, vec3_origin);
+      |                                                                                           ^~~~~~~~~~~
+../src/action/acesrc/../g_local.h:1756:37: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+ 1756 |                  int damage, vec3_t point);
+      |                              ~~~~~~~^~~~~
+../src/action/acesrc/acebot_spawn.c: In function ‘ACESP_LoadBotConfig’:
+../src/action/acesrc/acebot_spawn.c:192:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  192 |                 fgets( inString, 80, pIn );
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[207/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_combat.c.o
+[208/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_ai.c.o
+[209/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_states.c.o
+[210/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_movement.c.o
+[211/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_env_doors.c.o
+[212/237] Compiling C object gamex86_64.so.p/src_action_acesrc_botnav.c.o
+[213/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_collision.c.o
+[214/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_utility.c.o
+[215/237] Compiling C object gamex86_64.so.p/src_action_acesrc_bot_weapon.c.o
+[216/237] Compiling C object gamex86_64.so.p/src_action_acesrc_botchat.c.o
+[217/237] Compiling C object gamex86_64.so.p/src_action_acesrc_botscan.c.o
+[218/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_math.c.o
+[219/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_ai.c.o
+../src/action/botlib/botlib_ai.c: In function ‘BOTLIB_BotInputToUserCommand’:
+../src/action/botlib/botlib_ai.c:317:74: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  317 |                 int nodes_touched = BOTLIB_NodeTouchNodes(ent->s.origin, vec3_origin, 8, ent->mins, ent->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                                          ^~~~~~~~~~~
+In file included from ../src/action/botlib/../g_local.h:3101,
+                 from ../src/action/botlib/botlib_ai.c:1:
+../src/action/botlib/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+[220/237] Compiling C object gamex86_64.so.p/src_action_acesrc_acebot_nodes.c.o
+../src/action/acesrc/acebot_nodes.c: In function ‘ACEND_SetGoal’:
+../src/action/acesrc/acebot_nodes.c:401:63: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  401 |         nodes_touched = BOTLIB_NodeTouchNodes(self->s.origin, vec3_origin, 32, self->mins, self->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                               ^~~~~~~~~~~
+In file included from ../src/action/acesrc/../g_local.h:3101,
+                 from ../src/action/acesrc/acebot_nodes.c:51:
+../src/action/acesrc/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/acesrc/acebot_nodes.c: In function ‘BOTLIB_SelfExpandingNodes’:
+../src/action/acesrc/acebot_nodes.c:666:76: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  666 |                                 nodes_touched = BOTLIB_NodeTouchNodes(exp, vec3_origin, 8, mins, maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                                            ^~~~~~~~~~~
+../src/action/acesrc/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/acesrc/acebot_nodes.c: In function ‘BOTLIB_SelfExpandNodesFromSpawnpoints’:
+../src/action/acesrc/acebot_nodes.c:1183:93: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 1183 |                                         nodes_touched = BOTLIB_NodeTouchNodes(sp_origin[i], vec3_origin, 0, mins, maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                                                             ^~~~~~~~~~~
+../src/action/acesrc/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/acesrc/acebot_nodes.c:1192:91: warning: passing argument 2 of ‘BOTLIB_AddNode’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 1192 |                                                 node_added = BOTLIB_AddNode(sp_origin[i], vec3_origin, type);
+      |                                                                                           ^~~~~~~~~~~
+../src/action/acesrc/../acesrc/acebot.h:733:55: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  733 | int              BOTLIB_AddNode(vec3_t origin, vec3_t normal, byte type);
+      |                                                ~~~~~~~^~~~~~
+../src/action/acesrc/acebot_nodes.c: In function ‘BOTLIB_Reachability’:
+../src/action/acesrc/acebot_nodes.c:2139:15: warning: variable ‘higher’ set but not used [-Wunused-but-set-variable]
+ 2139 |         float higher = 0, lower = 0;
+      |               ^~~~~~
+../src/action/acesrc/acebot_nodes.c:2138:68: warning: variable ‘target_is_equal’ set but not used [-Wunused-but-set-variable]
+ 2138 |         qboolean target_is_above = false, target_is_below = false, target_is_equal = false;
+      |                                                                    ^~~~~~~~~~~~~~~
+../src/action/acesrc/acebot_nodes.c:2138:18: warning: variable ‘target_is_above’ set but not used [-Wunused-but-set-variable]
+ 2138 |         qboolean target_is_above = false, target_is_below = false, target_is_equal = false;
+      |                  ^~~~~~~~~~~~~~~
+../src/action/acesrc/acebot_nodes.c: In function ‘BOTLIB_FollowPath’:
+../src/action/acesrc/acebot_nodes.c:2482:63: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 2482 |         nodes_touched = BOTLIB_NodeTouchNodes(self->s.origin, vec3_origin, 0, self->mins, self->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                               ^~~~~~~~~~~
+../src/action/acesrc/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/acesrc/acebot_nodes.c: In function ‘ACEND_BuildSpawnPointNodes’:
+../src/action/acesrc/acebot_nodes.c:3133:18: warning: variable ‘requiresSave’ set but not used [-Wunused-but-set-variable]
+ 3133 |         qboolean requiresSave = false;          // If ACEND_SaveNodes() needs to be called
+      |                  ^~~~~~~~~~~~
+[221/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_communication.c.o
+../src/action/botlib/botlib_communication.c: In function ‘BOTLIB_Radio’:
+../src/action/botlib/botlib_communication.c:599:49: warning: ‘ more’ directive writing 5 bytes into a region of size between 4 and 13 [-Wformat-overflow=]
+  599 |                         sprintf(extra, ", and %d more", self->bot.allies_num - 3);
+      |                                                 ^~~~~
+In file included from /usr/include/stdio.h:970,
+                 from ../inc/shared/shared.h:63,
+                 from ../src/action/botlib/../g_local.h:266,
+                 from ../src/action/botlib/botlib_communication.c:1:
+In function ‘sprintf’,
+    inlined from ‘BOTLIB_GetNearbyTeamList’ at ../src/action/botlib/botlib_communication.c:599:4,
+    inlined from ‘BOTLIB_Radio’ at ../src/action/botlib/botlib_communication.c:719:5:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:30:10: note: ‘__builtin___sprintf_chk’ output between 13 and 22 bytes into a destination of size 20
+   30 |   return __builtin___sprintf_chk (__s, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   31 |                                   __glibc_objsize (__s), __fmt,
+      |                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   32 |                                   __va_arg_pack ());
+      |                                   ~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_communication.c: In function ‘BOTLIB_Radio’:
+../src/action/botlib/botlib_communication.c:572:57: warning: ‘ more...’ directive writing 8 bytes into a region of size between 4 and 13 [-Wformat-overflow=]
+  572 |                                 sprintf(extra, ", and %d more...", self->bot.enemies_num - 3);
+      |                                                         ^~~~~~~~
+In function ‘sprintf’,
+    inlined from ‘BOTLIB_GetEnemyList’ at ../src/action/botlib/botlib_communication.c:572:5,
+    inlined from ‘BOTLIB_Radio’ at ../src/action/botlib/botlib_communication.c:710:5:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:30:10: note: ‘__builtin___sprintf_chk’ output between 16 and 25 bytes into a destination of size 20
+   30 |   return __builtin___sprintf_chk (__s, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   31 |                                   __glibc_objsize (__s), __fmt,
+      |                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   32 |                                   __va_arg_pack ());
+      |                                   ~~~~~~~~~~~~~~~~~
+[222/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_cmd.c.o
+../src/action/botlib/botlib_cmd.c: In function ‘BOTLIB_SV_Cmds’:
+../src/action/botlib/botlib_cmd.c:13:21: warning: unused variable ‘cc’ [-Wunused-variable]
+   13 |                 int cc = gi.argc();
+      |                     ^~
+[223/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_items.c.o
+[224/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_esp.c.o
+../src/action/botlib/botlib_esp.c: In function ‘BOTLIB_ESPGetTargetNode’:
+../src/action/botlib/botlib_esp.c:18:18: warning: variable ‘target’ set but not used [-Wunused-but-set-variable]
+   18 |         edict_t *target = NULL;
+      |                  ^~~~~~
+../src/action/botlib/botlib_esp.c:13:16: warning: variable ‘bmaxs’ set but not used [-Wunused-but-set-variable]
+   13 |         vec3_t bmaxs = { 0,0,0 };
+      |                ^~~~~
+../src/action/botlib/botlib_esp.c:12:16: warning: variable ‘bmins’ set but not used [-Wunused-but-set-variable]
+   12 |         vec3_t bmins = { 0,0,0 };
+      |                ^~~~~
+[225/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_spawnpoints.c.o
+[226/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_ctf.c.o
+../src/action/botlib/botlib_ctf.c: In function ‘BOTLIB_CTF_Get_Flag_Node’:
+../src/action/botlib/botlib_ctf.c:35:16: warning: variable ‘bmaxs’ set but not used [-Wunused-but-set-variable]
+   35 |         vec3_t bmaxs = { 0,0,0 };
+      |                ^~~~~
+../src/action/botlib/botlib_ctf.c:34:16: warning: variable ‘bmins’ set but not used [-Wunused-but-set-variable]
+   34 |         vec3_t bmins = { 0,0,0 };
+      |                ^~~~~
+../src/action/botlib/botlib_ctf.c: In function ‘BOTLIB_NearestFlag’:
+../src/action/botlib/botlib_ctf.c:325:15: warning: variable ‘flag2_dist’ set but not used [-Wunused-but-set-variable]
+  325 |         float flag2_dist = 999999999;
+      |               ^~~~~~~~~~
+[227/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_movement.c.o
+../src/action/botlib/botlib_movement.c: In function ‘PrintAllLinkNodeTypes’:
+../src/action/botlib/botlib_movement.c:140:18: warning: variable ‘foundProblem’ set but not used [-Wunused-but-set-variable]
+  140 |         qboolean foundProblem = false;
+      |                  ^~~~~~~~~~~~
+../src/action/botlib/botlib_movement.c: In function ‘BOTLIB_UTIL_PATH_FORWARD’:
+../src/action/botlib/botlib_movement.c:1412:27: warning: variable ‘end’ set but not used [-Wunused-but-set-variable]
+ 1412 |         vec3_t groundvec, end;
+      |                           ^~~
+../src/action/botlib/botlib_movement.c: In function ‘BOTLIB_PredictEnemyOrigin’:
+../src/action/botlib/botlib_movement.c:4752:17: warning: statement with no effect [-Wunused-value]
+ 4752 |                 self->s.origin; // origin is a vec3_t[3] which is a float array
+      |                 ^~~~
+../src/action/botlib/botlib_movement.c:4754:17: warning: statement with no effect [-Wunused-value]
+ 4754 |                 self->enemy->s.origin; // origin is a vec3_t[3] which is a float array
+      |                 ^~~~
+../src/action/botlib/botlib_movement.c:4759:31: warning: statement with no effect [-Wunused-value]
+ 4759 |                 self->s.angles[PITCH];
+      |                 ~~~~~~~~~~~~~~^~~~~~~
+../src/action/botlib/botlib_movement.c: In function ‘BOTLIB_Look’:
+../src/action/botlib/botlib_movement.c:4897:26: warning: variable ‘not_infront’ set but not used [-Wunused-but-set-variable]
+ 4897 |                 qboolean not_infront = false; // If target is in front
+      |                          ^~~~~~~~~~~
+../src/action/botlib/botlib_movement.c:5049:26: warning: unused variable ‘found_target’ [-Wunused-variable]
+ 5049 |                 qboolean found_target = false;
+      |                          ^~~~~~~~~~~~
+../src/action/botlib/botlib_movement.c: In function ‘BOTLIB_CrouchFire’:
+../src/action/botlib/botlib_movement.c:5240:18: warning: unused variable ‘clweapon’ [-Wunused-variable]
+ 5240 |         gitem_t* clweapon = self->client->weapon;
+      |                  ^~~~~~~~
+../src/action/botlib/botlib_movement.c: In function ‘BOTLIB_Wander’:
+../src/action/botlib/botlib_movement.c:6476:21: warning: unused variable ‘old_waterlevel’ [-Wunused-variable]
+ 6476 |                 int old_waterlevel = self->client->old_waterlevel;
+      |                     ^~~~~~~~~~~~~~
+[228/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_personality.c.o
+../src/action/botlib/botlib_personality.c: In function ‘BOTLIB_SetPersonality’:
+../src/action/botlib/botlib_personality.c:448:50: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  448 |         if (selectedSkin != NULL || selectedSkin == "") {
+      |                                                  ^~
+../src/action/botlib/botlib_personality.c:398:14: warning: unused variable ‘skin’ [-Wunused-variable]
+  398 |         char skin[MAX_INFO_STRING];
+      |              ^~~~
+../src/action/botlib/botlib_personality.c:397:14: warning: unused variable ‘name’ [-Wunused-variable]
+  397 |         char name[MAX_QPATH]; // Full bot name ( [prefix/clan/rng]  and/or  [name]  and/or  [postfix] )
+      |              ^~~~
+../src/action/botlib/botlib_personality.c:370:9: warning: unused variable ‘attempts’ [-Wunused-variable]
+  370 |     int attempts = 0;
+      |         ^~~~~~~~
+../src/action/botlib/botlib_personality.c: In function ‘BOTLIB_BotPersonalityChooseWeapon’:
+../src/action/botlib/botlib_personality.c:540:11: warning: unused variable ‘highest_pref’ [-Wunused-variable]
+  540 |     float highest_pref = weapon_prefs[0]; // Initialize with the first weapon's preference
+      |           ^~~~~~~~~~~~
+../src/action/botlib/botlib_personality.c:539:9: warning: unused variable ‘chosen_weapon_index’ [-Wunused-variable]
+  539 |     int chosen_weapon_index = 0; // Initialize with the first index
+      |         ^~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_personality.c: In function ‘BOTLIB_BotPersonalityChooseItem’:
+../src/action/botlib/botlib_personality.c:614:11: warning: unused variable ‘highest_pref’ [-Wunused-variable]
+  614 |     float highest_pref = item_prefs[0]; // Initialize with the first item's preference
+      |           ^~~~~~~~~~~~
+[229/237] Linking target q2proded
+[230/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_nav.c.o
+../src/action/botlib/botlib_nav.c: In function ‘BOTLIB_DrawPath’:
+../src/action/botlib/botlib_nav.c:2650:46: warning: statement with no effect [-Wunused-value]
+ 2650 |                 players[0]->client->pers.draw->draw_arrow_num;
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+[231/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_spawn.c.o
+../src/action/botlib/botlib_spawn.c: In function ‘BOTLIB_RemoveBot’:
+../src/action/botlib/botlib_spawn.c:1631:75: warning: passing argument 5 of ‘player_die’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 1631 |                                         player_die(bot, bot, bot, 100000, vec3_origin);
+      |                                                                           ^~~~~~~~~~~
+In file included from ../src/action/botlib/botlib_spawn.c:1:
+../src/action/botlib/../g_local.h:1756:37: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+ 1756 |                  int damage, vec3_t point);
+      |                              ~~~~~~~^~~~~
+../src/action/botlib/botlib_spawn.c:1703:67: warning: passing argument 5 of ‘player_die’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 1703 |                                 player_die(bot, bot, bot, 100000, vec3_origin);
+      |                                                                   ^~~~~~~~~~~
+../src/action/botlib/../g_local.h:1756:37: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+ 1756 |                  int damage, vec3_t point);
+      |                              ~~~~~~~^~~~~
+../src/action/botlib/botlib_spawn.c: In function ‘BOTLIB_RemoveTeamplayBot’:
+../src/action/botlib/botlib_spawn.c:1752:51: warning: passing argument 5 of ‘player_die’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+ 1752 |                 player_die(bot, bot, bot, 100000, vec3_origin);
+      |                                                   ^~~~~~~~~~~
+../src/action/botlib/../g_local.h:1756:37: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+ 1756 |                  int damage, vec3_t point);
+      |                              ~~~~~~~^~~~~
+../src/action/botlib/botlib_spawn.c:1728:13: warning: unused variable ‘i’ [-Wunused-variable]
+ 1728 |         int i;
+      |             ^
+../src/action/botlib/botlib_spawn.c: In function ‘BOTLIB_AddBotsFromPreviousMap’:
+../src/action/botlib/botlib_spawn.c:377:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  377 |                 fgets(curr_line, sizeof(curr_line), f); // First line is commented
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:381:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  381 |                 fgets(curr_line, sizeof(curr_line), f);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:390:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  390 |                 fgets(curr_line, sizeof(curr_line), f);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:400:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  400 |                 fgets(curr_line, sizeof(curr_line), f);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:412:17: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  412 |                 fgets(curr_line, sizeof(curr_line), f); // Second line is gamemode
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:444:25: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  444 |                         fgets(curr_line, sizeof(curr_line), f); // Get next line
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:453:25: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  453 |                         fgets(curr_line, sizeof(curr_line), f); // Get next line
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c:460:25: warning: ignoring return value of ‘fgets’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  460 |                         fgets(curr_line, sizeof(curr_line), f); // Get next line
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/action/botlib/botlib_spawn.c: At top level:
+../src/action/botlib/botlib_spawn.c:2157:13: warning: ‘BOTLIB_TrainingBotCountManager’ defined but not used [-Wunused-function]
+ 2157 | static void BOTLIB_TrainingBotCountManager(void)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[232/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_utils.c.o
+[233/237] Linking target q2pro
+[234/237] Compiling C object gamex86_64.so.p/src_action_tng_net.c.o
+../src/action/tng_net.c: In function ‘process_stats’:
+../src/action/tng_net.c:1094:16: warning: variable ‘stats’ set but not used [-Wunused-but-set-variable]
+ 1094 |     lt_stats_t stats;
+      |                ^~~~~
+../src/action/tng_net.c: At top level:
+../src/action/tng_net.c:156:14: warning: ‘ConstructPlayerAwardStatString’ defined but not used [-Wunused-function]
+  156 | static char* ConstructPlayerAwardStatString(void) {
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[235/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_weapons.c.o
+[236/237] Compiling C object gamex86_64.so.p/src_action_botlib_botlib_nodes.c.o
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_CanVisitNode’:
+../src/action/botlib/botlib_nodes.c:658:63: warning: passing argument 2 of ‘BOTLIB_NodeTouchNodes’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  658 |         nodes_touched = BOTLIB_NodeTouchNodes(self->s.origin, vec3_origin, 32, self->mins, self->maxs, nodelist, MAX_NODELIST, INVALID);
+      |                                                               ^~~~~~~~~~~
+In file included from ../src/action/botlib/../g_local.h:3101,
+                 from ../src/action/botlib/botlib_nodes.c:1:
+../src/action/botlib/../acesrc/acebot.h:365:61: note: expected ‘vec_t *’ {aka ‘float *’} but argument is of type ‘const vec_t *’ {aka ‘const float *’}
+  365 | int             BOTLIB_NodeTouchNodes(vec_t *origin, vec3_t normal, float size, vec3_t mins, vec3_t maxs, int* nodelist, const int maxnodes, int ignore_node);
+      |                                                      ~~~~~~~^~~~~~
+../src/action/botlib/botlib_nodes.c: In function ‘GetBSPFaceTriangle’:
+../src/action/botlib/botlib_nodes.c:1147:16: warning: variable ‘org’ set but not used [-Wunused-but-set-variable]
+ 1147 |         vec3_t org = { 0,0,0 };
+      |                ^~~
+../src/action/botlib/botlib_nodes.c: In function ‘DC_Reachability’:
+../src/action/botlib/botlib_nodes.c:1802:15: warning: variable ‘higher’ set but not used [-Wunused-but-set-variable]
+ 1802 |         float higher = 0;
+      |               ^~~~~~
+../src/action/botlib/botlib_nodes.c:1801:68: warning: variable ‘target_is_equal’ set but not used [-Wunused-but-set-variable]
+ 1801 |         qboolean target_is_above = false, target_is_below = false, target_is_equal = false;
+      |                                                                    ^~~~~~~~~~~~~~~
+../src/action/botlib/botlib_nodes.c:1801:18: warning: variable ‘target_is_above’ set but not used [-Wunused-but-set-variable]
+ 1801 |         qboolean target_is_above = false, target_is_below = false, target_is_equal = false;
+      |                  ^~~~~~~~~~~~~~~
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_LoadNavCompressed’:
+../src/action/botlib/botlib_nodes.c:3007:18: warning: unused variable ‘bsp_checksum’ [-Wunused-variable]
+ 3007 |         unsigned bsp_checksum = 0; // Map checksum
+      |                  ^~~~~~~~~~~~
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_SaveNav’:
+../src/action/botlib/botlib_nodes.c:3277:13: warning: unused variable ‘f’ [-Wunused-variable]
+ 3277 |         int f, n, l, p; // File, nodes, links, paths
+      |             ^
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_LoadNav’:
+../src/action/botlib/botlib_nodes.c:3564:18: warning: unused variable ‘bsp_checksum’ [-Wunused-variable]
+ 3564 |         unsigned bsp_checksum = 0; // Map checksum
+      |                  ^~~~~~~~~~~~
+../src/action/botlib/botlib_nodes.c:3562:13: warning: unused variable ‘f’ [-Wunused-variable]
+ 3562 |         int f, n, l, p; // File, nodes, links, paths
+      |             ^
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_NODE_REACHABILITY’:
+../src/action/botlib/botlib_nodes.c:4142:16: warning: unused variable ‘zero’ [-Wunused-variable]
+ 4142 |         vec3_t zero = { 0 };
+      |                ^~~~
+../src/action/botlib/botlib_nodes.c: At top level:
+../src/action/botlib/botlib_nodes.c:4217:1: warning: multi-line comment [-Wcomment]
+ 4217 | //              |\
+      | ^
+../src/action/botlib/botlib_nodes.c:4219:1: warning: multi-line comment [-Wcomment]
+ 4219 | //              |  \
+      | ^
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_ProcesssReachabilities’:
+../src/action/botlib/botlib_nodes.c:4580:16: warning: unused variable ‘zero’ [-Wunused-variable]
+ 4580 |         vec3_t zero = { 0 };
+      |                ^~~~
+../src/action/botlib/botlib_nodes.c: In function ‘BOTLIB_Process_NMesh’:
+../src/action/botlib/botlib_nodes.c:4761:21: warning: unused variable ‘total_verts’ [-Wunused-variable]
+ 4761 |                 int total_verts = nmesh.face[f].num_verts;
+      |                     ^~~~~~~~~~~
+../src/action/botlib/botlib_nodes.c:4760:21: warning: unused variable ‘vert_count’ [-Wunused-variable]
+ 4760 |                 int vert_count = 0;
+      |                     ^~~~~~~~~~
+../src/action/botlib/botlib_nodes.c:4759:21: warning: unused variable ‘num_tris’ [-Wunused-variable]
+ 4759 |                 int num_tris = 0;
+      |                     ^~~~~~~~
+../src/action/botlib/botlib_nodes.c: In function ‘ACEND_BSP’:
+../src/action/botlib/botlib_nodes.c:5413:24: warning: unused variable ‘nav’ [-Wunused-variable]
+ 5413 |                 nav_t* nav = CS_NAV();
+      |                        ^~~
+[237/237] Linking target gamex86_64.so
+exit 0

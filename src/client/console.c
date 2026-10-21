@@ -962,7 +962,12 @@ static void Con_DrawMatches(int y, int vislines)
             if (sel)
                 R_DrawFill32(x - CONCHAR_WIDTH / 2, ry, cw - CONCHAR_WIDTH, CONCHAR_HEIGHT,
                              MakeColor(64, 64, 64, 224));
-            Con_DrawMatchName(x, ry, p->cycle[k], colwidths[j], p->cycleQuery,
+            // a macro's mark, in the column's first cell as it is printed
+            if (p->cycleKinds[k] == MATCH_MACRO) {
+                R_SetColor(MakeColor(144, 144, 144, 255));
+                R_DrawChar(x, ry, 0, '$', con.charsetImage);
+            }
+            Con_DrawMatchName(x + CONCHAR_WIDTH, ry, p->cycle[k], colwidths[j] - 1, p->cycleQuery,
                               sel ? U32_YELLOW : MakeColor(192, 192, 192, 255));
         }
         x += cw;

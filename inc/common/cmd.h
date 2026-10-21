@@ -89,11 +89,19 @@ Command execution takes a null terminated string, breaks it into tokens,
 then searches for a command or variable that matches the first token.
 */
 
+// what a match is, as the generator that added it says
+// (Prompt_AddMatchKind): the front ends mark the kinds that are not names
+enum {
+    MATCH_NAME,     // a command, cvar, alias, file...: the match as typed
+    MATCH_MACRO,    // a macro: a value, expanded as $name
+};
+
 typedef struct genctx_s {
     const char  *partial;
     size_t length;
     int argnum;
     char **matches;
+    uint8_t *kinds;     // one per match, MATCH_*
     int count, size;
     void *data;
     bool ignorecase;
