@@ -1335,7 +1335,9 @@ static void Con_DrawMatches(int y, int vislines)
             if (p->cycleKinds[k] == MATCH_MACRO) {
                 uint32_t mark = MakeColor(144, 144, 144, 255);
                 if (ttf) {
-                    SCR_DrawTextCell(x, ry, CON_ROW, 0, TEXT_SHADOW, size, mark, "$", 1);
+                    // up against the name, as the font's $ is narrower than the cell
+                    int mw = R_MeasureText(TEXT_SHADOW, size, "$", 1);
+                    SCR_DrawTextCell(x + cw1 - mw, ry, CON_ROW, 0, TEXT_SHADOW, size, mark, "$", 1);
                 } else {
                     R_SetColor(mark);
                     R_DrawChar(x, ry, 0, '$', con.charsetImage);

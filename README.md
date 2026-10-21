@@ -186,7 +186,12 @@ it. Typing anything starts afresh. When nothing starts with what you
 typed, the names with its letters in order anywhere are listed instead,
 best first, the letters picked out in green: `clfs` finds
 `cl_footsteps`. Arguments - maps, demos, cvar values, `jmod`'s
-subcommands - get it too.
+subcommands - get it too. Macros (`cl_fps`, `com_date`, `loc_here`...)
+are in the list, marked with a `$` before the name; and a `$` opens an
+expansion anywhere on the line - `echo $cl_f` TAB completes the name
+after it from the cvars and the macros, `${` likewise. A macro's name
+typed alone prints its value, as a cvar's does; `macrolist` completes
+its filter.
 
 **History.** Ctrl-R is a bash-like history search, fuzzy: the matching
 history lines are listed over the console as fzf lists them - best next
