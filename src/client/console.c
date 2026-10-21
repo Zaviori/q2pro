@@ -1331,7 +1331,17 @@ static void Con_DrawMatches(int y, int vislines)
 
             if (sel)
                 R_DrawFill32(x - cw1 / 2, ry, cw - cw1, CON_ROW, MakeColor(64, 64, 64, 224));
-            Con_DrawMatchName(x, ry, p->cycle[k], colwidths[j], p->cycleQuery, color);
+            // a macro's mark, in the column's first cell as it is printed
+            if (p->cycleKinds[k] == MATCH_MACRO) {
+                uint32_t mark = MakeColor(144, 144, 144, 255);
+                if (ttf) {
+                    SCR_DrawTextCell(x, ry, CON_ROW, 0, TEXT_SHADOW, size, mark, "$", 1);
+                } else {
+                    R_SetColor(mark);
+                    R_DrawChar(x, ry, 0, '$', con.charsetImage);
+                }
+            }
+            Con_DrawMatchName(x + cw1, ry, p->cycle[k], colwidths[j] - 1, p->cycleQuery, color);
         }
         x += cw;
     }

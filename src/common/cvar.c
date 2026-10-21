@@ -138,6 +138,16 @@ void Cvar_Variable_g(genctx_t *ctx)
         Prompt_AddMatch(ctx, c->name);
 }
 
+// the cvars a $ expands: all but the private ones, which expand to nothing
+void Cvar_Expandable_g(genctx_t *ctx)
+{
+    cvar_t *c;
+
+    for (c = cvar_vars; c; c = c->next)
+        if (!(c->flags & CVAR_PRIVATE))
+            Prompt_AddMatch(ctx, c->name);
+}
+
 void Cvar_Default_g(genctx_t *ctx)
 {
     cvar_t *c = ctx->data;

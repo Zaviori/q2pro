@@ -43,6 +43,7 @@ typedef struct {
     // (TAB again, the arrows); live while the line is as the last
     // step left it, see Prompt_CycleLive()
     char        **cycle;        // sorted
+    uint8_t     *cycleKinds;    // their kinds, MATCH_*
     int         cycleCount;
     int         cycleIndex;     // -1: the common prefix, else the match on the line
     char        *cycleHead;     // the line up to the argument
@@ -59,6 +60,8 @@ typedef struct {
 
 void Prompt_Init(void);
 void Prompt_AddMatch(genctx_t *ctx, const char *s);
+void Prompt_AddMatchKind(genctx_t *ctx, const char *s, int kind);
+void Prompt_PushMatch(genctx_t *ctx, char *s, int kind);
 bool Prompt_MatchPartial(const genctx_t *ctx, const char *s);
 void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash);
 int Prompt_LayoutMatches(const commandPrompt_t *prompt, char **matches, int count,

@@ -730,7 +730,7 @@ void Cmd_Macro_g(genctx_t *ctx)
     cmd_macro_t *m;
 
     for (m = cmd_macros; m; m = m->next)
-        Prompt_AddMatch(ctx, m->name);
+        Prompt_AddMatchKind(ctx, m->name, MATCH_MACRO);
 }
 
 /*
@@ -1558,6 +1558,7 @@ void Cmd_ExecuteCommand(cmdbuf_t *buf)
     cmd_function_t  *cmd;
     cmdalias_t      *a;
     cvar_t          *v;
+    cmd_macro_t     *m;
     char            *text;
 
     // execute the command line
@@ -1597,6 +1598,16 @@ void Cmd_ExecuteCommand(cmdbuf_t *buf)
     v = Cvar_FindVar(cmd_argv[0]);
     if (v) {
         Cvar_Command(v);
+        return;
+    }
+
+    // a macro's name alone prints its value, as a cvar's does
+    m = Cmd_FindMacro(cmd_argv[0]);
+    if (m && cmd_argc == 1) {
+        char value[MAX_STRING_CHARS];
+
+        m->function(value, sizeof(value));
+        Com_Printf("\"%s\" is \"%s\"\n", m->name, value);
         return;
     }
 
@@ -1900,6 +1911,12 @@ static void Cmd_MacroList_f(void)
     Com_Printf("%i of %i macros\n", i, total);
 }
 
+static void Cmd_MacroList_c(genctx_t *ctx, int argnum)
+{
+    if (argnum == 1)
+        Cmd_Macro_g(ctx);
+}
+
 static void Cmd_Text_f(void)
 {
     Cbuf_InsertText(cmd_current, Cmd_Args());
@@ -1946,7 +1963,7 @@ static void Cmd_Complete_f(void)
 
 static const cmdreg_t c_cmd[] = {
     { "cmdlist", Cmd_List_f },
-    { "macrolist", Cmd_MacroList_f },
+    { "macrolist", Cmd_MacroList_f, Cmd_MacroList_c },
     { "exec", Cmd_Exec_f, Cmd_Exec_c },
     { "echo", Cmd_Echo_f },
     { "_echo", Cmd_EchoEx_f, Cmd_EchoEx_c },

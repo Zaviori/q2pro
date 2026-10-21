@@ -72,7 +72,15 @@ int Prompt_LayoutMatches(const commandPrompt_t *prompt, char **matches, int coun
     return numCols;
 }
 
-static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches, int count)
+// the mark a match is listed with: a $ before a macro, as it is written
+static char Prompt_MatchMark(const uint8_t *kinds, int i)
+{
+    return kinds && kinds[i] == MATCH_MACRO ? '$' : ' ';
+}
+
+// kinds may be NULL: none marked
+static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches,
+                               const uint8_t *kinds, int count)
 {
     int numCols, numLines;
     int i, j, k;
@@ -86,14 +94,17 @@ static void Prompt_ShowMatches(const commandPrompt_t *prompt, char **matches, in
             if (k >= count) {
                 break;
             }
-            prompt->printf("%*s", -(int)colwidths[j], matches[k]);
+            // the mark takes one of the column's two spaces
+            prompt->printf("%c%*s", Prompt_MatchMark(kinds, k),
+                           -(int)(colwidths[j] - 1), matches[k]);
         }
         prompt->printf("\n");
     }
 }
 
 static void Prompt_ShowIndividualMatches(const commandPrompt_t *prompt, char **matches,
-                                         int numCommands, int numAliases, int numCvars)
+                                         const uint8_t *kinds, int numCommands,
+                                         int numAliases, int numCvars, int numMacros)
 {
     if (numCommands) {
         qsort(matches, numCommands, sizeof(matches[0]), SortStrcmp);
@@ -101,8 +112,9 @@ static void Prompt_ShowIndividualMatches(const commandPrompt_t *prompt, char **m
         prompt->printf("\n%i possible command%s:\n",
                        numCommands, numCommands != 1 ? "s" : "");
 
-        Prompt_ShowMatches(prompt, matches, numCommands);
+        Prompt_ShowMatches(prompt, matches, kinds, numCommands);
         matches += numCommands;
+        kinds += numCommands;
     }
 
     if (numCvars) {
@@ -111,8 +123,9 @@ static void Prompt_ShowIndividualMatches(const commandPrompt_t *prompt, char **m
         prompt->printf("\n%i possible variable%s:\n",
                        numCvars, numCvars != 1 ? "s" : "");
 
-        Prompt_ShowMatches(prompt, matches, numCvars);
+        Prompt_ShowMatches(prompt, matches, kinds, numCvars);
         matches += numCvars;
+        kinds += numCvars;
     }
 
     if (numAliases) {
@@ -121,8 +134,19 @@ static void Prompt_ShowIndividualMatches(const commandPrompt_t *prompt, char **m
         prompt->printf("\n%i possible alias%s:\n",
                        numAliases, numAliases != 1 ? "es" : "");
 
-        Prompt_ShowMatches(prompt, matches, numAliases);
+        Prompt_ShowMatches(prompt, matches, kinds, numAliases);
         matches += numAliases;
+        kinds += numAliases;
+    }
+
+    if (numMacros) {
+        qsort(matches, numMacros, sizeof(matches[0]), SortStrcmp);
+
+        prompt->printf("\n%i possible macro%s:\n",
+                       numMacros, numMacros != 1 ? "s" : "");
+
+        // a group's kinds are all one, so the sort above leaves them right
+        Prompt_ShowMatches(prompt, matches, kinds, numMacros);
     }
 }
 
@@ -160,7 +184,25 @@ bool Prompt_MatchPartial(const genctx_t *ctx, const char *s)
     return !strncmp(ctx->partial, s, ctx->length);
 }
 
-void Prompt_AddMatch(genctx_t *ctx, const char *s)
+/*
+====================
+Prompt_PushMatch
+
+Appends s, a string the context takes over (freed with its matches),
+as a match of the kind. No matching: the caller has done it.
+====================
+*/
+void Prompt_PushMatch(genctx_t *ctx, char *s, int kind)
+{
+    int n = Q_ALIGN(ctx->count + 1, MIN_MATCHES);
+
+    ctx->matches = Z_Realloc(ctx->matches, n * sizeof(char *));
+    ctx->kinds = Z_Realloc(ctx->kinds, n * sizeof(uint8_t));
+    ctx->kinds[ctx->count] = kind;
+    ctx->matches[ctx->count++] = s;
+}
+
+void Prompt_AddMatchKind(genctx_t *ctx, const char *s, int kind)
 {
     if (!*s)
         return;
@@ -173,8 +215,12 @@ void Prompt_AddMatch(genctx_t *ctx, const char *s)
     if (ctx->ignoredups && find_dup(ctx, s))
         return;
 
-    ctx->matches = Z_Realloc(ctx->matches, Q_ALIGN(ctx->count + 1, MIN_MATCHES) * sizeof(char *));
-    ctx->matches[ctx->count++] = Z_CopyString(s);
+    Prompt_PushMatch(ctx, Z_CopyString(s), kind);
+}
+
+void Prompt_AddMatch(genctx_t *ctx, const char *s)
+{
+    Prompt_AddMatchKind(ctx, s, MATCH_NAME);
 }
 
 static bool needs_quotes(const char *s)
@@ -199,6 +245,7 @@ static void Prompt_ClearCycle(commandPrompt_t *prompt)
         Z_Free(prompt->cycle[i]);
     }
     Z_Freep(&prompt->cycle);
+    Z_Freep(&prompt->cycleKinds);
     prompt->cycleCount = 0;
     prompt->cycleIndex = -1;
     Z_Freep(&prompt->cycleHead);
@@ -208,28 +255,46 @@ static void Prompt_ClearCycle(commandPrompt_t *prompt)
     Z_Freep(&prompt->cycleQuery);
 }
 
-// the fuzzy matches best first, Fuzzy_Score against the query being
+// The matches are sorted by index, so their kinds can follow them: by
+// name, or fuzzy ones best first, Fuzzy_Score against the query being
 // completed (qsort carries no context), the names breaking ties
-static const char *sort_query;
+static char **sort_names;
+static const char *sort_query;      // NULL: by name alone
+static bool sort_icase;
 
-static int SortFuzzy(const void *p1, const void *p2)
+static int SortOrder(const void *p1, const void *p2)
 {
-    const char *s1 = *(const char **)p1, *s2 = *(const char **)p2;
-    int d = Fuzzy_Score(sort_query, s2) - Fuzzy_Score(sort_query, s1);
+    const char *s1 = sort_names[*(const int *)p1];
+    const char *s2 = sort_names[*(const int *)p2];
 
-    return d ? d : strcmp(s1, s2);
+    if (sort_query) {
+        int d = Fuzzy_Score(sort_query, s2) - Fuzzy_Score(sort_query, s1);
+        if (d)
+            return d;
+    }
+    return sort_icase ? Q_strcasecmp(s1, s2) : strcmp(s1, s2);
 }
 
-// the command, cvar and alias names, or the argument's completer
-static void Prompt_Generate(genctx_t *ctx, int argnum,
-                            int *numCommands, int *numCvars, int *numAliases)
+// the command, cvar, alias and macro names, the names a $ expands, or
+// the argument's completer; the counts are of the kinds in order
+static void Prompt_Generate(genctx_t *ctx, int argnum, bool sigil,
+                            int *numCommands, int *numCvars, int *numAliases,
+                            int *numMacros)
 {
-    if (argnum) {
+    *numCommands = *numCvars = *numAliases = *numMacros = 0;
+
+    if (sigil) {
+        // complete an expansion: a cvar or a macro
+        Cvar_Expandable_g(ctx);
+        *numCvars = ctx->count;
+
+        Cmd_Macro_g(ctx);
+        *numMacros = ctx->count - *numCvars;
+    } else if (argnum) {
         // complete a command/cvar argument
         Com_Generic_c(ctx, argnum);
-        *numCommands = *numCvars = *numAliases = 0;
     } else {
-        // complete a command/cvar/alias name
+        // complete a command/cvar/alias/macro name
         Cmd_Command_g(ctx);
         *numCommands = ctx->count;
 
@@ -238,7 +303,27 @@ static void Prompt_Generate(genctx_t *ctx, int argnum,
 
         Cmd_Alias_g(ctx);
         *numAliases = ctx->count - *numCvars - *numCommands;
+
+        Cmd_Macro_g(ctx);
+        *numMacros = ctx->count - *numAliases - *numCvars - *numCommands;
     }
+}
+
+/*
+====================
+Prompt_Sigil
+
+How many characters of the argument at offset open an expansion - $,
+${ or ${$ - whose name is what gets completed; 0 for a plain argument.
+====================
+*/
+static int Prompt_Sigil(const char *s)
+{
+    if (s[0] != '$')
+        return 0;
+    if (s[1] != '{')
+        return 1;
+    return s[2] == '$' ? 3 : 2;
 }
 
 /*
@@ -341,9 +426,11 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
 {
     inputField_t *inputLine = &prompt->inputLine;
     char *first, *last, *text, **sorted;
-    int i, j, c, pos, size, argnum;
+    uint8_t *sortedKinds;
+    int *order;
+    int i, j, c, pos, size, argnum, sigil;
     genctx_t ctx;
-    int numCommands, numCvars, numAliases;
+    int numCommands, numCvars, numAliases, numMacros;
     bool keep = false;
     char partial[MAX_FIELD_TEXT];
 
@@ -390,21 +477,25 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     // determine argument number to be completed
     argnum = Cmd_FindArgForOffset(pos);
 
+    // an argument opening an expansion ($name) is completed from the
+    // names a $ expands, the sigil staying on the line as typed
+    sigil = Prompt_Sigil(text + Cmd_ArgOffset(argnum));
+
     // generate matches
     memset(&ctx, 0, sizeof(ctx));
-    ctx.partial = Cmd_Argv(argnum);
+    ctx.partial = Cmd_Argv(argnum) + sigil;
     ctx.length = strlen(ctx.partial);
     ctx.argnum = argnum;
     ctx.size = MAX_MATCHES;
     Q_strlcpy(partial, ctx.partial, sizeof(partial));
 
-    Prompt_Generate(&ctx, argnum, &numCommands, &numCvars, &numAliases);
+    Prompt_Generate(&ctx, argnum, sigil, &numCommands, &numCvars, &numAliases, &numMacros);
 
     // nothing starts with it: the names with its letters in order
     // anywhere, best first (a single one goes on the line as any would)
     if (!ctx.count && ctx.length) {
         ctx.fuzzy = true;
-        Prompt_Generate(&ctx, argnum, &numCommands, &numCvars, &numAliases);
+        Prompt_Generate(&ctx, argnum, sigil, &numCommands, &numCvars, &numAliases, &numMacros);
     }
 
     if (!ctx.count) {
@@ -422,8 +513,8 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
 
     prompt->tooMany = false;
 
-    // truncate at current argument position
-    text[Cmd_ArgOffset(argnum)] = 0;
+    // truncate at current argument position, after its sigil
+    text[Cmd_ArgOffset(argnum) + sigil] = 0;
 
     // append whitespace if completing a new argument
     if (argnum && argnum == Cmd_Argc()) {
@@ -457,14 +548,21 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     }
 
     // sort matches alphabethically, or fuzzy ones best first
+    order = Z_Malloc(ctx.count * sizeof(order[0]));
+    for (i = 0; i < ctx.count; i++)
+        order[i] = i;
+    sort_names = ctx.matches;
+    sort_query = ctx.fuzzy ? partial : NULL;
+    sort_icase = ctx.ignorecase;
+    qsort(order, ctx.count, sizeof(order[0]), SortOrder);
+
     sorted = Z_Malloc(ctx.count * sizeof(sorted[0]));
-    memcpy(sorted, ctx.matches, ctx.count * sizeof(sorted[0]));
-    if (ctx.fuzzy) {
-        sort_query = partial;
-        qsort(sorted, ctx.count, sizeof(sorted[0]), SortFuzzy);
-    } else {
-        qsort(sorted, ctx.count, sizeof(sorted[0]), ctx.ignorecase ? SortStricmp : SortStrcmp);
+    sortedKinds = Z_Malloc(ctx.count * sizeof(sortedKinds[0]));
+    for (i = 0; i < ctx.count; i++) {
+        sorted[i] = ctx.matches[order[i]];
+        sortedKinds[i] = ctx.kinds[order[i]];
     }
+    Z_Free(order);
 
     if (ctx.fuzzy) {
         // fuzzy matches share nothing to fill in: the line stays as typed
@@ -497,6 +595,7 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
 
     // keep the matches for cycling
     prompt->cycle = sorted;
+    prompt->cycleKinds = sortedKinds;
     prompt->cycleCount = ctx.count;
     prompt->cycleIndex = -1;
     prompt->cyclePrefix = Z_CopyString(inputLine->text);
@@ -517,18 +616,19 @@ void Prompt_CompleteCommand(commandPrompt_t *prompt, bool backslash)
     case 0:
         // print in solid list
         for (i = 0; i < ctx.count; i++) {
-            prompt->printf("%s\n", sorted[i]);
+            prompt->printf("%c%s\n", Prompt_MatchMark(sortedKinds, i), sorted[i]);
         }
         break;
     case 1:
     multi:
         // print in multiple columns
-        Prompt_ShowMatches(prompt, sorted, ctx.count);
+        Prompt_ShowMatches(prompt, sorted, sortedKinds, ctx.count);
         break;
     case 2:
     default:
         // resort matches by type and print in multiple columns
-        Prompt_ShowIndividualMatches(prompt, ctx.matches, numCommands, numAliases, numCvars);
+        Prompt_ShowIndividualMatches(prompt, ctx.matches, ctx.kinds,
+                                     numCommands, numAliases, numCvars, numMacros);
         break;
     }
 
@@ -541,6 +641,7 @@ finish:
         Prompt_ClearCycle(prompt);
     }
     Z_Free(ctx.matches);
+    Z_Free(ctx.kinds);
 
     // move cursor
     inputLine->cursorPos = min(pos, inputLine->maxChars - 1);
