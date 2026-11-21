@@ -894,6 +894,20 @@ void BOTLIB_GetRandomPrefix(char* name)
 
 
 
+// A name worth keeping: some printable text, nothing else
+static qboolean BOTLIB_BotNameUsable(const char *name)
+{
+	qboolean any = false;
+
+	for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
+		if (*c < 32 || *c > 126)
+			return false;
+		if (*c != ' ')
+			any = true;
+	}
+	return any;
+}
+
 // Whether a client other than `self` already goes by `name`
 static qboolean BOTLIB_BotNameInUse(const edict_t *self, const char *name)
 {
@@ -1490,6 +1504,11 @@ void BOTLIB_SetUserinfo(edict_t* bot, const int team, int force_gender, char* fo
 	}
 
 	Q_strlcpy(name, "AqtionMan", 10); // Set a default name
+	// A name brought back from the previous map (prev_map_bots.txt) may be
+	// the garbage the old naming wrote there - empty or unprintable: a new
+	// one then
+	if (force_name && !BOTLIB_BotNameUsable(force_name))
+		force_name = NULL;
 	if (force_name == NULL) // Not forcing a name, so pick one at random
 	{
 		BOTLIB_LoadRandomBotName(bot, name, gender);
