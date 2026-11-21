@@ -40,13 +40,15 @@ Install
 It installs **beside** the stock client and overwrites nothing: the client
 is `q2prox`, and it looks for its own game library, `gamex86_64x`, before
 the stock one. The stock `q2pro` and its `gamex86_64` stay as they are and
-keep working.
+keep working. The dedicated server is there too, as `q2prodedx`, beside
+the stock `q2proded`: it loads `gamex86_64x` first as well, and the stats
+scoreboard needs it (or a local game) on the server's side.
 
-- **Windows:** unzip into the AQtion folder - `q2prox.exe` lands next to
-  `q2pro.exe`, and `action/gamex86_64x.dll`, `action/fonts/` and
+- **Windows:** unzip into the AQtion folder - `q2prox.exe` and
+  `q2prodedx.exe` land next to `q2pro.exe`, and `action/gamex86_64x.dll`, `action/fonts/` and
   `action/pics/` go into `action`. Start `q2prox.exe`.
 - **Linux:** untar into the AQtion folder the same way (`q2prox`,
-  `action/gamex86_64x.so`, `action/fonts/`, `action/pics/`) and start
+  `q2prodedx`, `action/gamex86_64x.so`, `action/fonts/`, `action/pics/`) and start
   `q2prox`. Built on Ubuntu, dynamically linked against the system
   libraries (SDL2, curl, libpng, libjpeg).
 

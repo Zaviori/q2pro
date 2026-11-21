@@ -47,6 +47,7 @@ off the branch it builds on) and is merged into `extras` when done.
 
        q2pro-extras-<sha>-linux-x86_64.tar.gz
            q2prox                          build/q2pro, strip
+           q2prodedx                       build/q2proded, strip
            action/gamex86_64x.so           build/gamex86_64.so, strip
            action/fonts/                   NotoSans-Regular.ttf, NotoSans-Bold.ttf, OFL.txt
            action/pics/jmod_spawn.png, mvd.png
@@ -55,6 +56,7 @@ off the branch it builds on) and is merged into `extras` when done.
            action/pics/hud_boot.png, hud_fist.png   the stats board's kick and punch icons
        q2pro-extras-<sha>-windows-x86_64.zip
            q2prox.exe                      build-windows/q2pro.exe, x86_64-w64-mingw32-strip
+           q2prodedx.exe                   build-windows/q2proded.exe, x86_64-w64-mingw32-strip
            action/gamex86_64x.dll          build-windows/gamex86_64.dll, x86_64-w64-mingw32-strip
            action/fonts/, action/pics/     as above
 
