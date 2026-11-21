@@ -68,7 +68,7 @@ Menus
 -----
 
 Everything below can be set in the game: **Settings → Extras**, with a
-**TrueType Text**, a **Crosshair**, a **Stainmaps**, a **Stats Scoreboard**, a **Jump Mod Keys**
+**TrueType Text**, a **Crosshair**, a **Stainmaps**, a **Jump Mod Keys**
 and (on Windows) a **Keyboard** menu. The jump mod's own menus are under
 **Practice Jumps** in the main menu.
 
@@ -424,11 +424,9 @@ the pathing - until the file is deleted from `action/override/maps/`.
 Stats scoreboard
 ----------------
 
-**Opt-in**: Settings → Extras → **Stats Scoreboard**, or `cl_statsboard 1`.
-Then, on a server that sends the **per-weapon stats channel** - one running
-this release's engine and game library, which a local game does - the
-scoreboard key (`score`, F1) opens the client's own board instead of the
-server's.
+On a server that sends the **per-weapon stats channel** - one running this
+release's engine and game library, which a local game does - the scoreboard
+key (`score`, F1) opens the client's own board instead of the server's.
 Anywhere else `score` goes to the server and its own scoreboard shows as
 before; `cmd score` opens the server's board on any server.
 
@@ -454,7 +452,7 @@ before; `cmd score` opens the server's board on any server.
 
 | Cvar | Default | What |
 | --- | --- | --- |
-| `cl_statsboard` | 0 | 1 opts in to the new board; 0 keeps the server's scoreboard everywhere |
+| `cl_statsboard` | 1 | 0 keeps the server's scoreboard everywhere (not saved) |
 | `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width |
 | `scr_statsboard_y` | 0.1 | its upper edge, a fraction of the height (at most 0.9) |
 | `scr_statsboard_font` | 1 | the board in the TrueType font; 0 the old characters |
