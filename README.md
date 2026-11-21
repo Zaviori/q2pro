@@ -170,7 +170,8 @@ Stainmaps
 
 Blood, bullet scars and grenade scorch burned into the lightmap
 ([Bloodstains v1](https://github.com/Zaviori/q2pro/releases/tag/bloodstains-v1)).
-Off by default - Settings → Extras → **Stainmaps**, or `gl_stainmaps 1`.
+On by default - Settings → Extras → **Stainmaps**, or `gl_stainmaps 0` to
+turn them off. A config that ran an earlier release keeps its saved setting.
 
 - Stains are made only during a live round (after LIGHTS), or in demo
   playback.

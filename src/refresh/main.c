@@ -2082,7 +2082,7 @@ static void GL_Register(void)
     gl_partstyle = Cvar_Get("gl_partstyle", "0", 0);
     gl_beamstyle = Cvar_Get("gl_beamstyle", "0", 0);
     gl_celshading = Cvar_Get("gl_celshading", "0", 0);
-    gl_stainmaps = Cvar_Get("gl_stainmaps", "0", CVAR_ARCHIVE);
+    gl_stainmaps = Cvar_Get("gl_stainmaps", "1", CVAR_ARCHIVE);
     gl_stainmaps->changed = gl_stainmaps_changed;
     gl_stain_floor = Cvar_Get("gl_stain_floor", "0.35", CVAR_ARCHIVE);
     // In-game impacts are 5-35 units and a luxel is 16, so the base marks
