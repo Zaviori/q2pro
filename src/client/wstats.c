@@ -640,7 +640,7 @@ void CL_WS_Init(void)
 {
     cl_statsboard = Cvar_Get("cl_statsboard", "1", 0);
     scr_statsboard_x = Cvar_Get("scr_statsboard_x", "0.5", CVAR_ARCHIVE);
-    scr_statsboard_y = Cvar_Get("scr_statsboard_y", "0.25", CVAR_ARCHIVE);
+    scr_statsboard_y = Cvar_Get("scr_statsboard_y", "0.1", CVAR_ARCHIVE);
 #ifdef TEXT_BOLD
     scr_statsboard_font = Cvar_Get("scr_statsboard_font", "1", CVAR_ARCHIVE);
     scr_statsboard_size = Cvar_Get("scr_statsboard_size", "10", CVAR_ARCHIVE);
