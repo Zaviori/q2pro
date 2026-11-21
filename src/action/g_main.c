@@ -730,6 +730,7 @@ q_exported const game_export_ex_t *GetGameAPIEx(game_import_ex_t *importx)
 	G_InitExtEntrypoints();
 	engine_Client_GetProtocol = gix->GetExtension("Client_GetProtocol");
 	engine_Client_GetVersion = gix->GetExtension("Client_GetVersion");
+	engine_Stats_Channel = gix->GetExtension("Stats_Channel");
 
 	engine_Ghud_ClearForClient = gix->GetExtension("Ghud_ClearForClient");
 	engine_Ghud_NewElement = gix->GetExtension("Ghud_NewElement");
@@ -825,6 +826,8 @@ void ClientEndServerFrames (void)
 {
 	int i, updateLayout = 0, spectators = 0;
 	edict_t *ent;
+
+	WS_Frame();
 
 	// Stagger intermission scoreboard sends across frames
 	if (level.intermission_framenum) {

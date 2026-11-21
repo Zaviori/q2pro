@@ -199,6 +199,17 @@ static void MVD_UnicastSend(mvd_t *mvd, bool reliable, const byte *data, size_t 
     mvd_client_t *client;
     client_t *cl;
 
+    // the stats channel (recorded from the dummy only) is for every viewer,
+    // whoever they chase - but an older protocol drops on the command
+    if (length && data[0] == svc_userstatistic) {
+        FOR_EACH_MVDCL(client, mvd) {
+            cl = client->cl;
+            if (cl->state >= cs_spawned && cl->protocol >= PROTOCOL_VERSION_AQTION)
+                cl->AddMessage(cl, data, length, reliable);
+        }
+        return;
+    }
+
     // send to all relevant clients
     FOR_EACH_MVDCL(client, mvd) {
         cl = client->cl;

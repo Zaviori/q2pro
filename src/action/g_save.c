@@ -500,6 +500,7 @@ void InitGame( void )
 	teams[TEAM3].teamscore = gi.cvar("t3", "0", CVAR_SERVERINFO | CVAR_SERVERINFO_EXT | CVAR_NOSET);
 	stats_endmap = gi.cvar( "stats_endmap", "1", 0 );
 	stats_afterround = gi.cvar( "stats_afterround", "0", 0 );
+	WS_Init();
 
 	auto_join = gi.cvar( "auto_join", "0", 0 );
 	auto_equip = gi.cvar( "auto_equip", "0", 0 );

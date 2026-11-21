@@ -219,6 +219,7 @@ action_src = [
   'src/common/fuzzy.c',
   'src/action/tng_stats.c',
   'src/shared/mvdpath.c',
+  'src/action/tng_wstats.c',
   'src/shared/shared.c'
 ]
 

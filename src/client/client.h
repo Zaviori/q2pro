@@ -642,6 +642,7 @@ extern cvar_t   *info_msg;
 extern cvar_t   *info_hand;
 extern cvar_t   *info_gender;
 extern cvar_t   *info_uf;
+extern cvar_t   *cl_stats_echo;
 
 //=============================================================================
 

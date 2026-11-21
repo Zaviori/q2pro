@@ -148,6 +148,7 @@ void BeginIntermission(edict_t *targ)
 		return;			// already activated
 
 	level.intermission_framenum = level.realFramenum;
+	WS_MapEnd();
 
 	if (ctf->value) {
 		CTFCalcScores();

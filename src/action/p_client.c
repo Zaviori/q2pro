@@ -408,14 +408,9 @@ void Add_Frag(edict_t * ent, int mod)
 		return;
 
 	ent->client->resp.kills++;
-	// All normal weapon damage
-	if (mod > 0 && mod < MAX_GUNSTAT) {
-		ent->client->resp.gunstats[mod].kills++;
-	}
-	// Grenade splash, kicks and punch damage
-	if (mod > 0 && ((mod == MOD_HG_SPLASH) || (mod == MOD_KICK) || (mod == MOD_PUNCH) || (mod = MOD_GRENADE_IMPACT))) {
-		ent->client->resp.gunstats[mod].kills++;
-	}
+	if (Stats_GunTracked(mod))
+		ent->client->resp.gunstats[Stats_GunSlot(mod)].kills++;
+	WS_Kill(ent, mod);
 
 	if (IS_ALIVE(ent))
 	{
@@ -3599,6 +3594,9 @@ STAT_BOT_CHECK();
 	if (use_mvd2->value == 2) // Must be set to 2, 1 is classic behavior of teamplay-only recording
 		StartAutoRecordDemo(); // Even though this is called on every player join, only the 'first' player initiates the demo
 
+	// bots begin here too, never through ClientBegin
+	WS_ClientBegin(ent);
+
 	// make sure all view stuff is valid
 	ClientEndServerFrame(ent);
 }
@@ -3772,6 +3770,8 @@ void ClientUserinfoChanged(edict_t *ent, char *userinfo)
 #ifdef AQTION_EXTENSION
 	}
 #endif
+
+	WS_ClientUserinfoChanged(ent);
 }
 
 /*
@@ -3917,6 +3917,7 @@ void ClientDisconnect(edict_t * ent)
 		return;
 
 	Jmp_ClientDisconnect(ent);
+	WS_ClientDisconnect(ent);
 
 	/* Only fire the captain-disconnect broadcast for actual captains.
 	 * Previously this ran for every disconnect from an esp+matchmode game,

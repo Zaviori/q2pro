@@ -92,20 +92,55 @@ void ResetStats(edict_t *ent)
 	memset(ent->client->resp.gunstats, 0, sizeof(ent->client->resp.gunstats));
 }
 
+// The means of death that have a gunstats slot of their own: the guns,
+// and grenade splash, kick, punch and grenade impact above them.
+qboolean Stats_GunTracked( int mod )
+{
+	return (mod > 0 && mod < MAX_GUNSTAT) ||
+		mod == MOD_HG_SPLASH || mod == MOD_HANDGRENADE || mod == MOD_HELD_GRENADE ||
+		mod == MOD_KICK || mod == MOD_PUNCH || mod == MOD_GRENADE_IMPACT;
+}
+
+// The slot a mod is counted in: a hand grenade is one weapon, however it
+// hurt - splash, a direct hit or held too long.
+int Stats_GunSlot( int mod )
+{
+	if (mod == MOD_HANDGRENADE || mod == MOD_HELD_GRENADE)
+		return MOD_HG_SPLASH;
+	return mod;
+}
+
 void Stats_AddShot( edict_t *ent, int gun )
 {
 	if( in_warmup )
 		return;
 
-	if ((unsigned)gun >= MAX_GUNSTAT) {
+	if (!Stats_GunTracked(gun)) {
 		gi.dprintf( "Stats_AddShot: Bad gun number!\n" );
 		return;
 	}
 
 	if (!teamplay->value || team_round_going || stats_afterround->value) {
 		ent->client->resp.shotsTotal += 1;	// TNG Stats, +1 hit
-		ent->client->resp.gunstats[gun].shots += 1;	// TNG Stats, +1 hit
+		ent->client->resp.gunstats[Stats_GunSlot(gun)].shots += 1;	// TNG Stats, +1 hit
+		WS_Shot(ent, gun);
 	}
+}
+
+// Damage dealt to an enemy, for the attacker's weapon stats. Grenades
+// also count a hit for every enemy an explosion hurts: radius damage
+// never reaches the location code, so it had none.
+void Stats_AddDamage( edict_t *attacker, edict_t *targ, int mod, int damage )
+{
+	if (!Stats_GunTracked(mod))
+		return;
+	if (mod == MOD_HANDGRENADE || mod == MOD_HG_SPLASH || mod == MOD_HELD_GRENADE) {
+		if (targ == attacker)
+			return;		// your own grenade is no hit
+		Stats_AddHit(attacker, mod, LOC_NO);
+	}
+	attacker->client->resp.gunstats[Stats_GunSlot(mod)].damage += damage;
+	WS_Damage(attacker, mod, damage);
 }
 
 void Stats_AddHit( edict_t *ent, int gun, int hitPart )
@@ -117,21 +152,16 @@ void Stats_AddHit( edict_t *ent, int gun, int hitPart )
 	if( in_warmup )
 		return;
 
-	// Adjusted logic to be inclusive rather than exclusive
-	if (
-	((unsigned)gun <= MAX_GUNSTAT) || 
-	((unsigned)gun == MOD_KICK) || 
-	((unsigned)gun == MOD_PUNCH) || 
-	((unsigned)gun == MOD_GRENADE_IMPACT)
-	) {
+	if (Stats_GunTracked(gun)) {
 
 		if (!teamplay->value || team_round_going || stats_afterround->value) {
 			ent->client->resp.hitsTotal++;
-			ent->client->resp.gunstats[gun].hits++;
+			ent->client->resp.gunstats[Stats_GunSlot(gun)].hits++;
 			ent->client->resp.hitsLocations[hitPart]++;
 
 			if (headShot)
-				ent->client->resp.gunstats[gun].headshots++;
+				ent->client->resp.gunstats[Stats_GunSlot(gun)].headshots++;
+			WS_Hit(ent, gun, hitPart);
 		}
 		if (!headShot) {
 			ent->client->resp.streakHS = 0;
