@@ -242,8 +242,7 @@ Where the server sends the channel - a snapshot has come since the
 connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
-the fallback. **Opt-in**: `cl_statsboard 1` (saved; 0 by default) turns
-it on; with 0 the server's board shows everywhere.
+the fallback. `cl_statsboard 0` keeps the server's board everywhere.
 `scr_statsboard_x` (0.5) is the board's middle as a fraction of the
 width, `scr_statsboard_y` (0.1) its upper edge as a fraction of the
 height (at most 0.9). The upper edge stays put and the board grows
