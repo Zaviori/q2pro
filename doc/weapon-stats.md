@@ -151,8 +151,9 @@ wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i
 ```
 
 Who is alive, as the server's own scoreboard shows it in green: only to
-a subscriber who may know - dead, spectating, or between rounds - and
-the dummy. Who becomes one gets the list, who stops being one (spawned
+a subscriber who may know - a spectator, or a player who is dead or
+between rounds, but no player at all under `limchasecam` (the server's
+boards hide it "during matches" then) - and the dummy. Who becomes one gets the list, who stops being one (spawned
 at a round's start) is told to hide it; changes as they happen:
 
 ```
