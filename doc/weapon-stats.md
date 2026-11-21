@@ -252,7 +252,9 @@ down from it; what does not fit above the bottom of the screen is cut. In the Tr
   when a weapon in the table has a count there.
   **Left/Right** steps that table between the map total and each
   round (newest first; the round being played is "live" to a
-  spectator). **Esc** or `score` closes the board. Releases pass
+  spectator). **Esc** or `score` closes the board, and so does the
+  server opening something of its own - a menu (TAB), the inventory,
+  its scoreboard at intermission - which shows in its place as before. Releases pass
   through, so a key held before it opened is let go of.
 
 ## Size
