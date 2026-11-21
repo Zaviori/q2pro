@@ -1132,13 +1132,14 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     h += wsc_rh * 3;
 
     int pw = min(BOARD_CHARS * CW + CW * 2, (int)(hud_w * 0.96f));
-    int ph = min(h + CH, (int)(hud_h * 0.94f));
-    // where scr_statsboard_x/_y put it, moved back on screen if it would
-    // leave it: a tall board climbs rather than being cut at the bottom
+    // The upper edge stays where scr_statsboard_y puts it, and the board
+    // grows down from there: opening a player never moves it. What does
+    // not fit above the screen's bottom is cut (the rows stop at
+    // `bottom`), the footer kept.
     int px = hud_x + (int)(hud_w * Cvar_ClampValue(scr_statsboard_x, 0, 1)) - pw / 2;
-    int py = hud_y + (int)(hud_h * Cvar_ClampValue(scr_statsboard_y, 0, 1));
+    int py = hud_y + (int)(hud_h * Cvar_ClampValue(scr_statsboard_y, 0, 0.9f));
     px = Q_clip(px, hud_x, hud_x + hud_w - pw);
-    py = Q_clip(py, hud_y, hud_y + hud_h - ph);
+    int ph = min(h + CH, hud_y + hud_h - py);
     int bottom = py + ph - wsc_rh * 2;
 
     R_DrawFill32(px, py, pw, ph, MakeColor(0, 0, 0, 215));

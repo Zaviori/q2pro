@@ -233,8 +233,8 @@ own board instead of asking the server for its layout; anywhere else
 the fallback. `cl_statsboard 0` keeps the server's board everywhere.
 `scr_statsboard_x` (0.5) is the board's middle as a fraction of the
 width, `scr_statsboard_y` (0.25) its upper edge as a fraction of the
-height; a board too tall for the room under that climbs instead of
-being cut. In the TrueType build `scr_statsboard_font` (1) and
+height (at most 0.9). The upper edge stays put and the board grows
+down from it; what does not fit above the bottom of the screen is cut. In the TrueType build `scr_statsboard_font` (1) and
 `scr_statsboard_size` (10) set its text.
 
 - The header: team names, icons and big scores, the map and round.
