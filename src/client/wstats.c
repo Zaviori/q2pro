@@ -47,6 +47,7 @@ typedef struct {
     int     team;
     bool    have_ps;
     int     score, kills, deaths, dmg, ping;
+    bool    alive;
     int     map[WSC_NW][WSC_NF];    // rounds that are over
     int     live[WSC_NW][WSC_NF];   // the round being played, from wlive
     int     live_r;
@@ -63,6 +64,7 @@ static struct {
     int             round;
     bool            going;
     int             me;
+    bool            alive_shown;    // the server sent who is alive: we may know
     wsc_player_t    p[WSC_MAX_P];
     char            team_name[WSC_MAX_TEAMS][32];
     char            team_icon[WSC_MAX_TEAMS][MAX_QPATH];
@@ -318,6 +320,18 @@ void CL_WS_ParseLine(const char *line)
         p->deaths = wsc_int(&l, "d", p->deaths);
         p->dmg = wsc_int(&l, "dmg", p->dmg);
         p->ping = wsc_int(&l, "ping", p->ping);
+        return;
+    }
+
+    if (!strcmp(l.event, "alive")) {
+        const char *state = wsc_get(&l, "state");
+        if (state) {
+            wsc.alive_shown = !strcmp(state, "list");
+            return;
+        }
+        if (!(p = wsc_player(&l)))
+            return;
+        p->alive = wsc_int(&l, "a", 0) != 0;
         return;
     }
 
@@ -1086,7 +1100,10 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     // the name goes in whole: the grid cuts it to its column by measure
     Q_snprintf(line, sizeof(line), ROW_FMT, num[0], NAME_W, NAME_W, "",
                num[1], num[2], num[3], acc, num[4], kd, num[5]);
-    uint32_t color = gone && !selected ? MakeColor(150, 150, 150, 255) : 0;
+    // who is alive in the green the server's own scoreboard has for them,
+    // where the server says we may know (dead, spectating, between rounds)
+    uint32_t color = gone && !selected ? MakeColor(150, 150, 150, 255) :
+                     wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
     wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
     {
         const char *name = p->name[0] ? p->name : "(unnamed)";
