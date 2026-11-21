@@ -2793,7 +2793,13 @@ static void SCR_Draw2D(void)
 
     SCR_DrawStats();
 
-    SCR_DrawLayout();
+    // the stats board, where the server sends the channel, over the
+    // server's own scoreboard
+    if (CL_WS_BoardOpen())
+        CL_WS_DrawBoard(scr.hud_x, scr.hud_y, scr.hud_width, scr.hud_height,
+                        scr.hud_scale, scr.font_pic);
+    else
+        SCR_DrawLayout();
 #ifdef AQTION_EXTENSION
     // Draw game defined hud elements
     SCR_DrawGhud();

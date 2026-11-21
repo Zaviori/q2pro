@@ -1453,21 +1453,7 @@ static void CL_ParseUserStatistic(const char *line)
     if (cl_stats_echo->integer)
         Com_Printf("[stat] %s\n", line);
 
-    if (!strncmp(line, "sid ", 4)) {
-        const char *t = strstr(line, " token=");
-        char token[32];
-        size_t n;
-
-        if (!t)
-            return;
-        t += 7;
-        n = strcspn(t, " ");
-        if (n >= sizeof(token))
-            return;
-        memcpy(token, t, n);
-        token[n] = 0;
-        Cvar_Set("aq2sid", token);
-    }
+    CL_WS_ParseLine(line);
 }
 
 /*
