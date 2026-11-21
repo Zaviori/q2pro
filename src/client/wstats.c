@@ -69,6 +69,7 @@ static struct {
     char            team_name[WSC_MAX_TEAMS][32];
     char            team_icon[WSC_MAX_TEAMS][MAX_QPATH];
     int             team_score[WSC_MAX_TEAMS];
+    int             team_ready[WSC_MAX_TEAMS];  // -1 not sent (no matchmode), 0, 1
     bool            team_seen[WSC_MAX_TEAMS];
     wsc_hist_t      *hist;
     int             nhist, hist_alloc;
@@ -109,6 +110,8 @@ void CL_WS_Clear(void)
     memset(&wsc, 0, sizeof(wsc));
     wsc.hist = hist;
     wsc.hist_alloc = alloc;
+    for (int t = 0; t < WSC_MAX_TEAMS; t++)
+        wsc.team_ready[t] = -1;     // until a wteam says
     wsc_clear_counts();
 }
 
@@ -343,6 +346,7 @@ void CL_WS_ParseLine(const char *line)
         if (wsc_get(&l, "name"))
             Q_strlcpy(wsc.team_name[t], wsc_get(&l, "name"), sizeof(wsc.team_name[t]));
         wsc.team_score[t] = wsc_int(&l, "score", wsc.team_score[t]);
+        wsc.team_ready[t] = wsc_int(&l, "ready", -1);
         if (wsc_get(&l, "icon"))
             Q_strlcpy(wsc.team_icon[t], strcmp(wsc_get(&l, "icon"), "-") ? wsc_get(&l, "icon") : "",
                       sizeof(wsc.team_icon[t]));
@@ -1183,6 +1187,11 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
 
         R_DrawFill32(x, y, w, wsc_rh + 2, wsc_team_color(t, 150));
         wsc_text(x + CW, y + 1, AL_LEFT, true, U32_WHITE, tname);
+        // matchmode: whether the team is ready, as the server's board says
+        if (wsc.team_ready[t] >= 0)
+            wsc_text(x + w - CW, y + 1, AL_RIGHT, false,    // not bold: the old characters' bold is green
+                     wsc.team_ready[t] ? MakeColor(120, 230, 120, 255) : MakeColor(255, 170, 60, 255),
+                     wsc.team_ready[t] ? "Ready" : "Not ready");
         y += wsc_rh + 3;
 
         Q_snprintf(line, sizeof(line), ROW_FMT, "#", NAME_W, NAME_W, "PLAYER",
