@@ -240,7 +240,10 @@ being cut. In the TrueType build `scr_statsboard_font` (1) and
 - The header: team names, icons and big scores, the map and round.
 - Per team a band, then its players best score first: score, kills,
   deaths, accuracy (the aimed weapons: no knife slash, kick, punch or
-  grenade), damage, K/D, ping. Who left stays, greyed, with "left".
+  grenade), damage, K/D, ping, and WEAPONS: the (up to) three weapons
+  they got their kills with, most first, as a count and the kill-feed
+  icon - from the channel's per-weapon `k`, the round being played
+  included. Who left stays, greyed, with "left".
 - **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under their row - shots, hits, accuracy, headshots, kills,
   damage and the seven locations per weapon, each row opening with the

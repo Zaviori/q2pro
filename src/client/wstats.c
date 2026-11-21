@@ -960,6 +960,57 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
     return y + 3;
 }
 
+// The weapons a player got their kills with, most first (ties by weapon
+// number), at most `max`: the map total and the round being played
+static int wsc_top_weapons(int pi, int *ids, int *kills, int max)
+{
+    int n = 0, v[WSC_NF];
+
+    for (int w = 1; w < WSC_NW; w++) {
+        if (!wsc_weapon_values(pi, w, 0, v) || v[F_K] <= 0)
+            continue;
+        int i = n < max ? n++ : max;
+        if (i == max) {
+            if (v[F_K] <= kills[max - 1])
+                continue;
+            i = max - 1;
+        }
+        while (i > 0 && kills[i - 1] < v[F_K]) {
+            ids[i] = ids[i - 1];
+            kills[i] = kills[i - 1];
+            i--;
+        }
+        ids[i] = w;
+        kills[i] = v[F_K];
+    }
+    return n;
+}
+
+#define WPN_COL_END 2   // cells from the row's end to the weapons' end: the expand mark
+
+// "count icon" per weapon, best first, the group right-aligned against
+// the end of the row, as on the stream branch's score view
+static void wsc_draw_row_weapons(int x, int y, int w, int pi, uint32_t color)
+{
+    int ids[3], kills[3], widths[3], total = 0;
+    char cnt[3][8];
+    int n = wsc_top_weapons(pi, ids, kills, 3);
+    const int gap = 2, after = CW;
+
+    for (int i = 0; i < n; i++) {
+        Q_snprintf(cnt[i], sizeof(cnt[i]), "%d", kills[i]);
+        widths[i] = wsc_measure(false, cnt[i], strlen(cnt[i])) + gap + CW * 2;
+        total += widths[i] + (i ? after : 0);
+    }
+    int cx = x + w - WPN_COL_END * CW - total;
+    for (int i = 0; i < n; i++) {
+        int cw = widths[i] - gap - CW * 2;
+        wsc_str(cx, y, AL_LEFT, false, color, cnt[i], strlen(cnt[i]));
+        wsc_draw_icon(cx + cw + gap, y, ids[i]);
+        cx += widths[i] + after;
+    }
+}
+
 static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
 {
     const wsc_player_t *p = &wsc.p[pi];
@@ -1000,6 +1051,8 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
             len--;
         wsc_str(x + row_cols[ROW_NAME_COL].start * CW, y, AL_LEFT, false, color, name, len);
     }
+
+    wsc_draw_row_weapons(x, y, w, pi, color);
 
     // the expand mark at the row's end
     wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
@@ -1073,6 +1126,7 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
         Q_snprintf(line, sizeof(line), ROW_FMT, "#", NAME_W, NAME_W, "PLAYER",
                    "SCORE", "KILLS", "DEATHS", "ACC", "DMG", "K/D", "PING");
         wsc_grid(x, y, true, cap, line, row_cols, q_countof(row_cols), -1);
+        wsc_text(x + w - WPN_COL_END * CW, y, AL_RIGHT, true, cap, "WEAPONS");
         y += wsc_rh;
 
         for (int i = 0; i < n && y + wsc_rh <= bottom; i++) {
