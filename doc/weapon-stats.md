@@ -126,8 +126,13 @@ wlive p=3 r=17 w=3 shots=44 hits=13 dmg=312 chest=6 f=7702
 ```
 
 **`wstats`** - keyframe, every counter of every weapon used. At round
-end (`r=`), at map end (`scope=map`), on subscribe and at map start -
-so a late joiner or a demo seek is whole within a round.
+end the round's lines (`r=`) and then the new map totals of whoever
+played it (`scope=map`); at map end and on subscribe every `scope=map`
+line - so a late joiner or a demo seek is whole within a round. A
+`scope=map` line holds **the rounds that are over**: on subscribe in
+the middle of a round it leaves that round out, and a spectator gets
+it as `wlive` on top. Map total = `scope=map` + the current round's
+`wlive`, until the round's end brings new `scope=map` lines.
 
 **`wlive`** - delta: the counters changed since the last `wlive` or
 keyframe, as **current values**, never increments (idempotent; a missed
@@ -135,6 +140,15 @@ one is fixed by the next). Coalesced to once a second (`wstats_live_ms`,
 1000; 0 = off). Round-scope. Never sent after its round's end; the
 round's `wstats` replace it. **Only to spectators (team none) and the
 dummy**: a player in the game would learn the enemy's shots live.
+
+The scoreboard's own numbers, to all subscribers and the dummy, on
+subscribe and once a second when they change (the ping at most every
+5 s):
+
+```
+pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41   ; the mod's resp counters
+wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i
+```
 
 Framing lines, to all subscribers and the dummy:
 
@@ -206,8 +220,29 @@ no damage. Grenade accuracy is victims per throw and can pass 100%.
 - Cvars: `wstats` (1; 0 counts, sends nothing), `wstats_mvd` (1),
   `wstats_live_ms` (1000).
 - Engine: the two MVD filters and the `Stats_Channel` extension above.
-- Client: userinfo `aq2feed` (0) and `aq2sid` (set from the `sid`
-  line); `cl_stats_echo 1` prints every line as `[stat] ...`.
+- Client (`src/client/wstats.c`): userinfo `aq2feed` (**1**) and
+  `aq2sid` (set from the `sid` line); `cl_stats_echo 1` prints every
+  line as `[stat] ...`.
+
+## The client's scoreboard
+
+Where the server sends the channel - a snapshot has come since the
+connect or the map load - the `score` command (F1) opens the client's
+own board instead of asking the server for its layout; anywhere else
+`score` goes to the server as before, and the server's scoreboard is
+the fallback. `cl_statsboard 0` keeps the server's board everywhere.
+
+- The header: team names, icons and big scores, the map and round.
+- Per team a band, then its players best score first: score, kills,
+  deaths, accuracy (the aimed weapons: no knife slash, kick, punch or
+  grenade), damage, K/D, ping. Who left stays, greyed, with "left".
+- **Up/Down** walks the players, **Enter** opens the selected player's
+  weapons under their row - shots, hits, accuracy, headshots, kills,
+  damage and the seven locations per weapon - and closes it again.
+  **Left/Right** steps that table between the map total and each
+  round (newest first; the round being played is "live" to a
+  spectator). **Esc** or `score` closes the board. Releases pass
+  through, so a key held before it opened is let go of.
 
 ## Size
 
