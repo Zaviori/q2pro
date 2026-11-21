@@ -434,7 +434,9 @@ before; `cmd score` opens the server's board on any server.
   players, best score first: score, kills, deaths, accuracy (the aimed
   weapons: no knife slash, kick, punch or grenade), damage, K/D, ping and
   **WEAPONS** - the three weapons they got most kills with, as a count and
-  the kill feed's icon. Who left stays, greyed.
+  the kill feed's icon. Who left stays, greyed; a team's captain has a
+  **C** after the name, and in matchmode a team that is not ready says
+  **NOT READY** under its name.
 - Who is alive is in the server board's green - where the server's own
   boards show it: to the dead and spectators, or between rounds, and to
   nobody on a server with `limchasecam`.
@@ -488,6 +490,9 @@ Other changes
   anything whose model is missing. It is drawn only with `gl_showorigins`.
 - **Local games always use the newest protocol.** `cl_protocol` set to
   an older one applies to remote servers only.
+- **`cl_protocol` is 38 (AQtion) by default**; a server without it gets the
+  newest it has. A config setting another one gets a warning on every
+  connect: the game's extensions - the ghud, the stats scoreboard - need 38.
 - The jump mod's LCA countdown ran four times too fast at 40 server fps,
   and spawning on a map without spawnpoints crashed the server; the
   server's layouts draw over the game's HUD elements; the mismatch error
