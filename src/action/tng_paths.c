@@ -1463,7 +1463,9 @@ static void JmpPathMenuAq2world(edict_t *ent, pmenu_t *p)
 	char cmd[64];
 
 	PMenu_Close(ent);
-	Q_snprintf(cmd, sizeof(cmd), "aq2world map %s", level.mapname);	// that map exactly, three months of it
+	// that map exactly, three months of it; "jmod": Enter there brings the
+	// picked demo back here, with its routes (a client without it ignores it)
+	Q_snprintf(cmd, sizeof(cmd), "aq2world map %s jmod", level.mapname);
 	JmpPathStuff(ent, cmd);
 }
 
