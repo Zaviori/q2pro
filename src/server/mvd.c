@@ -1172,6 +1172,13 @@ static bool filter_unicast_data(const edict_t *ent)
         return !memcmp(msg_write.data + 1, "play ", 5);
     }
 
+    // the per-weapon stats channel goes to every subscriber, so only the
+    // dummy's copy is kept: one per demo, and no client's private stats id
+    // token
+    if (cmd == svc_userstatistic) {
+        return mvd.dummy && ent == mvd.dummy->edict;
+    }
+
     // if there is no dummy client, don't discard anything
     if (!mvd.dummy) {
         return true;

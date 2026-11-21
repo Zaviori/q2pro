@@ -1033,6 +1033,14 @@ static void* G_CheckForExtension(const char *text)
 	return NULL;
 }
 
+// Its presence tells the game this engine keeps svc_userstatistic safe in
+// MVDs: recorded from the dummy only, played only to AQtion clients
+// (mvd.c filter_unicast_data, mvd/parse.c MVD_UnicastSend).
+static int G_Ext_Stats_Channel(void)
+{
+	return 1;
+}
+
 static int G_Ext_Client_GetProtocol(edict_t *ent)
 {
 	if (!ent->client)
@@ -1088,6 +1096,7 @@ void G_InitializeExtensions(void)
 	// client networking info
 	g_addextension("Client_GetVersion", G_Ext_Client_GetVersion);
 	g_addextension("Client_GetProtocol", G_Ext_Client_GetProtocol);
+	g_addextension("Stats_Channel", G_Ext_Stats_Channel);
 
 	// gamedll hud stuff
 	g_addextension("Ghud_ClearForClient", SV_Ghud_ClearForClient);
