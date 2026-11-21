@@ -44,6 +44,7 @@ typedef struct {
 	unsigned changed;               // bit per weapon, since the last wlive
 	int      ps[5];                 // pstats as last sent: score k d dmg ping
 	int      ping_at;               // realFramenum the ping was last sent
+	int      alive;                 // as last sent in an alive line: 0, 1
 } ws_sid_t;
 
 typedef struct {
@@ -60,6 +61,7 @@ typedef struct {
 	int      req_p, req_r;          // a wstats_get being answered: p 0 = all, r 0 = all
 	int      req_next;              // its next record; -1 none
 	int      req_lines;
+	qboolean deadview;              // may see who is alive: has the list
 } ws_client_t;
 
 static struct {
@@ -181,6 +183,7 @@ static void ws_token(char *out, size_t size, int sid)
 #define WS_TO_ALL       0   // every subscriber, the dummy included
 #define WS_TO_WATCHERS  1   // spectators and the dummy: live data
 #define WS_TO_ONE       2
+#define WS_TO_DEADVIEW  3   // who may see who is alive, the dummy included
 
 static char ws_buf[8192];
 static int  ws_len;
@@ -230,6 +233,8 @@ static void ws_flush(void)
 			if (!ws.cl[i].sub || !ent->inuse)
 				continue;
 			if (ws_mode == WS_TO_WATCHERS && !ws_watcher(ent))
+				continue;
+			if (ws_mode == WS_TO_DEADVIEW && !ws.cl[i].deadview)
 				continue;
 			ws_write(ent);
 		}
@@ -475,6 +480,9 @@ static void ws_snapshot(edict_t *ent)
 		}
 	}
 	ws_flush();
+
+	// who is alive: the next frame sends the list, if they may see it
+	ws.cl[slot].deadview = false;
 
 	// history is in the demo already, as it happened
 	ws.cl[slot].hist_next = ws_is_dummy(ent) ? -2 : ws.nhist - 1;
@@ -883,6 +891,68 @@ static void ws_history(edict_t *ent, ws_client_t *c)
 	ws_flush();
 }
 
+/*
+ * Who is alive, as the server's own scoreboard shows it: only to one who
+ * may know - dead, spectating, or between rounds (A_NewScoreboardMessage's
+ * `dead`) - and the dummy. Who becomes one gets the whole list; who stops
+ * being one (spawned at a round's start) is told to hide it.
+ */
+static qboolean ws_alive(const ws_sid_t *s)
+{
+	const edict_t *ent;
+
+	if (s->slot < 0)
+		return false;
+	ent = g_edicts + 1 + s->slot;
+	return ent->inuse && ent->client && ent->client->resp.team != NOTEAM && IS_ALIVE(ent);
+}
+
+static qboolean ws_deadview(const edict_t *ent)
+{
+	return ws_is_dummy(ent) || ent->client->resp.team == NOTEAM ||
+		!IS_ALIVE(ent) || !team_round_going;
+}
+
+static void ws_alive_frame(void)
+{
+	int i, p;
+
+	if (!teamplay->value)
+		return;
+
+	for (i = 0; i < game.maxclients; i++) {
+		ws_client_t *c = &ws.cl[i];
+		edict_t *ent = g_edicts + 1 + i;
+		qboolean dv;
+
+		if (!c->sub || !ent->inuse || !ent->client)
+			continue;
+		dv = ws_deadview(ent);
+		if (dv == c->deadview)
+			continue;
+		c->deadview = dv;
+		ws_begin(WS_TO_ONE, ent);
+		if (dv) {
+			ws_line("alive state=list");
+			for (p = 1; p <= ws.nsids; p++)
+				ws_line("alive p=%d a=%d", p, ws_alive(&ws.sids[p]));
+		} else {
+			ws_line("alive state=hidden");
+		}
+		ws_flush();
+	}
+
+	ws_begin(WS_TO_DEADVIEW, NULL);
+	for (p = 1; p <= ws.nsids; p++) {
+		int a = ws_alive(&ws.sids[p]);
+		if (a == ws.sids[p].alive)
+			continue;
+		ws.sids[p].alive = a;
+		ws_line("alive p=%d a=%d", p, a);
+	}
+	ws_flush();
+}
+
 void WS_Frame(void)
 {
 	int i, ms = wstats_live_ms->value;
@@ -892,6 +962,8 @@ void WS_Frame(void)
 
 	if (!(level.realFramenum % (HZ > 0 ? HZ : 10)))
 		ws_sidmap_changes();
+
+	ws_alive_frame();
 
 	if (ms > 0 && ws.going && (level.realFramenum - ws.live_at) * 1000 >= ms * (HZ > 0 ? HZ : 10)) {
 		ws.live_at = level.realFramenum;

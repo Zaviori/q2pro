@@ -150,6 +150,17 @@ pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41   ; the mod's resp counters
 wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i
 ```
 
+Who is alive, as the server's own scoreboard shows it in green: only to
+a subscriber who may know - dead, spectating, or between rounds - and
+the dummy. Who becomes one gets the list, who stops being one (spawned
+at a round's start) is told to hide it; changes as they happen:
+
+```
+alive state=list
+alive p=3 a=1
+alive state=hidden
+```
+
 Framing lines, to all subscribers and the dummy:
 
 ```
@@ -243,7 +254,8 @@ down from it; what does not fit above the bottom of the screen is cut. In the Tr
   grenade), damage, K/D, ping, and WEAPONS: the (up to) three weapons
   they got their kills with, most first, as a count and the kill-feed
   icon - from the channel's per-weapon `k`, the round being played
-  included. Who left stays, greyed, with "left".
+  included. Who left stays, greyed, with "left". Who is alive is in
+  the server board's green, where the server says you may know.
 - **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under their row - shots, hits, accuracy, headshots, kills,
   damage and the locations per weapon, each row opening with the
