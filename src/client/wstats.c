@@ -70,6 +70,10 @@ static struct {
 } wsc;
 
 static cvar_t *cl_statsboard;
+#ifdef TEXT_BOLD                // the refresh has TrueType text (the extras branch)
+static cvar_t *scr_statsboard_font;
+static cvar_t *scr_statsboard_size;
+#endif
 
 /* ------------------------------------------------------------------ */
 /* state                                                              */
@@ -624,19 +628,137 @@ bool CL_WS_KeyEvent(int key)
 void CL_WS_Init(void)
 {
     cl_statsboard = Cvar_Get("cl_statsboard", "1", 0);
+#ifdef TEXT_BOLD
+    scr_statsboard_font = Cvar_Get("scr_statsboard_font", "1", CVAR_ARCHIVE);
+    scr_statsboard_size = Cvar_Get("scr_statsboard_size", "10", CVAR_ARCHIVE);
+#endif
     Cmd_AddCommand("score", CL_WS_Score_f);
     CL_WS_Clear();
 }
 
 /* ------------------------------------------------------------------ */
 /* drawing                                                            */
+/*                                                                    */
+/* The board is laid out in conchar cells, as columns. Each field is    */
+/* drawn whole at its column - left-aligned at its start, numbers right */
+/* aligned at its end - so it reads the same in conchars and, where the */
+/* refresh has TrueType text (scr_statsboard_font), in the font.        */
 
 #define CW  CONCHAR_WIDTH
 #define CH  CONCHAR_HEIGHT
-#define RH  (CH + 2)                // a row
 
 static qhandle_t wsc_font;
 static float wsc_hud_scale;
+static bool wsc_ttf;
+static float wsc_size;
+static int wsc_rh;              // a row
+
+enum { AL_LEFT, AL_RIGHT, AL_CENTER };
+
+typedef struct {
+    int start, width, align;    // in cells
+} wsc_col_t;
+
+// " %-2s %-16s %5s %5s %6s %4s %6s %5s %4s"
+#define ROW_FMT     " %-2s %-*.*s %5s %5s %6s %4s %6s %5s %4s"
+#define NAME_W      16
+static const wsc_col_t row_cols[] = {
+    { 1, 2, AL_LEFT }, { 4, NAME_W, AL_LEFT }, { 21, 5, AL_RIGHT }, { 27, 5, AL_RIGHT },
+    { 33, 6, AL_RIGHT }, { 40, 4, AL_RIGHT }, { 45, 6, AL_RIGHT }, { 52, 5, AL_RIGHT },
+    { 58, 4, AL_RIGHT },
+};
+#define ROW_NAME_COL 1
+
+// "   %-11s %5s %4s %4s %3s %3s %5s %4s %5s %4s %4s %4s %4s %5s"
+#define WPN_FMT     "   %-11s %5s %4s %4s %3s %3s %5s %4s %5s %4s %4s %4s %4s %5s"
+static const wsc_col_t wpn_cols[] = {
+    { 3, 11, AL_LEFT }, { 15, 5, AL_RIGHT }, { 21, 4, AL_RIGHT }, { 26, 4, AL_RIGHT },
+    { 31, 3, AL_RIGHT }, { 35, 3, AL_RIGHT }, { 39, 5, AL_RIGHT }, { 45, 4, AL_RIGHT },
+    { 50, 5, AL_RIGHT }, { 56, 4, AL_RIGHT }, { 61, 4, AL_RIGHT }, { 66, 4, AL_RIGHT },
+    { 71, 4, AL_RIGHT }, { 76, 5, AL_RIGHT },
+};
+#define BOARD_CHARS 81
+
+static int wsc_measure(int bold, const char *s, size_t len)
+{
+#ifdef TEXT_BOLD
+    if (wsc_ttf)
+        return R_MeasureText(bold ? TEXT_BOLD : 0, wsc_size, s, len);
+#endif
+    (void)bold;
+    return (int)len * CW;
+}
+
+// one string at x, vertically centred in a row starting at y
+static void wsc_str(int x, int y, int align, bool bold, uint32_t color, const char *s, size_t len)
+{
+    if (!len)
+        return;
+#ifdef TEXT_BOLD
+    if (wsc_ttf) {
+        int flags = (bold ? TEXT_BOLD : 0) | (align == AL_RIGHT ? TEXT_RIGHT :
+                                              align == AL_CENTER ? TEXT_CENTER : 0);
+        uint32_t c = color ? color : U32_WHITE;
+        int lh = R_TextLineHeight(flags, wsc_size);
+        R_DrawText(x, y + (wsc_rh - lh) / 2, flags, wsc_size, c, c, s, len);
+        return;
+    }
+    R_TextConchars(true);       // real conchars here, whatever r_ttf says
+#endif
+    if (align == AL_RIGHT)
+        x -= (int)len * CW;
+    else if (align == AL_CENTER)
+        x -= (int)len * CW / 2;
+    if (color)
+        R_SetColor(color);
+    R_DrawString(x, y + (wsc_rh - CH) / 2, bold ? UI_ALTCOLOR : 0, len, s, wsc_font);
+    if (color)
+        R_ClearColor();
+#ifdef TEXT_BOLD
+    R_TextConchars(false);
+#endif
+}
+
+static void wsc_text(int x, int y, int align, bool bold, uint32_t color, const char *s)
+{
+    wsc_str(x, y, align, bold, color, s, strlen(s));
+}
+
+// A line printf'ed in cells, drawn field by field at its columns. The
+// name column is cut to its width by measure.
+static void wsc_grid(int x, int y, bool bold, uint32_t color, const char *line,
+                     const wsc_col_t *cols, int ncols, int name_col)
+{
+    int linelen = (int)strlen(line);
+
+    for (int i = 0; i < ncols; i++) {
+        const wsc_col_t *c = &cols[i];
+        if (c->start >= linelen)
+            break;
+        const char *f = line + c->start;
+        int len = min(c->width, linelen - c->start);
+        while (len && *f == ' ') {
+            f++;
+            len--;
+        }
+        while (len && f[len - 1] == ' ')
+            len--;
+        if (i == name_col) {
+            // a whole name, as long as it fits its column
+            const char *full = f;
+            int room = c->width * CW;
+            len = (int)strlen(full);
+            while (len > 1 && wsc_measure(bold, full, len) > room)
+                len--;
+            wsc_str(x + c->start * CW, y, AL_LEFT, bold, color, full, len);
+            continue;
+        }
+        if (c->align == AL_RIGHT)
+            wsc_str(x + (c->start + c->width) * CW, y, AL_RIGHT, bold, color, f, len);
+        else
+            wsc_str(x + c->start * CW, y, AL_LEFT, bold, color, f, len);
+    }
+}
 
 static uint32_t wsc_team_color(int team, int alpha)
 {
@@ -648,40 +770,27 @@ static uint32_t wsc_team_color(int team, int alpha)
     }
 }
 
-// A character to a conchar cell, always: the board's columns are laid out
-// in cells, and a TrueType string (r_ttf) is proportional - its spaces
-// would collapse them. R_DrawChar keeps the font's letter in the cell.
-static void wsc_cells(int x, int y, int flags, const char *s, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-        if (s[i] != ' ')
-            R_DrawChar(x + (int)i * CW, y, flags, (byte)s[i], wsc_font);
-}
-
-static void wsc_text(int x, int y, int flags, uint32_t color, const char *s)
-{
-    size_t len = strlen(s);
-
-    if ((flags & UI_CENTER) == UI_CENTER)
-        x -= len * CW / 2;
-    else if (flags & UI_RIGHT)
-        x -= len * CW;
-    if (color)
-        R_SetColor(color);
-    wsc_cells(x, y, flags & ~(UI_CENTER), s, len);
-    if (color)
-        R_ClearColor();
-}
-
 // double size, for the team names
-static void wsc_big_text(int x, int y, uint32_t color, const char *s)
+static void wsc_big_text(int cx, int y, uint32_t color, const char *s)
 {
+#ifdef TEXT_BOLD
+    if (wsc_ttf) {
+        R_DrawText(cx, y, TEXT_BOLD | TEXT_OUTLINE | TEXT_CENTER, wsc_size * 2, color, color,
+                   s, strlen(s));
+        return;
+    }
+    R_TextConchars(true);
+#endif
     // half the scale draws twice the size: the coordinates halve with it
+    int x = cx - (int)strlen(s) * CW;
     R_SetScale(wsc_hud_scale * 0.5f);
     R_SetColor(color);
-    wsc_cells(x / 2, y / 2, 0, s, strlen(s));
+    R_DrawString(x / 2, y / 2, 0, strlen(s), s, wsc_font);
     R_ClearColor();
     R_SetScale(wsc_hud_scale);
+#ifdef TEXT_BOLD
+    R_TextConchars(false);
+#endif
 }
 
 // the HUD's big digits, 16x24
@@ -707,11 +816,6 @@ static void wsc_fmt_acc(char *out, size_t size, int hits, int shots)
         Q_strlcpy(out, "-", size);
 }
 
-#define NAME_W      16
-#define ROW_FMT     " %-2s %-*.*s %5s %5s %6s %4s %6s %5s %4s"
-#define WPN_FMT     "   %-11s %5s %4s %4s %3s %3s %5s %4s %5s %4s %4s %4s %4s %5s"
-#define BOARD_CHARS 81
-
 static int wsc_draw_header(int px, int pw, int y)
 {
     int mid = px + pw / 2;
@@ -720,10 +824,7 @@ static int wsc_draw_header(int px, int pw, int y)
         const char *name = wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
         char cut[17];
         Q_strlcpy(cut, name, sizeof(cut));
-        int nw = (int)strlen(cut) * CW * 2;
-        int side = pw / 4;
-        int nx = t == 1 ? mid - side - nw / 2 : mid + side - nw / 2;
-        wsc_big_text(nx, y, wsc_team_color(t, 255), cut);
+        wsc_big_text(t == 1 ? mid - pw / 4 : mid + pw / 4, y, wsc_team_color(t, 255), cut);
     }
     y += CH * 2 + 4;
 
@@ -744,7 +845,7 @@ static int wsc_draw_header(int px, int pw, int y)
             R_DrawStretchPic(ix, y, dw, 24, icon);
         }
     }
-    wsc_text(mid, y + 8, UI_CENTER, MakeColor(200, 200, 200, 255), "-");
+    wsc_text(mid, y + (24 - wsc_rh) / 2, AL_CENTER, false, MakeColor(200, 200, 200, 255), "-");
     y += 24 + 4;
 
     char info[64];
@@ -753,8 +854,8 @@ static int wsc_draw_header(int px, int pw, int y)
                    wsc.going ? "" : " over");
     else
         Q_strlcpy(info, wsc.mapname, sizeof(info));
-    wsc_text(mid, y, UI_CENTER, MakeColor(170, 170, 170, 255), info);
-    return y + RH + 4;
+    wsc_text(mid, y, AL_CENTER, false, MakeColor(170, 170, 170, 255), info);
+    return y + wsc_rh + 4;
 }
 
 static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
@@ -762,25 +863,26 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
     char line[160], scope[48];
     int rounds[256];
     int nr = wsc_rounds(pi, rounds, 256);
+    uint32_t cap = MakeColor(185, 185, 185, 235);
 
-    R_DrawFill32(x, y, w, RH * 2 + 2, MakeColor(20, 20, 30, 200));
+    R_DrawFill32(x, y, w, wsc_rh * 2 + 2, MakeColor(20, 20, 30, 200));
 
     if (!wsc.scope)
         Q_strlcpy(scope, "MAP TOTAL", sizeof(scope));
     else
         Q_snprintf(scope, sizeof(scope), "ROUND %d%s", wsc.scope,
                    wsc.scope == wsc.round && wsc.going ? " (live)" : "");
-    Q_snprintf(line, sizeof(line), "   %s%s%s", nr ? "< " : "", scope, nr ? " >" : "");
-    wsc_text(x, y + 1, 0, MakeColor(230, 230, 120, 255), line);
-    y += RH;
+    Q_snprintf(line, sizeof(line), "%s%s%s", nr ? "< " : "", scope, nr ? " >" : "");
+    wsc_text(x + 3 * CW, y + 1, AL_LEFT, true, MakeColor(230, 230, 120, 255), line);
+    y += wsc_rh;
 
     Q_snprintf(line, sizeof(line), WPN_FMT, "WEAPON", "SHOTS", "HITS", "ACC", "HS", "K",
                "DMG", "HEAD", "CHEST", "STOM", "LEGS", "HELM", "VEST", "NOLOC");
-    wsc_text(x, y + 1, 0, MakeColor(185, 185, 185, 235), line);
-    y += RH;
+    wsc_grid(x, y + 1, true, cap, line, wpn_cols, q_countof(wpn_cols), -1);
+    y += wsc_rh;
 
     int rows = 0, v[WSC_NF];
-    for (int wi = 1; wi < WSC_NW && y + RH <= bottom; wi++) {
+    for (int wi = 1; wi < WSC_NW && y + wsc_rh <= bottom; wi++) {
         if (!wsc_weapon_values(pi, wi, wsc.scope, v))
             continue;
         char f[WSC_NF][12], acc[8];
@@ -794,15 +896,15 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
         Q_snprintf(line, sizeof(line), WPN_FMT, wsc_wname[wi], f[F_SHOTS], f[F_HITS], acc,
                    f[F_HS], f[F_K], f[F_DMG], f[F_HEAD], f[F_CHEST], f[F_STOMACH],
                    f[F_LEGS], f[F_HELMET], f[F_VEST], f[F_NOLOC]);
-        R_DrawFill32(x, y, w, RH, MakeColor(20, 20, 30, rows & 1 ? 200 : 170));
-        wsc_text(x, y + 1, 0, 0, line);
-        y += RH;
+        R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, rows & 1 ? 200 : 170));
+        wsc_grid(x, y, false, 0, line, wpn_cols, q_countof(wpn_cols), -1);
+        y += wsc_rh;
         rows++;
     }
-    if (!rows && y + RH <= bottom) {
-        R_DrawFill32(x, y, w, RH, MakeColor(20, 20, 30, 170));
-        wsc_text(x, y + 1, 0, MakeColor(150, 150, 150, 255), "   no shots");
-        y += RH;
+    if (!rows && y + wsc_rh <= bottom) {
+        R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, 170));
+        wsc_text(x + 3 * CW, y, AL_LEFT, false, MakeColor(150, 150, 150, 255), "no shots");
+        y += wsc_rh;
     }
     return y + 3;
 }
@@ -817,9 +919,9 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
 
     uint32_t bg = selected ? MakeColor(60, 60, 140, 200) :
                   wsc_team_color(p->team, alt ? 60 : 40);
-    R_DrawFill32(x, y, w, RH, bg);
+    R_DrawFill32(x, y, w, wsc_rh, bg);
     if (pi == wsc.me && !selected)
-        R_DrawFill32(x, y, 2, RH, MakeColor(230, 230, 120, 255));
+        R_DrawFill32(x, y, 2, wsc_rh, MakeColor(230, 230, 120, 255));
 
     wsc_accuracy(pi, &shots, &hits);
     wsc_fmt_acc(acc, sizeof(acc), hits, shots);
@@ -835,14 +937,23 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     else
         Q_snprintf(num[5], sizeof(num[5]), "%d", p->ping);
 
-    Q_snprintf(line, sizeof(line), ROW_FMT, num[0], NAME_W, NAME_W, p->name,
+    // the name goes in whole: the grid cuts it to its column by measure
+    Q_snprintf(line, sizeof(line), ROW_FMT, num[0], NAME_W, NAME_W, "",
                num[1], num[2], num[3], acc, num[4], kd, num[5]);
-    wsc_text(x, y + 1, 0, gone && !selected ? MakeColor(150, 150, 150, 255) : 0, line);
+    uint32_t color = gone && !selected ? MakeColor(150, 150, 150, 255) : 0;
+    wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
+    {
+        const char *name = p->name[0] ? p->name : "(unnamed)";
+        int len = (int)strlen(name), room = NAME_W * CW;
+        while (len > 1 && wsc_measure(false, name, len) > room)
+            len--;
+        wsc_str(x + row_cols[ROW_NAME_COL].start * CW, y, AL_LEFT, false, color, name, len);
+    }
 
     // the expand mark at the row's end
-    wsc_text(x + w - CW * 2, y + 1, 0, MakeColor(170, 170, 170, 255),
+    wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
              wsc.expanded == pi ? "-" : "+");
-    return y + RH;
+    return y + wsc_rh;
 }
 
 void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale, qhandle_t font)
@@ -854,31 +965,41 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
         return;
     wsc_font = font;
     wsc_hud_scale = hud_scale;
+    wsc_ttf = false;
+    wsc_size = CH;
+    wsc_rh = CH + 2;
+#ifdef TEXT_BOLD
+    if (scr_statsboard_font && scr_statsboard_font->integer && R_TextAvailable()) {
+        wsc_ttf = true;
+        wsc_size = Cvar_ClampValue(scr_statsboard_size, 6, 24);
+        wsc_rh = max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
+    }
+#endif
     wsc_fix_cursor();
 
     // height: the header, each team's band, caption and rows, the
     // expanded weapons, spectators and the footer
     int nteams = wsc_num_teams();
-    int h = CH * 2 + 4 + 24 + 4 + RH + 4;
+    int h = CH * 2 + 4 + 24 + 4 + wsc_rh + 4;
     for (int t = 1; t <= nteams; t++) {
         int n = wsc_team_list(t, list);
-        h += RH + 3 + RH + n * RH + CH / 2;
+        h += wsc_rh + 3 + wsc_rh + n * wsc_rh + CH / 2;
         for (int i = 0; i < n; i++) {
             if (list[i] == wsc.expanded) {
                 int v[WSC_NF], rows = 0;
                 for (int w = 1; w < WSC_NW; w++)
                     rows += wsc_weapon_values(list[i], w, wsc.scope, v);
-                h += RH * (2 + max(rows, 1)) + 3;
+                h += wsc_rh * (2 + max(rows, 1)) + 3;
             }
         }
     }
-    h += RH * 3;
+    h += wsc_rh * 3;
 
     int pw = min(BOARD_CHARS * CW + CW * 2, (int)(hud_w * 0.96f));
     int ph = min(h + CH, (int)(hud_h * 0.94f));
     int px = hud_x + (hud_w - pw) / 2;
     int py = hud_y + (hud_h - ph) / 2;
-    int bottom = py + ph - RH * 2;
+    int bottom = py + ph - wsc_rh * 2;
 
     R_DrawFill32(px, py, pw, ph, MakeColor(0, 0, 0, 215));
 
@@ -886,21 +1007,20 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     int y = wsc_draw_header(px, pw, py + CH / 2);
     uint32_t cap = MakeColor(185, 185, 185, 235);
 
-    for (int t = 1; t <= nteams && y + RH * 3 <= bottom; t++) {
+    for (int t = 1; t <= nteams && y + wsc_rh * 3 <= bottom; t++) {
         int n = wsc_team_list(t, list);
         const char *tname = wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
 
-        R_DrawFill32(x, y, w, RH + 2, wsc_team_color(t, 150));
-        Q_snprintf(line, sizeof(line), " %s", tname);
-        wsc_text(x, y + 2, UI_XORCOLOR, 0, line);
-        y += RH + 3;
+        R_DrawFill32(x, y, w, wsc_rh + 2, wsc_team_color(t, 150));
+        wsc_text(x + CW, y + 1, AL_LEFT, true, U32_WHITE, tname);
+        y += wsc_rh + 3;
 
         Q_snprintf(line, sizeof(line), ROW_FMT, "#", NAME_W, NAME_W, "PLAYER",
                    "SCORE", "KILLS", "DEATHS", "ACC", "DMG", "K/D", "PING");
-        wsc_text(x, y + 1, 0, cap, line);
-        y += RH;
+        wsc_grid(x, y, true, cap, line, row_cols, q_countof(row_cols), -1);
+        y += wsc_rh;
 
-        for (int i = 0; i < n && y + RH <= bottom; i++) {
+        for (int i = 0; i < n && y + wsc_rh <= bottom; i++) {
             y = wsc_draw_row(x, y, w, i + 1, list[i], i & 1);
             if (list[i] == wsc.expanded)
                 y = wsc_draw_weapons(x, y, w, bottom, list[i]);
@@ -918,12 +1038,14 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
             any = true;
         }
     }
-    if (any && y + RH <= bottom) {
-        line[min((size_t)(w / CW), sizeof(line) - 1)] = 0;
-        wsc_text(x, y, 0, MakeColor(150, 150, 150, 220), line);
+    if (any && y + wsc_rh <= bottom) {
+        len = min(strlen(line), sizeof(line) - 1);
+        while (len > 1 && wsc_measure(false, line, len) > w)
+            len--;
+        wsc_str(x, y, AL_LEFT, false, MakeColor(150, 150, 150, 220), line, len);
     }
 
-    wsc_text(x, py + ph - RH - CH / 2, 0, MakeColor(150, 150, 150, 220),
-             wsc.expanded ? "[UP/DOWN] Player  [ENTER] Close stats  [LEFT/RIGHT] Map/rounds  [ESC] Close"
-                          : "[UP/DOWN] Player  [ENTER] Weapon stats  [ESC] Close");
+    wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, MakeColor(150, 150, 150, 220),
+             wsc.expanded ? "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close"
+                          : "[UP/DOWN] Player   [ENTER] Weapon stats   [ESC] Close");
 }
