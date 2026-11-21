@@ -23,99 +23,121 @@ edict_t* BOTLIB_FindFreeEntity(void)
 	return NULL; // Failure
 }
 
+// Names for the bots when the name files (action/bots/males.txt and the
+// rest) are not installed - they are not in the game's paks or the repo.
+// Without these a bot was named whatever the stack held: the buffers were
+// never cleared, and a missing file left them as they were.
+static const char *const bot_builtin_males[] = {
+	"Arlo", "Bram", "Cole", "Dex", "Eli", "Finn", "Gus", "Hugo", "Ivo", "Jax",
+	"Knox", "Lars", "Milo", "Nash", "Otto", "Pike", "Quill", "Rhys", "Silas",
+	"Tate", "Ugo", "Vance", "Wade", "Xavi", "Yuri", "Zane", "Boone", "Cruz",
+	"Duke", "Ezra",
+};
+static const char *const bot_builtin_females[] = {
+	"Ada", "Bea", "Cleo", "Dina", "Esme", "Faye", "Gwen", "Hana", "Iris",
+	"Juno", "Kira", "Lena", "Mira", "Nell", "Opal", "Rhea",
+};
+static const char *const bot_builtin_other[] = {
+	"Ghost", "Static", "Bishop", "Rook", "Echo", "Vandal", "Torque", "Cinder",
+	"Wraith", "Nomad", "Sable", "Flint",
+};
+static const char *const bot_builtin_teams[] = {
+	"Night Owls", "Iron Wolves", "Red Herons", "Dust Devils", "Black Vipers",
+	"Grey Ravens", "Storm Crows", "Rust Hounds", "Silent Pikes", "Old Badgers",
+};
+
+static const char *BOTLIB_BuiltinBotLine(const char *file)
+{
+	const char *const *list = NULL;
+	int n = 0;
+
+	if (!Q_stricmp(file, "males.txt")) {
+		list = bot_builtin_males;
+		n = sizeof(bot_builtin_males) / sizeof(bot_builtin_males[0]);
+	} else if (!Q_stricmp(file, "females.txt")) {
+		list = bot_builtin_females;
+		n = sizeof(bot_builtin_females) / sizeof(bot_builtin_females[0]);
+	} else if (!Q_stricmp(file, "other.txt")) {
+		list = bot_builtin_other;
+		n = sizeof(bot_builtin_other) / sizeof(bot_builtin_other[0]);
+	} else if (!Q_stricmp(file, "team_names.txt")) {
+		list = bot_builtin_teams;
+		n = sizeof(bot_builtin_teams) / sizeof(bot_builtin_teams[0]);
+	}
+	// clans, prefixes and postfixes are optional: none, and a bot is its name
+	return n ? list[rand() % n] : NULL;
+}
+
+// The name file, under the game directory first (basedir/game/botdir), then
+// where it was looked for before: relative to the working directory, which
+// is the game's only when it was started from its own directory.
+static FILE *BOTLIB_OpenBotFile(const char *file)
+{
+	cvar_t *game_dir = gi.cvar("game", "action", 0);
+	cvar_t *botdir = gi.cvar("botdir", "bots", 0);
+	cvar_t *basedir = gi.cvar("basedir", ".", 0);
+	const char *game = game_dir->string[0] ? game_dir->string : "action";
+	char filename[MAX_OSPATH];
+	FILE *f;
+
+	if (basedir->string[0]) {
+		Q_snprintf(filename, sizeof(filename), "%s/%s/%s/%s", basedir->string, game, botdir->string, file);
+		if ((f = fopen(filename, "r")) != NULL)
+			return f;
+	}
+	Q_snprintf(filename, sizeof(filename), "./%s/%s/%s", game, botdir->string, file);
+	return fopen(filename, "r");
+}
+
+static qboolean BOTLIB_BotFileLineUsable(char *line)
+{
+	size_t len = strcspn(line, "\r\n");
+
+	line[len] = '\0';
+	if (line[0] == '/' && line[1] == '/')	// a comment
+		return false;
+	return len > 0 && len < MAX_QPATH;
+}
+
+// A random line of a bot name file into buffer (MAX_QPATH), or a built-in
+// name where the file is missing or empty. buffer is always a string.
 qboolean BOTLIB_GetRandomBotFileLine(const char* file, char* buffer)
 {
-	FILE* f;
-	//int		comments_num = 0;		// Keep track of how many comments the file has
-	int		line_num = 0;			// Keep track of lines
-	int		curr_len;				// Current length of the line
-	char	curr_line[1024];		// Accounts for reading lines that could be fairly long (comments)
-	curr_line[0] = '\0';			// Current line
+	char line[1024];
+	int count = 0, pick, n;
+	const char *builtin;
+	FILE *f;
 
-	cvar_t* game_dir = gi.cvar("game", "action", 0); // Directory of the gamelib
-	cvar_t* botdir = gi.cvar("botdir", "bots", 0);	 // Directory of the bot files in the gamelib
-	char	filename[MAX_QPATH];	// Filename to load from
-#ifdef	_WIN32
-	int	i;							// Keep track where we are in the filename array
-	i = sprintf(filename, ".\\");
-	i += sprintf(filename + i, game_dir->string);
-	i += sprintf(filename + i, "\\");
-	i += sprintf(filename + i, botdir->string);
-	i += sprintf(filename + i, "\\");
-	i += sprintf(filename + i, file);
-#else
-	strcpy(filename, "./");
-	strcat(filename, game_dir->string);
-	strcat(filename, "/");
-	strcat(filename, botdir->string);
-	strcat(filename, "/");
-	strcat(filename, file);
-#endif
+	buffer[0] = '\0';
+	seed_random_number_generator();		// once: see there
 
-	if (strlen(filename) <= 0) return false;
-
-	// Open and check for success
-	if ((f = fopen(filename, "r")) == NULL) // Read text file
-	{
-		gi.dprintf("%s failed to open bot file: %s\n", __func__, filename);
-		return false;
-	}
-
-	// Find how many lines the file has
-	int random_line;
-	while (fgets(curr_line, sizeof(curr_line), f) != NULL)
-	{
-		line_num++;
-	}
-	fclose(f);
-
-	seed_random_number_generator();
-	random_line = rand() % line_num + 1;
-	//random_line = 13;
-
-	//Com_Printf("%s %s random_line[%d]\n", __func__, filename, random_line);
-
-	// Open and check for success
-	if ((f = fopen(filename, "r")) != NULL) // Read text file
-	{
-		line_num = -1;
-
-		// Read each line
-		while (fgets(curr_line, sizeof(curr_line), f) != NULL)
-		{
-			line_num++; // Advance forward
-
-			//if (feof(f)) // End of file
-			//	break; // Could not get a prefix name
-
-			if (curr_line[0] == '/' && curr_line[1] == '/') // Skip comment lines
-				continue;
-
-			// If we're at or above the correct line, not a comment, not empty
-			//if (line_num >= random_line && curr_line[0] != '/' && curr_line[0])
-			if (line_num >= random_line)
-			{
-				curr_len = strlen(curr_line);
-				if (curr_len < MAX_QPATH) // Make sure name is within acceptable length
-				{
-					//Com_Printf("%s %s curr_line[%d] = %s\n", __func__, filename, line_num, curr_line);
-					Q_strlcpy(buffer, curr_line, curr_len);
+	if ((f = BOTLIB_OpenBotFile(file)) != NULL) {
+		while (fgets(line, sizeof(line), f) != NULL)
+			if (BOTLIB_BotFileLineUsable(line))
+				count++;
+		if (count > 0) {
+			pick = rand() % count;
+			rewind(f);
+			n = 0;
+			while (fgets(line, sizeof(line), f) != NULL) {
+				if (!BOTLIB_BotFileLineUsable(line))
+					continue;
+				if (n++ == pick) {
+					Q_strlcpy(buffer, line, MAX_QPATH);
 					break;
 				}
 			}
 		}
 		fclose(f);
+		if (buffer[0])
+			return true;
 	}
 
-	if (strlen(buffer) > 0)
-	{
+	if ((builtin = BOTLIB_BuiltinBotLine(file)) != NULL) {
+		Q_strlcpy(buffer, builtin, MAX_QPATH);
 		return true;
 	}
-	else
-	{
-		buffer[0] = '\0'; // Terminate empty string
-		return false;
-	}
+	return false;
 }
 
 // Save bots from the previous map to file
@@ -872,6 +894,19 @@ void BOTLIB_GetRandomPrefix(char* name)
 
 
 
+// Whether a client other than `self` already goes by `name`
+static qboolean BOTLIB_BotNameInUse(const edict_t *self, const char *name)
+{
+	for (int i = 0; i < game.maxclients; i++) {
+		const edict_t *ent = g_edicts + 1 + i;
+		if (ent == self || !ent->inuse || !ent->client)
+			continue;
+		if (!Q_stricmp(ent->client->pers.netname, name))
+			return true;
+	}
+	return false;
+}
+
 //======================================
 // DC_LoadRandomBotName()
 // Gets a random bot name from file; bot_name is limited to a maximum of 16 chars, and the size of the list can be up to random()'s maximum of 32,767
@@ -880,18 +915,19 @@ void BOTLIB_GetRandomPrefix(char* name)
 //======================================
 void BOTLIB_LoadRandomBotName(edict_t* bot, char* bot_name, int gender)
 {
-	//for (int n = 0; n < 100; n++)
+	// a few tries for a name nobody on the server has yet
+	for (int attempt = 0; attempt < 8; attempt++)
 	{
 		int rnglen = 0;					// Length of rng name
 		int namelen = 0;				// Length of name
 		int clanlen = 0;				// Length of clan name
 		int prefixlen = 0;				// Length of Prefix name
 		int postfixlen = 0;				// Length of Postfix name
-		char name[MAX_QPATH];			// Name
-		char clan_name[MAX_QPATH];		// Clan name
-		char prefix_name[MAX_QPATH];	// Prefix name
-		char postfix_name[MAX_QPATH];	// Postfix name
-		char rng_clan_name[MAX_QPATH];	// Random Clan name
+		char name[MAX_QPATH] = "";			// Name
+		char clan_name[MAX_QPATH] = "";		// Clan name
+		char prefix_name[MAX_QPATH] = "";	// Prefix name
+		char postfix_name[MAX_QPATH] = "";	// Postfix name
+		char rng_clan_name[MAX_QPATH] = "";	// Random Clan name
 		qboolean name_with_rng = false;		// If name + rng clan will fit within 16 characters
 		qboolean name_with_clan = false;	// If name + clan will fit within 16 characters
 		qboolean name_with_prefix = false;	// If name + prefix will fit within 16 characters
@@ -916,13 +952,13 @@ void BOTLIB_LoadRandomBotName(edict_t* bot, char* bot_name, int gender)
 			char* split_name = strtok(name_cpy, " ");
 			if (split_name != NULL)
 			{
-				Q_strlcpy(name_pt1, split_name, sizeof(split_name));
+				Q_strlcpy(name_pt1, split_name, sizeof(name_pt1));
 				split_name = strtok(NULL, " ");
 			}
 			if (split_name != NULL)
 			{
 				two_part_name = true;
-				Q_strlcpy(name_pt2, split_name, sizeof(split_name));
+				Q_strlcpy(name_pt2, split_name, sizeof(name_pt2));
 			}
 			if (two_part_name)
 			{
@@ -948,13 +984,15 @@ void BOTLIB_LoadRandomBotName(edict_t* bot, char* bot_name, int gender)
 		postfixlen = strlen(postfix_name);
 
 		// Find what fits with the bot's name (14 chars for both names + space in between == 15)
-		if ((namelen + rnglen) < 15)
+		// - and only with a part that is there: an empty one left a stray
+		// space (" Ghost", "Ghost ")
+		if (rnglen && (namelen + rnglen) < 15)
 			name_with_rng = true;
-		if ((namelen + clanlen) < 15)
+		if (clanlen && (namelen + clanlen) < 15)
 			name_with_clan = true;
-		if ((namelen + prefixlen) < 15)
+		if (prefixlen && (namelen + prefixlen) < 15)
 			name_with_prefix = true;
-		if ((namelen + postfixlen) < 15)
+		if (postfixlen && (namelen + postfixlen) < 15)
 			name_with_postfix = true;
 
 		Q_strncpyz(bot_name, va("%s", name), namelen + 2); // Set a random name
@@ -971,6 +1009,9 @@ void BOTLIB_LoadRandomBotName(edict_t* bot, char* bot_name, int gender)
 			Q_strncpyz(bot_name, va("%s %s", name, postfix_name), namelen + postfixlen + 2); // name + postfix
 
 		//Com_Printf("%s name[%s][%d]\n", __func__, bot_name, strlen(bot_name));
+
+		if (!BOTLIB_BotNameInUse(bot, bot_name))
+			break;
 	}
 }
 

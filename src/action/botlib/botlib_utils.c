@@ -13,17 +13,24 @@
 This file is for common utilities that are used by the botlib functions
 */
 
+// Seeds rand() once. It was reseeded from the clock on every call - and
+// BOTLIB_SkillMultiplier calls it all the time - which restarted rand() at
+// much the same point over and over: everything drawn just after (a bot's
+// name, its skill rolls) came out the same.
+void seed_random_number_generator(void) {
+    static qboolean seeded;
+
+    if (seeded)
+        return;
+    seeded = true;
 #ifdef _WIN32
-void seed_random_number_generator(void) {
     srand((unsigned int)time(NULL));
-}
 #else
-void seed_random_number_generator(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     srand(tv.tv_usec * tv.tv_sec);
-}
 #endif
+}
 
 
 void BOTLIB_SKILL_Init(edict_t* bot)
