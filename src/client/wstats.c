@@ -871,6 +871,22 @@ static int wsc_draw_header(int px, int pw, int y)
     return y + wsc_rh + 4;
 }
 
+// The icons are 96x96 art drawn a row tall: as plain pics - no mip chain,
+// and nearest filtering by default (gl_bilerp_pics 0) - that skips pixels
+// and looks blocky. They are loaded mipmapped and trilinear instead, as a
+// sprite: the type keeps this copy apart from the HUD's own of the same
+// pic, which the image cache would otherwise hand back unchanged. The png
+// first, the pcx where there is none.
+static qhandle_t wsc_icon_pic(const char *name)
+{
+    qhandle_t pic = R_RegisterImage(va("pics/%s.png", name), IT_SPRITE,
+                                    IF_PERMANENT | IF_OPTIONAL | IF_MIPMAP);
+    if (!pic)
+        pic = R_RegisterImage(va("pics/%s.pcx", name), IT_SPRITE,
+                              IF_PERMANENT | IF_OPTIONAL | IF_MIPMAP);
+    return pic;
+}
+
 // a weapon's icon, a row tall at its own aspect, at most two cells wide
 static void wsc_draw_icon(int x, int y, int wi)
 {
@@ -878,7 +894,7 @@ static void wsc_draw_icon(int x, int y, int wi)
     int iw, ih, h = wsc_rh - 2;
 
     for (int i = 0; i < 2 && !pic && wsc_wpic[wi][i]; i++)
-        pic = R_RegisterPic(wsc_wpic[wi][i]);
+        pic = wsc_icon_pic(wsc_wpic[wi][i]);
     if (!pic)
         return;
     R_GetPicSize(&iw, &ih, pic);
