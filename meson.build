@@ -622,7 +622,15 @@ if get_option('game-abi-hack').require(x86 and cc.get_id() == 'gcc' and cc.has_a
   engine_args += '-mstackrealign'
 endif
 
-executable('q2pro', common_src, client_src, refresh_src,
+# The TrueType fonts built into the client, the fallback when action/fonts
+# is missing them (src/refresh/text.c)
+builtin_fonts = custom_target('builtin_fonts',
+  input:   ['action/fonts/NotoSans-Regular.ttf', 'action/fonts/NotoSans-Bold.ttf'],
+  output:  'builtin_fonts.c',
+  command: [find_program('python3'), files('tools/embed-font.py'), '@OUTPUT@', '@INPUT@'],
+)
+
+executable('q2pro', common_src, client_src, refresh_src, builtin_fonts,
   dependencies:          common_deps + client_deps,
   include_directories:   inc_dirs,
   gnu_symbol_visibility: 'hidden',

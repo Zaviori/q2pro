@@ -129,6 +129,12 @@ static void r_font_changed(cvar_t *self)
     text_free_fonts();
 }
 
+// The fonts built into the client (tools/embed-font.py, at build time):
+// what a face falls back to when its file is not found - an install whose
+// action/fonts is missing or somewhere else
+extern const unsigned char text_builtin_regular[], text_builtin_bold[];
+extern const unsigned text_builtin_regular_len, text_builtin_bold_len;
+
 static font_t *text_font(int index)
 {
     font_t *f = &fonts[index];
@@ -143,15 +149,18 @@ static font_t *text_font(int index)
 
     Q_snprintf(path, sizeof(path), "fonts/%s.ttf", var->string);
     len = FS_LoadFile(path, &buf);
-    if (len <= 0) {
-        Com_WPrintf("Couldn't load %s\n", path);
-        return NULL;
+    if (len > 0) {
+        // stb keeps pointers into the file for the font's whole life
+        f->data = Z_Malloc(len);
+        memcpy(f->data, buf, len);
+        FS_FreeFile(buf);
+    } else {
+        const unsigned char *builtin = index ? text_builtin_bold : text_builtin_regular;
+        len = index ? text_builtin_bold_len : text_builtin_regular_len;
+        Com_Printf("No %s: the built-in %s\n", path, index ? "Noto Sans Bold" : "Noto Sans");
+        f->data = Z_Malloc(len);
+        memcpy(f->data, builtin, len);
     }
-
-    // stb keeps pointers into the file for the font's whole life
-    f->data = Z_Malloc(len);
-    memcpy(f->data, buf, len);
-    FS_FreeFile(buf);
 
     if (!stbtt_InitFont(&f->info, f->data, stbtt_GetFontOffsetForIndex(f->data, 0))) {
         Com_WPrintf("%s is not a font stb_truetype can read\n", path);
