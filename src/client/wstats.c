@@ -648,6 +648,16 @@ static uint32_t wsc_team_color(int team, int alpha)
     }
 }
 
+// A character to a conchar cell, always: the board's columns are laid out
+// in cells, and a TrueType string (r_ttf) is proportional - its spaces
+// would collapse them. R_DrawChar keeps the font's letter in the cell.
+static void wsc_cells(int x, int y, int flags, const char *s, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+        if (s[i] != ' ')
+            R_DrawChar(x + (int)i * CW, y, flags, (byte)s[i], wsc_font);
+}
+
 static void wsc_text(int x, int y, int flags, uint32_t color, const char *s)
 {
     size_t len = strlen(s);
@@ -658,7 +668,7 @@ static void wsc_text(int x, int y, int flags, uint32_t color, const char *s)
         x -= len * CW;
     if (color)
         R_SetColor(color);
-    R_DrawString(x, y, flags & ~(UI_CENTER), len, s, wsc_font);
+    wsc_cells(x, y, flags & ~(UI_CENTER), s, len);
     if (color)
         R_ClearColor();
 }
@@ -669,7 +679,7 @@ static void wsc_big_text(int x, int y, uint32_t color, const char *s)
     // half the scale draws twice the size: the coordinates halve with it
     R_SetScale(wsc_hud_scale * 0.5f);
     R_SetColor(color);
-    R_DrawString(x / 2, y / 2, 0, strlen(s), s, wsc_font);
+    wsc_cells(x / 2, y / 2, 0, s, strlen(s));
     R_ClearColor();
     R_SetScale(wsc_hud_scale);
 }
