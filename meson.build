@@ -210,6 +210,7 @@ action_src = [
   'src/action/tng_irc.c',
   'src/action/tng_jump.c',
   'src/action/tng_stats.c',
+  'src/action/tng_wstats.c',
   'src/shared/shared.c'
 ]
 

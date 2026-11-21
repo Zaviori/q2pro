@@ -1994,6 +1994,7 @@ static cmdList_t commandList[] =
 	{ "unlock", Cmd_UnlockTeam_f, 0 },
 	{ "entcount", Cmd_Ent_Count_f, 0 },
 	{ "stats", Cmd_PrintStats_f, 0 },
+	{ "wstats_get", WS_Cmd_Get, 0 },
 	{ "flashlight", FL_make, CMDF_PAUSE },
 	{ "matchadmin", Cmd_SetAdmin_f, 0 },
 	{ "roundtimeleft", Cmd_Roundtimeleft_f, 0 },

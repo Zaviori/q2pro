@@ -123,6 +123,7 @@ void Stats_AddShot( edict_t *ent, int gun )
 	if (!teamplay->value || team_round_going || stats_afterround->value) {
 		ent->client->resp.shotsTotal += 1;	// TNG Stats, +1 hit
 		ent->client->resp.gunstats[Stats_GunSlot(gun)].shots += 1;	// TNG Stats, +1 hit
+		WS_Shot(ent, gun);
 	}
 }
 
@@ -139,6 +140,7 @@ void Stats_AddDamage( edict_t *attacker, edict_t *targ, int mod, int damage )
 		Stats_AddHit(attacker, mod, LOC_NO);
 	}
 	attacker->client->resp.gunstats[Stats_GunSlot(mod)].damage += damage;
+	WS_Damage(attacker, mod, damage);
 }
 
 void Stats_AddHit( edict_t *ent, int gun, int hitPart )
@@ -159,6 +161,7 @@ void Stats_AddHit( edict_t *ent, int gun, int hitPart )
 
 			if (headShot)
 				ent->client->resp.gunstats[Stats_GunSlot(gun)].headshots++;
+			WS_Hit(ent, gun, hitPart);
 		}
 		if (!headShot) {
 			ent->client->resp.streakHS = 0;

@@ -1585,6 +1585,7 @@ void SpawnEntities (const char *mapname, const char *entities, const char *spawn
 	level.quit_empty_time = -1.0f;
 
 	Q_strncpyz(level.mapname, mapname, sizeof(level.mapname));
+	WS_MapStart();
 	Q_strncpyz(game.spawnpoint, spawnpoint, sizeof(game.spawnpoint));
 
 	InitTransparentList();

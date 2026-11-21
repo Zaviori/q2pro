@@ -1972,6 +1972,8 @@ void ResetScores (qboolean playerScores)
 	if(!playerScores)
 		return;
 
+	WS_ResetScope();
+
 	for (i = 0; i < game.maxclients; i++)
 	{
 		ent = g_edicts + 1 + i;
@@ -2430,6 +2432,7 @@ void RunWarmup (void)
 void StartRound (void)
 {
 	team_round_going = 1;
+	WS_RoundStart();
 	current_round_length = 0;
 	timeout_requested = false;
 	timeout_granted = false;
@@ -2769,6 +2772,7 @@ int WonGame (int winner)
 	int i;
 	char arg[64];
 
+	WS_RoundEnd();
 	gi.bprintf (PRINT_HIGH, "The round is over:\n");
 	IRC_printf (IRC_T_GAME, "The round is over:");
 	if (winner == WINNER_TIE)

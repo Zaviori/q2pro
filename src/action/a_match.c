@@ -84,6 +84,7 @@ void SendScores(void)
 		gi.bprintf(PRINT_HIGH, "\x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F\n");
 	}
 	gi.bprintf(PRINT_HIGH, "Match is over, waiting for next map, please vote a new one..\n");
+	WS_MapEnd();
 
 	// Needed to add this here because Matchmode does not call BeginIntermission, but other teamplay modes do call it
 	LOG_MATCH(); // Generates end of game stats
