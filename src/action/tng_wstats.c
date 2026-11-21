@@ -74,7 +74,7 @@ static struct {
 	qboolean     going;             // a round is being counted
 	qboolean     map_ended;
 	int          live_at;           // realFramenum of the last wlive
-	int          team_sent[TEAM_TOP][2];    // wteam as last sent: score, name hash
+	int          team_sent[TEAM_TOP][3];    // wteam as last sent: score, name hash, ready
 } ws;
 
 // Non-NULL on an engine that keeps svc_userstatistic out of the MVD but
@@ -393,8 +393,10 @@ static void ws_line_wteam(int t)
 	char name[56];
 
 	ws_quote(name, sizeof(name), teams[t].name);
-	ws_line("wteam t=%d name=\"%s\" score=%d icon=%s", t, name, teams[t].score,
-		teams[t].skin_index[0] ? teams[t].skin_index : "-");
+	// ready only in matchmode, where the server's own board shows it
+	ws_line("wteam t=%d name=\"%s\" score=%d icon=%s%s", t, name, teams[t].score,
+		teams[t].skin_index[0] ? teams[t].skin_index : "-",
+		matchmode->value ? (teams[t].ready ? " ready=1" : " ready=0") : "");
 }
 
 static int ws_teams(void)
@@ -839,10 +841,13 @@ static void ws_sidmap_changes(void)
 	for (p = 1; p <= ws_teams(); p++) {
 		int sc = teams[p].score, nh = (int)(ws_hash(teams[p].name) ^ ws_hash(teams[p].skin_index) * 31);
 
-		if (ws.team_sent[p][0] == sc && ws.team_sent[p][1] == nh)
+		int rd = matchmode->value ? (teams[p].ready ? 1 : 0) : -1;
+
+		if (ws.team_sent[p][0] == sc && ws.team_sent[p][1] == nh && ws.team_sent[p][2] == rd)
 			continue;
 		ws.team_sent[p][0] = sc;
 		ws.team_sent[p][1] = nh;
+		ws.team_sent[p][2] = rd;
 		ws_line_wteam(p);
 	}
 	ws_flush();
