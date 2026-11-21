@@ -231,6 +231,11 @@ connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
 the fallback. `cl_statsboard 0` keeps the server's board everywhere.
+`scr_statsboard_x` (0.5) is the board's middle as a fraction of the
+width, `scr_statsboard_y` (0.25) its upper edge as a fraction of the
+height; a board too tall for the room under that climbs instead of
+being cut. In the TrueType build `scr_statsboard_font` (1) and
+`scr_statsboard_size` (10) set its text.
 
 - The header: team names, icons and big scores, the map and round.
 - Per team a band, then its players best score first: score, kills,
@@ -238,7 +243,8 @@ the fallback. `cl_statsboard 0` keeps the server's board everywhere.
   grenade), damage, K/D, ping. Who left stays, greyed, with "left".
 - **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under their row - shots, hits, accuracy, headshots, kills,
-  damage and the seven locations per weapon - and closes it again.
+  damage and the seven locations per weapon, each row opening with the
+  weapon's kill-feed icon - and closes it again.
   **Left/Right** steps that table between the map total and each
   round (newest first; the round being played is "live" to a
   spectator). **Esc** or `score` closes the board. Releases pass

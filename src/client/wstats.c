@@ -31,6 +31,15 @@ static const char *const wsc_wname[WSC_NW] = {
     "Knife", "Grenade", "Knife throw", "Kick", "Punch", "Nade impact"
 };
 
+// The kill feed's icons (the game's item pics) per weapon, as on the
+// stream branch; kick and punch have pics of their own in action/pics,
+// the game's slippers standing in for the boot where they are missing
+static const char *const wsc_wpic[WSC_NW][2] = {
+    { NULL }, { "w_mk23" }, { "w_mp5" }, { "w_m4" }, { "w_super90" }, { "w_cannon" },
+    { "w_sniper" }, { "w_akimbo" }, { "w_knife" }, { "a_m61frag" }, { "w_knife" },
+    { "hud_boot", "slippers" }, { "hud_fist" }, { "a_m61frag" }
+};
+
 typedef struct {
     bool    used;
     int     slot;               // client number, -1 when gone
@@ -70,6 +79,8 @@ static struct {
 } wsc;
 
 static cvar_t *cl_statsboard;
+static cvar_t *scr_statsboard_x;    // the board's middle, a fraction of the width
+static cvar_t *scr_statsboard_y;    // its upper edge, a fraction of the height
 #ifdef TEXT_BOLD                // the refresh has TrueType text (the extras branch)
 static cvar_t *scr_statsboard_font;
 static cvar_t *scr_statsboard_size;
@@ -628,6 +639,8 @@ bool CL_WS_KeyEvent(int key)
 void CL_WS_Init(void)
 {
     cl_statsboard = Cvar_Get("cl_statsboard", "1", 0);
+    scr_statsboard_x = Cvar_Get("scr_statsboard_x", "0.5", CVAR_ARCHIVE);
+    scr_statsboard_y = Cvar_Get("scr_statsboard_y", "0.25", CVAR_ARCHIVE);
 #ifdef TEXT_BOLD
     scr_statsboard_font = Cvar_Get("scr_statsboard_font", "1", CVAR_ARCHIVE);
     scr_statsboard_size = Cvar_Get("scr_statsboard_size", "10", CVAR_ARCHIVE);
@@ -858,6 +871,27 @@ static int wsc_draw_header(int px, int pw, int y)
     return y + wsc_rh + 4;
 }
 
+// a weapon's icon, a row tall at its own aspect, at most two cells wide
+static void wsc_draw_icon(int x, int y, int wi)
+{
+    qhandle_t pic = 0;
+    int iw, ih, h = wsc_rh - 2;
+
+    for (int i = 0; i < 2 && !pic && wsc_wpic[wi][i]; i++)
+        pic = R_RegisterPic(wsc_wpic[wi][i]);
+    if (!pic)
+        return;
+    R_GetPicSize(&iw, &ih, pic);
+    if (iw <= 0 || ih <= 0)
+        return;
+    int dw = iw * h / ih;
+    if (dw > CW * 2) {
+        h = h * CW * 2 / dw;
+        dw = CW * 2;
+    }
+    R_DrawStretchPic(x + (CW * 2 - dw) / 2, y + (wsc_rh - h) / 2, dw, h, pic);
+}
+
 static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
 {
     char line[160], scope[48];
@@ -897,6 +931,7 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
                    f[F_HS], f[F_K], f[F_DMG], f[F_HEAD], f[F_CHEST], f[F_STOMACH],
                    f[F_LEGS], f[F_HELMET], f[F_VEST], f[F_NOLOC]);
         R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, rows & 1 ? 200 : 170));
+        wsc_draw_icon(x + CW / 2, y, wi);
         wsc_grid(x, y, false, 0, line, wpn_cols, q_countof(wpn_cols), -1);
         y += wsc_rh;
         rows++;
@@ -997,8 +1032,12 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
 
     int pw = min(BOARD_CHARS * CW + CW * 2, (int)(hud_w * 0.96f));
     int ph = min(h + CH, (int)(hud_h * 0.94f));
-    int px = hud_x + (hud_w - pw) / 2;
-    int py = hud_y + (hud_h - ph) / 2;
+    // where scr_statsboard_x/_y put it, moved back on screen if it would
+    // leave it: a tall board climbs rather than being cut at the bottom
+    int px = hud_x + (int)(hud_w * Cvar_ClampValue(scr_statsboard_x, 0, 1)) - pw / 2;
+    int py = hud_y + (int)(hud_h * Cvar_ClampValue(scr_statsboard_y, 0, 1));
+    px = Q_clip(px, hud_x, hud_x + hud_w - pw);
+    py = Q_clip(py, hud_y, hud_y + hud_h - ph);
     int bottom = py + ph - wsc_rh * 2;
 
     R_DrawFill32(px, py, pw, ph, MakeColor(0, 0, 0, 215));
