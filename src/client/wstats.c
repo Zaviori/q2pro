@@ -547,6 +547,18 @@ static void CL_WS_Score_f(void)
 
 bool CL_WS_BoardOpen(void)
 {
+    // The server opening something of its own - a menu (TAB, inven), the
+    // inventory, its scoreboard at intermission - puts the board away, as
+    // its layout replaced its own scoreboard before: drawn instead of the
+    // layout, the board would hide the menu. Only on the moment it opens,
+    // so a menu already up when the board was opened leaves it be.
+    static int last_layouts;
+    int layouts = cl.frame.ps.stats[STAT_LAYOUTS] & (LAYOUTS_LAYOUT | LAYOUTS_INVENTORY);
+
+    if (wsc.open && (layouts & ~last_layouts))
+        wsc.open = false;
+    last_layouts = layouts;
+
     if (wsc.open && !CL_WS_Active())
         wsc.open = false;
     return wsc.open;
