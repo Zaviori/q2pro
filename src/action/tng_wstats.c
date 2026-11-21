@@ -909,12 +909,12 @@ static qboolean ws_alive(const ws_sid_t *s)
 
 static qboolean ws_deadview(const edict_t *ent)
 {
-	// a spectator and the demo always: they are not playing
-	if (ws_is_dummy(ent) || ent->client->resp.team == NOTEAM)
+	// the demo always: it shows every player's every move anyway
+	if (ws_is_dummy(ent))
 		return true;
-	// a player never under limchasecam - the server's scoreboards hide
-	// who is alive "during matches" then (A_ScoreboardMessage) - and
-	// otherwise once dead, or between rounds
+	// anyone else as the server's scoreboards: nobody under limchasecam -
+	// they hide who is alive "during matches" then (A_ScoreboardMessage) -
+	// and otherwise one who is dead or spectating, or between rounds
 	if (limchasecam->value != 0)
 		return false;
 	return !IS_ALIVE(ent) || !team_round_going;
