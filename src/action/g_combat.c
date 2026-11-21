@@ -870,9 +870,7 @@ void T_Damage (edict_t * targ, edict_t * inflictor, edict_t * attacker, const ve
 						// Hit markers
 						attacker->client->damage_dealt += damage;
 					}
-					if (mod > 0 && mod < MAX_GUNSTAT) {
-						attacker->client->resp.gunstats[mod].damage += damage;
-					}
+					Stats_AddDamage(attacker, targ, mod, damage);
 				}
 
 				if (targ != attacker && attacker->client && targ->health > 0 &&
@@ -937,18 +935,8 @@ void T_Damage (edict_t * targ, edict_t * inflictor, edict_t * attacker, const ve
 					// Hit markers
 					attacker->client->damage_dealt += damage;
 				}
-				// All normal weapon damage
-				if (mod > 0 && mod < MAX_GUNSTAT) {
-					attacker->client->resp.gunstats[mod].damage += damage;
-				}
-				// Grenade splash, grenade impact, kicks and punch damage
-				if (mod > 0 &&
-				((mod == MOD_HG_SPLASH) ||
-				(mod == MOD_KICK) ||
-				(mod == MOD_PUNCH) ||
-				(mod == MOD_GRENADE_IMPACT))) {
-					attacker->client->resp.gunstats[mod].damage += damage;
-				}
+				// every weapon's damage, the killing hit's included (above)
+				Stats_AddDamage(attacker, targ, mod, damage);
 			}
 
 			client->attacker = attacker;
