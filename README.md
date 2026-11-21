@@ -21,6 +21,9 @@ set of additions, released as `extras-vN` on
 - **A shell-like console** - completion that cycles and finds names
   fuzzily, a fuzzy history search, the editing keys of bash.
 - **Playing on a server's version of a map** you have another version of.
+- **A scoreboard with weapon stats** - on a server that sends them: every
+  player's kills by weapon, and under any player their shots, hits,
+  accuracy and hit locations per weapon, for the map or any round.
 
 Everything is a cvar or a menu entry, listed below with its default. The
 settings are archived: a value already saved in `config.cfg` overrides a
@@ -51,9 +54,10 @@ Both clients share `q2config.cfg`; the settings this one adds are ignored
 by the stock client. Without `action/fonts/` the client quietly falls back
 to the old 8x8 characters everywhere; without `action/pics/xhair/` and
 `action/pics/glyph/` the crosshairs and the kill report's skull are the
-pak's pixel art.
+pak's pixel art; without `action/pics/hud_boot.png` and `hud_fist.png`
+the stats scoreboard shows the slippers for kicks and nothing for punches.
 
-The version says which release a client is: `AQtion r3755~26984efb~zextras-v11`
+The version says which release a client is: `AQtion r3755~26984efb~zextras-v12`
 in the console banner and the `version` cvar (a build past a release adds
 `+N`).
 
@@ -410,8 +414,66 @@ the one every load of that name gets afterwards - a local `map`, demos,
 the pathing - until the file is deleted from `action/override/maps/`.
 
 
+Stats scoreboard
+----------------
+
+On a server that sends the **per-weapon stats channel** - one running this
+release's engine and game library, which a local game does - the scoreboard
+key (`score`, F1) opens the client's own board instead of the server's.
+Anywhere else `score` goes to the server and its own scoreboard shows as
+before; `cmd score` opens the server's board on any server.
+
+- The teams' names, icons and scores, the map and the round; per team its
+  players, best score first: score, kills, deaths, accuracy (the aimed
+  weapons: no knife slash, kick, punch or grenade), damage, K/D, ping and
+  **WEAPONS** - the three weapons they got most kills with, as a count and
+  the kill feed's icon. Who left stays, greyed.
+- Who is alive is in the server board's green - where the server's own
+  boards show it: to the dead and spectators, or between rounds, and to
+  nobody on a server with `limchasecam`.
+- **Up/Down** picks a player, **Enter** opens their weapons under their
+  row - shots, hits, accuracy, headshots, kills, damage and where the hits
+  landed (head, helmet, chest, vest, stomach, legs, and no location for the
+  shotgun and handcannon; helmet and no location only when there is any) -
+  and closes it again. **Left/Right** steps it between the map total and
+  each round, the one being played "live" to a spectator. **Esc** or
+  `score` closes the board, and so does the server opening a menu (TAB).
+- The board's upper edge stays put and it grows down; what does not fit
+  above the screen's bottom is cut.
+
+| Cvar | Default | What |
+| --- | --- | --- |
+| `cl_statsboard` | 1 | 0 keeps the server's scoreboard everywhere (not saved) |
+| `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width |
+| `scr_statsboard_y` | 0.1 | its upper edge, a fraction of the height (at most 0.9) |
+| `scr_statsboard_font` | 1 | the board in the TrueType font; 0 the old characters |
+| `scr_statsboard_size` | 10 | its text size |
+| `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |
+| `cl_stats_echo` | 0 | 1 prints every line of the channel as `[stat] ...` |
+
+On the server (`q2proded` and the game library of this release): `wstats`
+(1; 0 counts but sends nothing), `wstats_mvd` (1; the stats in recorded
+MVDs, which need `sv_mvd_enable 1`) and `wstats_live_ms` (1000; how often
+spectators get the round being played, 0 never). The format, and what an
+older client or engine does with a demo that has them, is
+`doc/weapon-stats.md`.
+
+
 Other changes
 -------------
+
+- **Bots have names.** They took them from name lists (`action/bots/
+  males.txt` and the rest) that no install has, and without them were
+  named whatever was in memory - garbage, or blank. A built-in list stands
+  in now; bots added together no longer all draw the same name, and one
+  brought back from the previous map with a garbage name gets a new one.
+- **Grenades in the weapon stats.** The grenade's damage counted only the
+  hits that did not kill, a direct hit or a held grenade counted under no
+  weapon, and its hits were never counted (0% accuracy); and every gun
+  kill also counted a kill for grenade impact. All fixed - a grenade's
+  accuracy is enemies hit per throw, and can pass 100%.
+- **Upstream AQtion v1.3.8**: scoreboards sent to the players a frame at
+  a time, ten players a team on them, and a lighter ghud on the wire.
 
 - **No impact markers.** Every bullet impact drew a small red, green and
   blue cross (and with `gl_shaders 0` coloured lines to a corner of the

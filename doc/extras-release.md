@@ -42,7 +42,8 @@ off the branch it builds on) and is merged into `extras` when done.
 4. Package. Two assets, named by the short sha, each the client
    renamed `q2prox`, its game library renamed `gamex86_64x`, the fonts
    and the pics the client ships (the jmod marker, the MVD badge, the
-   sharp crosshairs, the icon cells); everything stripped:
+   sharp crosshairs, the icon cells, the stats board's boot and fist);
+   everything stripped:
 
        q2pro-extras-<sha>-linux-x86_64.tar.gz
            q2prox                          build/q2pro, strip
@@ -51,6 +52,7 @@ off the branch it builds on) and is merged into `extras` when done.
            action/pics/jmod_spawn.png, mvd.png
            action/pics/xhair/*.png         the twenty crosshairs
            action/pics/glyph/*.png         the icon cells (6.png, the skull)
+           action/pics/hud_boot.png, hud_fist.png   the stats board's kick and punch icons
        q2pro-extras-<sha>-windows-x86_64.zip
            q2prox.exe                      build-windows/q2pro.exe, x86_64-w64-mingw32-strip
            action/gamex86_64x.dll          build-windows/gamex86_64.dll, x86_64-w64-mingw32-strip
