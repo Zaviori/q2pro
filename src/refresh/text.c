@@ -934,7 +934,7 @@ void Text_Init(void)
     // and 2 everywhere, which read as on and more on; a saved 2 is on.
     // Every place has its switch (each *_font cvar), and the rest - menus,
     // browser, inventory, in conchar cells - has r_ttf_menus for one.
-    r_ttf = Cvar_Get("r_ttf", "1", CVAR_ARCHIVE);
+    r_ttf = Cvar_Get("r_ttf", "0", CVAR_ARCHIVE);
     r_ttf_menus = Cvar_Get("r_ttf_menus", "1", CVAR_ARCHIVE);
     r_ttf_size = Cvar_Get("r_ttf_size", "10", CVAR_ARCHIVE);
     // ...set at its own width (0), or a letter per conchar cell (1)

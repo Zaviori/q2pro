@@ -51,8 +51,8 @@ keep working.
   libraries (SDL2, curl, libpng, libjpeg).
 
 Both clients share `q2config.cfg`; the settings this one adds are ignored
-by the stock client. Without `action/fonts/` the client quietly falls back
-to the old 8x8 characters everywhere; without `action/pics/xhair/` and
+by the stock client. The fonts are built into the client as well, so
+`action/fonts/` is only needed to replace them; without `action/pics/xhair/` and
 `action/pics/glyph/` the crosshairs and the kill report's skull are the
 pak's pixel art; without `action/pics/hud_boot.png` and `hud_fist.png`
 the stats scoreboard shows the slippers for kicks and nothing for punches.
@@ -74,10 +74,14 @@ and (on Windows) a **Keyboard** menu. The jump mod's own menus are under
 TrueType text
 -------------
 
-On by default, in Noto Sans (SIL OFL 1.1, licence in `action/fonts/OFL.txt`).
+Off by default: `r_ttf 1`, or Settings → Extras → **TrueType Text**, turns
+it on. In Noto Sans (SIL OFL 1.1, licence in `action/fonts/OFL.txt`), which
+is also built into the client: a font missing from `action/fonts/` falls
+back to the built-in copy, and a file there comes first, so `r_font` /
+`r_font_bold` can name another font.
 
-`r_ttf` (1) is the master switch: `0` is the old 8x8 characters
-everywhere. The places below have a switch each; every other text -
+`r_ttf` (0) is the master switch: `0` is the old 8x8 characters
+everywhere. A config that has run an earlier release keeps its saved `1`. The places below have a switch each; every other text -
 menus, server browser, inventory - has `r_ttf_menus` (1), and is drawn at
 its natural width inside the space the old characters took, so every
 layout lines up. Its size is `r_ttf_size` (10), and `r_ttf_menu_size`
