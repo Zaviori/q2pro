@@ -162,6 +162,7 @@ typedef enum {
     IF_DEFAULT_FLARE    = BIT(9),   // default flare hack
     IF_CUBEMAP          = BIT(10),  // cubemap (or part of it)
     IF_CLASSIC_SKY      = BIT(11),  // split in two halves
+    IF_MIPMAP           = BIT(12),  // a pic drawn at many sizes: mipmapped, trilinear
 
     // these flags only affect R_RegisterImage() behavior,
     // and are not stored in image

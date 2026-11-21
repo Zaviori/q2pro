@@ -535,7 +535,7 @@ static void GL_Upload32(byte *data, int width, int height, int baselevel, imaget
 
     c.texUploads++;
 
-    if (type == IT_WALL || type == IT_SKIN) {
+    if (type == IT_WALL || type == IT_SKIN || (flags & IF_MIPMAP)) {
         if (qglGenerateMipmap) {
             qglGenerateMipmap(GL_TEXTURE_2D);
         } else {
@@ -645,7 +645,12 @@ static void GL_SetFilterAndRepeat(imagetype_t type, imageflags_t flags)
             nearest = false;
         }
 
-        if ((flags & IF_UPSCALED) && (gl_config.caps & QGL_CAP_TEXTURE_MAX_LEVEL)) {
+        if (flags & IF_MIPMAP) {
+            // a pic drawn at many sizes (the sharp crosshairs): its mip
+            // chain, trilinear, whatever the pics' filter is set to
+            qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        } else if ((flags & IF_UPSCALED) && (gl_config.caps & QGL_CAP_TEXTURE_MAX_LEVEL)) {
             if (nearest) {
                 qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
                 qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
