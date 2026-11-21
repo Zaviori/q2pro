@@ -60,6 +60,8 @@ cp -f "$SRCDIR"/action/fonts/*.ttf "$SRCDIR/action/fonts/OFL.txt" "$SHAREDIR/fon
 # jmod's spawnpoint marker; the game falls back to a crosshair ring without it
 mkdir -p "$SHAREDIR/pics"
 cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SRCDIR/action/pics/mvd.png" "$SHAREDIR/pics/"
+# the stats board's kick and punch icons; without them the slippers, and none
+cp -f "$SRCDIR/action/pics/hud_boot.png" "$SRCDIR/action/pics/hud_fist.png" "$SHAREDIR/pics/"
 # the sharp crosshairs (tools/xhair-gen.py); without them ch_sharp draws the pak's pixel art
 mkdir -p "$SHAREDIR/pics/xhair"
 cp -f "$SRCDIR"/action/pics/xhair/*.png "$SHAREDIR/pics/xhair/"
