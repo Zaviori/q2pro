@@ -837,6 +837,19 @@ static const char ui_menu_stains[] =
     "range \"darkest floor\" gl_stain_floor 0 0.8 0.05\n"
     "end\n";
 
+// The stats scoreboard (src/client/wstats.c): opt-in, then its text and
+// where it sits
+static const char ui_menu_statsboard[] =
+    "begin statsboard\n"
+    "title \"Stats Scoreboard\"\n"
+    "toggle \"stats scoreboard\" cl_statsboard\n"
+    "blank\n"
+    "toggle \"truetype text\" scr_statsboard_font\n"
+    "range \"text size\" scr_statsboard_size 6 24 1\n"
+    "range \"middle, across\" scr_statsboard_x 0 1 0.05\n"
+    "range \"upper edge, down\" scr_statsboard_y 0 0.9 0.05\n"
+    "end\n";
+
 #ifdef _WIN32
 // Keyboard: typing, and optionally binds, in the system layout - only
 // the Windows driver sends the characters (Key_SetNativeLayout)
@@ -887,6 +900,7 @@ static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
     { "Crosshair", "xhair", ui_menu_xhair },
     { "Stainmaps", "stains", ui_menu_stains },
+    { "Stats Scoreboard", "statsboard", ui_menu_statsboard },
     { "Jump Mod Keys", "jmodkeys", ui_menu_jmod },
 #ifdef _WIN32
     { "Keyboard", "keyboard", ui_menu_keyboard },
