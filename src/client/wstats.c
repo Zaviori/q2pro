@@ -682,13 +682,24 @@ static const wsc_col_t row_cols[] = {
 };
 #define ROW_NAME_COL 1
 
-// "   %-11s %5s %4s %4s %3s %3s %5s %4s %5s %4s %4s %4s %4s %5s"
-#define WPN_FMT     "   %-11s %5s %4s %4s %3s %3s %5s %4s %5s %4s %4s %4s %4s %5s"
-static const wsc_col_t wpn_cols[] = {
-    { 3, 11, AL_LEFT }, { 15, 5, AL_RIGHT }, { 21, 4, AL_RIGHT }, { 26, 4, AL_RIGHT },
-    { 31, 3, AL_RIGHT }, { 35, 3, AL_RIGHT }, { 39, 5, AL_RIGHT }, { 45, 4, AL_RIGHT },
-    { 50, 5, AL_RIGHT }, { 56, 4, AL_RIGHT }, { 61, 4, AL_RIGHT }, { 66, 4, AL_RIGHT },
-    { 71, 4, AL_RIGHT }, { 76, 5, AL_RIGHT },
+// The weapon table: the name, then these columns in this order, each a
+// cell apart and right-aligned. The optional ones (a helmet, and the
+// shotgun's and handcannon's no-location hits) only when the table has
+// a count in them.
+#define WPN_NAME_X  3
+#define WPN_NAME_W  11
+#define WC_ACC      -1
+static const struct {
+    const char  *caption;
+    int         width;
+    int         field;          // a counter, or WC_ACC
+    bool        optional;
+} wpn_table[] = {
+    { "SHOTS", 5, F_SHOTS }, { "HITS", 4, F_HITS }, { "ACC", 4, WC_ACC },
+    { "HS", 3, F_HS }, { "K", 3, F_K }, { "DMG", 5, F_DMG },
+    { "HEAD", 4, F_HEAD }, { "HELM", 4, F_HELMET, true }, { "CHEST", 5, F_CHEST },
+    { "VEST", 4, F_VEST }, { "STOM", 4, F_STOMACH }, { "LEGS", 4, F_LEGS },
+    { "NOLOC", 5, F_NOLOC, true },
 };
 #define BOARD_CHARS 81
 
@@ -926,29 +937,50 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
     wsc_text(x + 3 * CW, y + 1, AL_LEFT, true, MakeColor(230, 230, 120, 255), line);
     y += wsc_rh;
 
-    Q_snprintf(line, sizeof(line), WPN_FMT, "WEAPON", "SHOTS", "HITS", "ACC", "HS", "K",
-               "DMG", "HEAD", "CHEST", "STOM", "LEGS", "HELM", "VEST", "NOLOC");
-    wsc_grid(x, y + 1, true, cap, line, wpn_cols, q_countof(wpn_cols), -1);
+    // which columns: the optional ones where some weapon has a count
+    int v[WSC_NF], ends[q_countof(wpn_table)];
+    bool show[q_countof(wpn_table)];
+    for (int c = 0; c < (int)q_countof(wpn_table); c++)
+        show[c] = !wpn_table[c].optional;
+    for (int wi = 1; wi < WSC_NW; wi++) {
+        if (!wsc_weapon_values(pi, wi, wsc.scope, v))
+            continue;
+        for (int c = 0; c < (int)q_countof(wpn_table); c++)
+            if (wpn_table[c].field >= 0 && v[wpn_table[c].field])
+                show[c] = true;
+    }
+    int col = WPN_NAME_X + WPN_NAME_W;
+    for (int c = 0; c < (int)q_countof(wpn_table); c++) {
+        if (show[c])
+            col += 1 + wpn_table[c].width;
+        ends[c] = col;
+    }
+
+    wsc_text(x + WPN_NAME_X * CW, y + 1, AL_LEFT, true, cap, "WEAPON");
+    for (int c = 0; c < (int)q_countof(wpn_table); c++)
+        if (show[c])
+            wsc_text(x + ends[c] * CW, y + 1, AL_RIGHT, true, cap, wpn_table[c].caption);
     y += wsc_rh;
 
-    int rows = 0, v[WSC_NF];
+    int rows = 0;
     for (int wi = 1; wi < WSC_NW && y + wsc_rh <= bottom; wi++) {
         if (!wsc_weapon_values(pi, wi, wsc.scope, v))
             continue;
-        char f[WSC_NF][12], acc[8];
-        for (int k = 0; k < WSC_NF; k++)
-            Q_snprintf(f[k], sizeof(f[k]), "%d", v[k]);
-        // kick, punch and the slash are no aim: no accuracy
-        if (wi == 8 || wi == 11 || wi == 12)
-            Q_strlcpy(acc, "-", sizeof(acc));
-        else
-            wsc_fmt_acc(acc, sizeof(acc), v[F_HITS], v[F_SHOTS]);
-        Q_snprintf(line, sizeof(line), WPN_FMT, wsc_wname[wi], f[F_SHOTS], f[F_HITS], acc,
-                   f[F_HS], f[F_K], f[F_DMG], f[F_HEAD], f[F_CHEST], f[F_STOMACH],
-                   f[F_LEGS], f[F_HELMET], f[F_VEST], f[F_NOLOC]);
         R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, rows & 1 ? 200 : 170));
         wsc_draw_icon(x + CW / 2, y, wi);
-        wsc_grid(x, y, false, 0, line, wpn_cols, q_countof(wpn_cols), -1);
+        wsc_text(x + WPN_NAME_X * CW, y, AL_LEFT, false, 0, wsc_wname[wi]);
+        for (int c = 0; c < (int)q_countof(wpn_table); c++) {
+            char f[12];
+            if (!show[c])
+                continue;
+            if (wpn_table[c].field != WC_ACC)
+                Q_snprintf(f, sizeof(f), "%d", v[wpn_table[c].field]);
+            else if (wi == 8 || wi == 11 || wi == 12)
+                Q_strlcpy(f, "-", sizeof(f));   // kick, punch and the slash are no aim
+            else
+                wsc_fmt_acc(f, sizeof(f), v[F_HITS], v[F_SHOTS]);
+            wsc_text(x + ends[c] * CW, y, AL_RIGHT, false, 0, f);
+        }
         y += wsc_rh;
         rows++;
     }

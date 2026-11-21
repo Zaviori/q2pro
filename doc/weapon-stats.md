@@ -246,8 +246,10 @@ being cut. In the TrueType build `scr_statsboard_font` (1) and
   included. Who left stays, greyed, with "left".
 - **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under their row - shots, hits, accuracy, headshots, kills,
-  damage and the seven locations per weapon, each row opening with the
-  weapon's kill-feed icon - and closes it again.
+  damage and the locations per weapon, each row opening with the
+  weapon's kill-feed icon - and closes it again. The locations read
+  HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and NOLOC only
+  when a weapon in the table has a count there.
   **Left/Right** steps that table between the map total and each
   round (newest first; the round being played is "live" to a
   spectator). **Esc** or `score` closes the board. Releases pass
