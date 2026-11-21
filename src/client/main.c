@@ -527,6 +527,28 @@ CL_Connect_f
 
 ================
 */
+/*
+================
+CL_ConnectProtocol
+
+The protocol a connection asks for: cl_protocol, AQtion's (38) by
+default - a server without it gets the newest it has, down the line. A
+config that sets another one is warned about on every connect: the
+game's extensions, the stats scoreboard among them, need 38.
+================
+*/
+static int CL_ConnectProtocol(void)
+{
+    int protocol = cl_protocol->integer;
+
+    if (protocol && protocol != PROTOCOL_VERSION_AQTION)
+        Com_WPrintf("cl_protocol is %d, not %d (AQtion): a config sets it, and this "
+                    "server gets protocol %d at most - without the game's extensions "
+                    "(the ghud, the stats scoreboard). 'cl_protocol 38' to put it back.\n",
+                    protocol, PROTOCOL_VERSION_AQTION, protocol);
+    return protocol;
+}
+
 static void CL_Connect_f(void)
 {
     char    *server, *p;
@@ -568,7 +590,7 @@ static void CL_Connect_f(void)
     CL_Disconnect(ERR_RECONNECT);
 
     cls.serverAddress = address;
-    cls.serverProtocol = cl_protocol->integer;
+    cls.serverProtocol = CL_ConnectProtocol();
     cls.passive = false;
     cls.state = ca_challenging;
     cls.connect_time -= CONNECT_FAST;
@@ -1096,7 +1118,7 @@ static void CL_Reconnect_f(void)
 
     Com_Printf("Reconnecting...\n");
 
-    cls.serverProtocol = cl_protocol->integer;
+    cls.serverProtocol = CL_ConnectProtocol();
     cls.state = ca_challenging;
     cls.connect_time -= CONNECT_FAST;
     cls.connect_count = 0;
@@ -1458,7 +1480,7 @@ static void CL_ConnectionlessPacket(void)
         Com_Printf("Received passive connect from %s.\n", adr);
 
         cls.serverAddress = net_from;
-        cls.serverProtocol = cl_protocol->integer;
+        cls.serverProtocol = CL_ConnectProtocol();
         Q_strlcpy(cls.servername, adr, sizeof(cls.servername));
         cls.passive = false;
 
@@ -2891,7 +2913,7 @@ static void CL_InitLocal(void)
     cl_ignore_stufftext = Cvar_Get("cl_ignore_stufftext", "0", 0);
     cl_allow_vid_restart = Cvar_Get("cl_allow_vid_restart", "0", 0);
 
-    cl_protocol = Cvar_Get("cl_protocol", "0", 0);
+    cl_protocol = Cvar_Get("cl_protocol", "38", 0);
 
     gender_auto = Cvar_Get("gender_auto", "1", CVAR_ARCHIVE);
 
