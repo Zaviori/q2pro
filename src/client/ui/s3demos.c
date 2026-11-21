@@ -1257,7 +1257,11 @@ static void S3_FetchDone(void)
         Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s: download failed: %s", m_s3.fetch_local, err);
         return;
     }
-    Q_snprintf(m_s3.note, sizeof(m_s3.note), "%s is in demos/: Enter plays it", m_s3.fetch_local);
+    // what Enter does with it now: the list's way (opened from the jump mod
+    // or not, S3_Activate)
+    Q_snprintf(m_s3.note, sizeof(m_s3.note), m_s3.jmod
+               ? "%s is in demos/: Enter starts its map in the jump mod, Shift+Enter plays it"
+               : "%s is in demos/: Enter plays it", m_s3.fetch_local);
     for (i = 0; i < m_s3.numAll; i++) {
         s3entry_t *e = m_s3.all[i];
 
