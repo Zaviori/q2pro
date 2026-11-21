@@ -147,7 +147,7 @@ subscribe and once a second when they change (the ping at most every
 
 ```
 pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41   ; the mod's resp counters
-wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i ready=1   ; ready in matchmode only
+wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i captain=3 ready=1   ; captain: a stats id, 0 none; ready in matchmode only
 ```
 
 Who is alive, as the server's own scoreboard shows it in green: only to

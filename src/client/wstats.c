@@ -70,6 +70,7 @@ static struct {
     char            team_icon[WSC_MAX_TEAMS][MAX_QPATH];
     int             team_score[WSC_MAX_TEAMS];
     int             team_ready[WSC_MAX_TEAMS];  // -1 not sent (no matchmode), 0, 1
+    int             team_captain[WSC_MAX_TEAMS];    // the captain's stats id, 0 none
     bool            team_seen[WSC_MAX_TEAMS];
     wsc_hist_t      *hist;
     int             nhist, hist_alloc;
@@ -347,6 +348,7 @@ void CL_WS_ParseLine(const char *line)
             Q_strlcpy(wsc.team_name[t], wsc_get(&l, "name"), sizeof(wsc.team_name[t]));
         wsc.team_score[t] = wsc_int(&l, "score", wsc.team_score[t]);
         wsc.team_ready[t] = wsc_int(&l, "ready", -1);
+        wsc.team_captain[t] = wsc_int(&l, "captain", 0);
         if (wsc_get(&l, "icon"))
             Q_strlcpy(wsc.team_icon[t], strcmp(wsc_get(&l, "icon"), "-") ? wsc_get(&l, "icon") : "",
                       sizeof(wsc.team_icon[t]));
@@ -882,6 +884,15 @@ static int wsc_draw_header(int px, int pw, int y)
     }
     y += CH * 2 + 4;
 
+    // matchmode: a team that is not ready says so under its name
+    if (wsc.team_ready[1] == 0 || wsc.team_ready[2] == 0) {
+        for (int t = 1; t <= 2; t++)
+            if (wsc.team_ready[t] == 0)
+                wsc_text(t == 1 ? mid - pw / 4 : mid + pw / 4, y, AL_CENTER, false,
+                         MakeColor(255, 170, 60, 255), "NOT READY");
+        y += wsc_rh + 2;
+    }
+
     // team icons beside the big scores, the scores hugging the middle
     for (int t = 1; t <= 2; t++) {
         char buf[16];
@@ -1109,15 +1120,22 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     uint32_t color = gone && !selected ? MakeColor(150, 150, 150, 255) :
                      wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
     wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
+    int name_end;
     {
         const char *name = p->name[0] ? p->name : "(unnamed)";
         int len = (int)strlen(name), room = NAME_W * CW;
         while (len > 1 && wsc_measure(false, name, len) > room)
             len--;
         wsc_str(x + row_cols[ROW_NAME_COL].start * CW, y, AL_LEFT, false, color, name, len);
+        name_end = x + row_cols[ROW_NAME_COL].start * CW + wsc_measure(false, name, len);
     }
 
     wsc_draw_row_weapons(x, y, w, pi, color);
+
+    // the team's captain: a C after the name
+    if (p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi)
+        wsc_text(min(name_end + CW, x + (row_cols[ROW_NAME_COL].start + NAME_W) * CW), y,
+                 AL_LEFT, false, MakeColor(230, 230, 120, 255), "C");
 
     // the expand mark at the row's end
     wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
@@ -1150,6 +1168,8 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     // expanded weapons, spectators and the footer
     int nteams = wsc_num_teams();
     int h = CH * 2 + 4 + 24 + 4 + wsc_rh + 4;
+    if (wsc.team_ready[1] == 0 || wsc.team_ready[2] == 0)
+        h += wsc_rh + 2;        // NOT READY under the names
     for (int t = 1; t <= nteams; t++) {
         int n = wsc_team_list(t, list);
         h += wsc_rh + 3 + wsc_rh + n * wsc_rh + CH / 2;
@@ -1187,11 +1207,6 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
 
         R_DrawFill32(x, y, w, wsc_rh + 2, wsc_team_color(t, 150));
         wsc_text(x + CW, y + 1, AL_LEFT, true, U32_WHITE, tname);
-        // matchmode: whether the team is ready, as the server's board says
-        if (wsc.team_ready[t] >= 0)
-            wsc_text(x + w - CW, y + 1, AL_RIGHT, false,    // not bold: the old characters' bold is green
-                     wsc.team_ready[t] ? MakeColor(120, 230, 120, 255) : MakeColor(255, 170, 60, 255),
-                     wsc.team_ready[t] ? "Ready" : "Not ready");
         y += wsc_rh + 3;
 
         Q_snprintf(line, sizeof(line), ROW_FMT, "#", NAME_W, NAME_W, "PLAYER",
