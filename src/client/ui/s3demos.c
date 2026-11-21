@@ -37,7 +37,9 @@ source, letters filter the list as the demo browser does, and Enter
 downloads the one under the cursor into demos/ - gunzipped, so it plays
 and reads like any demo there - or plays it when it is there already;
 Shift+Enter starts its map in the jump mod with the pathing menu open on
-it, after the download when it is not there yet. Only what is picked is
+it, after the download when it is not there yet. Opened from the jump mod
+("aq2world map <name> jmod") the two swap: Enter is the jump mod, the way
+there, and Shift+Enter plays the demo. Only what is picked is
 downloaded. A listing is kept for the session and in s3cache/ on disk:
 the month being played is asked again after ten minutes, an older one
 after a day.
@@ -141,6 +143,7 @@ typedef struct {
     int             months;         // the window: this many months back from it, 1 as a rule
     char            lmonth[8];      // the month being listed
     char            maplock[MAX_QPATH]; // "aq2world map <name>": that map alone, exactly, over S3_LOCK_MONTHS
+    bool            jmod;               // "aq2world map <name> jmod": opened from the jump mod, Enter goes there
     char            filter[MAX_QPATH];
     void            **all;          // every row of the month; the list shows those the filter lets through
     int             numAll;
@@ -178,6 +181,7 @@ typedef struct {
 static m_s3_t   m_s3;
 static char     s3_prefilter[MAX_QPATH];    // "aq2world <filter>": typed in before the list shows
 static char     s3_premap[MAX_QPATH];       // "aq2world map <name>": the map to lock on
+static bool     s3_prejmod;                 // "... jmod": opened from the jump mod
 #define S3_LOCK_MONTHS  3           // the window with a map locked: some maps get a game a month
 
 // the window's month `back` months before the latest shown
@@ -1306,12 +1310,27 @@ static menuSound_t S3_Change(menuCommon_t *self)
         return QMS_BEEP;
     }
     e = m_s3.list.items[m_s3.list.curvalue];
-    m_s3.menu.status = e->have ? "Enter: play it   Shift+Enter: its map in the jump mod, with its routes"
-        : "Enter: download it   Shift+Enter: download it and start its map in the jump mod";
+    if (m_s3.jmod)
+        m_s3.menu.status = e->have ? "Enter: its map in the jump mod, with its routes   Shift+Enter: play it"
+            : "Enter: download it and start its map in the jump mod   Shift+Enter: download it";
+    else
+        m_s3.menu.status = e->have ? "Enter: play it   Shift+Enter: its map in the jump mod, with its routes"
+            : "Enter: download it   Shift+Enter: download it and start its map in the jump mod";
     return QMS_SILENT;
 }
 
+static menuSound_t S3_Practice(void);
+
+// Enter, or a double click: play the demo (downloading it first), or -
+// opened from the jump mod - its map in the jump mod
+static menuSound_t S3_View(void);
+
 static menuSound_t S3_Activate(menuCommon_t *self)
+{
+    return m_s3.jmod ? S3_Practice() : S3_View();
+}
+
+static menuSound_t S3_View(void)
 {
     s3entry_t *e;
     const char *name;
@@ -1386,8 +1405,9 @@ static menuSound_t S3_Keydown(menuFrameWork_t *self, int key)
         return QMS_SILENT;
     case K_ENTER:
     case K_KP_ENTER:
+        // Shift+Enter: the other of the two (S3_Activate)
         if (Key_IsDown(K_SHIFT))
-            return S3_Practice();
+            return m_s3.jmod ? S3_View() : S3_Practice();
         return QMS_NOTHANDLED;
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
@@ -1537,6 +1557,8 @@ static void S3_Expose(menuFrameWork_t *self)
     // three months of it - some maps get a game a month; else this month
     Q_strlcpy(m_s3.maplock, s3_premap, sizeof(m_s3.maplock));
     s3_premap[0] = 0;
+    m_s3.jmod = s3_prejmod;
+    s3_prejmod = false;
     m_s3.months = m_s3.maplock[0] ? S3_LOCK_MONTHS : 1;
     if (m_s3.maplock[0] && tm)
         S3_SetMonth(tm->tm_year, tm->tm_mon);   // the window from this month; a plain open keeps the month left on
@@ -1555,16 +1577,21 @@ static void S3_Open_c(genctx_t *ctx, int argnum)
         FS_File_g("maps", ".bsp", FS_SEARCH_STRIPEXT, ctx);
     } else if (argnum == 2 && !Q_stricmp(Cmd_Argv(1), "map")) {
         FS_File_g("maps", ".bsp", FS_SEARCH_STRIPEXT, ctx);
+    } else if (argnum == 3 && !Q_stricmp(Cmd_Argv(1), "map")) {
+        Prompt_AddMatch(ctx, "jmod");
     }
 }
 
-// aq2world map <name>: that map alone, exactly, over the last months
+// aq2world map <name> [jmod]: that map alone, exactly, over the last
+// months; "jmod" when the jump mod opens it, so Enter goes back there
 static void S3_Open_f(void)
 {
     s3_prefilter[0] = s3_premap[0] = 0;
-    if (Cmd_Argc() > 2 && !Q_stricmp(Cmd_Argv(1), "map"))
+    s3_prejmod = false;
+    if (Cmd_Argc() > 2 && !Q_stricmp(Cmd_Argv(1), "map")) {
         Q_strlcpy(s3_premap, Cmd_Argv(2), sizeof(s3_premap));
-    else if (Cmd_Argc() > 1)
+        s3_prejmod = Cmd_Argc() > 3 && !Q_stricmp(Cmd_Argv(3), "jmod");
+    } else if (Cmd_Argc() > 1)
         Q_strlcpy(s3_prefilter, Cmd_Argv(1), sizeof(s3_prefilter));
     UI_PushMenu(&m_s3.menu);
 }
