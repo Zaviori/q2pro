@@ -674,6 +674,12 @@ void Key_Event(unsigned key, bool down, unsigned time)
         return;
     }
 
+    // the stats board takes its keys while it is up (presses only: a key
+    // held down before it opened is still let go of)
+    if (cls.key_dest == KEY_GAME && down && CL_WS_KeyEvent(key)) {
+        return;
+    }
+
     // menu key is hardcoded, so the user can never unbind it
     if (key == K_ESCAPE) {
         if (!down) {

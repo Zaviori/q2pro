@@ -644,6 +644,15 @@ extern cvar_t   *info_gender;
 extern cvar_t   *info_uf;
 extern cvar_t   *cl_stats_echo;
 
+// wstats.c - the per-weapon stats channel and its scoreboard
+void CL_WS_Init(void);
+void CL_WS_Clear(void);
+void CL_WS_ParseLine(const char *line);
+bool CL_WS_Active(void);
+bool CL_WS_BoardOpen(void);
+bool CL_WS_KeyEvent(int key);
+void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale, qhandle_t font);
+
 //=============================================================================
 
 static inline void CL_AdvanceValue(float *restrict val, float target, float speed)

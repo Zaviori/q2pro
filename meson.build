@@ -58,6 +58,7 @@ client_src = [
   'src/client/sound/mem.c',
   'src/client/tent.c',
   'src/client/view.c',
+  'src/client/wstats.c',
   'src/common/async.c',
   'src/server/commands.c',
   'src/server/entities.c',

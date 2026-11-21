@@ -3503,8 +3503,13 @@ static void SCR_Draw2D(void)
     JPath_Draw2D();     // the jump mod's marks in the world: the kill rays' weapon icons, at the hud's scale
 
     // the layout - a menu, the scoreboard - over the ghud and the marks,
-    // not under the tooltips and names the jump mod puts there
-    SCR_DrawLayout();
+    // not under the tooltips and names the jump mod puts there; or the
+    // stats board, where the server sends the channel, in its place
+    if (CL_WS_BoardOpen())
+        CL_WS_DrawBoard(scr.hud_x, scr.hud_y, scr.hud_width, scr.hud_height,
+                        scr.hud_scale, scr.font_pic);
+    else
+        SCR_DrawLayout();
 
     // gotta redo the colors because the ghud messes with them, sadly.
     R_ClearColor();

@@ -42,6 +42,8 @@ typedef struct {
 	int      base[WS_NW][WS_NF];
 	int      sent[WS_NW][WS_NF];
 	unsigned changed;               // bit per weapon, since the last wlive
+	int      ps[5];                 // pstats as last sent: score k d dmg ping
+	int      ping_at;               // realFramenum the ping was last sent
 } ws_sid_t;
 
 typedef struct {
@@ -70,6 +72,7 @@ static struct {
 	qboolean     going;             // a round is being counted
 	qboolean     map_ended;
 	int          live_at;           // realFramenum of the last wlive
+	int          team_sent[TEAM_TOP][2];    // wteam as last sent: score, name hash
 } ws;
 
 // Non-NULL on an engine that keeps svc_userstatistic out of the MVD but
@@ -328,6 +331,73 @@ static void ws_line_hist(const ws_hist_t *h)
 }
 
 /* ------------------------------------------------------------------ */
+/* the scoreboard: pstats (per player) and wteam                        */
+
+#define WS_PING_FRAMES  (5 * (HZ > 0 ? HZ : 10))
+
+static const char *const ws_pkey[5] = { "score", "k", "d", "dmg", "ping" };
+
+static void ws_line_pstats(int p)
+{
+	const int *v = ws.sids[p].ps;
+
+	ws_line("pstats p=%d %s=%d %s=%d %s=%d %s=%d %s=%d", p,
+		ws_pkey[0], v[0], ws_pkey[1], v[1], ws_pkey[2], v[2], ws_pkey[3], v[3], ws_pkey[4], v[4]);
+}
+
+// Refresh a connected player's scoreboard numbers; true when they changed
+// (the ping only counts every few seconds, or it would be every line).
+static qboolean ws_pstats_update(int p, qboolean force)
+{
+	ws_sid_t *s = &ws.sids[p];
+	edict_t *ent;
+	int v[5];
+	qboolean changed;
+
+	if (s->slot < 0)
+		return force;
+	ent = g_edicts + 1 + s->slot;
+	if (!ent->inuse || !ent->client)
+		return force;
+	v[0] = ent->client->resp.score;
+	v[1] = ent->client->resp.kills;
+	v[2] = ent->client->resp.deaths;
+	v[3] = ent->client->resp.damage_dealt;
+	v[4] = ent->client->ping;
+	changed = memcmp(v, s->ps, 4 * sizeof(int)) != 0;
+	if (v[4] != s->ps[4] && level.realFramenum - s->ping_at >= WS_PING_FRAMES)
+		changed = true;
+	if (changed || force) {
+		memcpy(s->ps, v, sizeof(v));
+		s->ping_at = level.realFramenum;
+	}
+	return changed || force;
+}
+
+static unsigned ws_hash(const char *s)
+{
+	unsigned h = 5381;
+
+	while (*s)
+		h = h * 33 + (unsigned char)*s++;
+	return h;
+}
+
+static void ws_line_wteam(int t)
+{
+	char name[56];
+
+	ws_quote(name, sizeof(name), teams[t].name);
+	ws_line("wteam t=%d name=\"%s\" score=%d icon=%s", t, name, teams[t].score,
+		teams[t].skin_index[0] ? teams[t].skin_index : "-");
+}
+
+static int ws_teams(void)
+{
+	return teamplay->value ? (teamCount < TEAM_TOP - 1 ? teamCount : TEAM_TOP - 1) : 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* stats ids                                                          */
 
 static int ws_find(const char *token, const char *steamid, const char *ip, const char *name)
@@ -376,10 +446,20 @@ static void ws_snapshot(edict_t *ent)
 	for (p = 1; p <= ws.nsids; p++)
 		ws_line_sidmap(p);
 	for (p = 1; p <= ws.nsids; p++) {
+		ws_pstats_update(p, true);
+		ws_line_pstats(p);
+	}
+	for (w = 1; w <= ws_teams(); w++)
+		ws_line_wteam(w);
+	// The map's totals of the rounds that are over: a round being played
+	// comes as wlive on top (to a spectator), and goes into these at its end
+	for (p = 1; p <= ws.nsids; p++) {
 		for (w = 1; w < WS_NW; w++) {
-			if (!ws_any(ws.sids[p].tot[w]))
+			const int *m = ws.going ? ws.sids[p].base[w] : ws.sids[p].tot[w];
+
+			if (!ws_any(m))
 				continue;
-			ws_fields(fields, sizeof(fields), ws.sids[p].tot[w]);
+			ws_fields(fields, sizeof(fields), m);
 			ws_line("wstats p=%d scope=map w=%d%s", p, w, fields);
 		}
 	}
@@ -653,6 +733,14 @@ void WS_RoundEnd(void)
 	ws_begin(WS_TO_ALL, NULL);
 	for (i = first; i < ws.nhist; i++)
 		ws_line_hist(&ws.hist[i]);
+	// and the map's totals of whoever played it, which now include it
+	for (i = first; i < ws.nhist; i++) {
+		char fields[256];
+		const ws_hist_t *h = &ws.hist[i];
+
+		ws_fields(fields, sizeof(fields), ws.sids[h->p].tot[h->w]);
+		ws_line("wstats p=%d scope=map w=%d%s", h->p, h->w, fields);
+	}
 	ws_line("wround r=%d state=end f=%d", ws.round, level.framenum);
 	ws_flush();
 }
@@ -735,6 +823,19 @@ static void ws_sidmap_changes(void)
 		Q_strncpyz(s->sent_name, s->name, sizeof(s->sent_name));
 		s->sent_team = ent->client->resp.team;
 		ws_line_sidmap(p);
+	}
+	for (p = 1; p <= ws.nsids; p++) {
+		if (ws.sids[p].slot >= 0 && ws_pstats_update(p, false))
+			ws_line_pstats(p);
+	}
+	for (p = 1; p <= ws_teams(); p++) {
+		int sc = teams[p].score, nh = (int)(ws_hash(teams[p].name) ^ ws_hash(teams[p].skin_index) * 31);
+
+		if (ws.team_sent[p][0] == sc && ws.team_sent[p][1] == nh)
+			continue;
+		ws.team_sent[p][0] = sc;
+		ws.team_sent[p][1] = nh;
+		ws_line_wteam(p);
 	}
 	ws_flush();
 }
