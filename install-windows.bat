@@ -11,6 +11,7 @@ rem and its game library, which are left alone - q2prox.exe looks for
 rem gamex86_64x.dll before the stock gamex86_64.dll:
 rem   <aqtion-dir>\action\gamex86_64x.dll
 rem   <aqtion-dir>\q2prox.exe
+rem   <aqtion-dir>\q2prodedx.exe  (the dedicated server, when the build staged it)
 rem   <aqtion-dir>\action\fonts\*  (when the build staged a fonts folder)
 rem   <aqtion-dir>\action\pics\*   (likewise pics)
 
@@ -57,6 +58,13 @@ if not errorlevel 1 (
     echo ERROR: q2prox.exe is running - close the game first.
     exit /b 1
 )
+if exist "%SRC%\q2prodedx.exe" (
+    tasklist /fi "imagename eq q2prodedx.exe" 2>nul | find /i "q2prodedx.exe" >nul
+    if not errorlevel 1 (
+        echo ERROR: q2prodedx.exe is running - stop the server first.
+        exit /b 1
+    )
+)
 
 echo Installing into %DEST%
 
@@ -73,6 +81,17 @@ if errorlevel 1 (
     exit /b 1
 )
 echo   %EXE%  ^-^>  %DEST%\q2prox.exe
+
+rem The dedicated server, beside the stock q2proded.exe like the client:
+rem it loads gamex86_64x.dll first too
+if exist "%SRC%\q2prodedx.exe" (
+    copy /y "%SRC%\q2prodedx.exe" "%DEST%\q2prodedx.exe" >nul
+    if errorlevel 1 (
+        echo ERROR: failed to copy q2prodedx.exe
+        exit /b 1
+    )
+    echo   %SRC%\q2prodedx.exe  ^-^>  %DEST%\q2prodedx.exe
+)
 
 rem The TrueType text's fonts, if the build staged them
 if exist "%SRC%\fonts\" (

@@ -4,7 +4,7 @@
 #   ./build-windows.sh [share-dir]
 #
 # Builds build-windows/ (configuring it first if needed), then copies
-# gamex86_64x.dll, q2prox.exe, install-windows.bat, fonts/ and pics/ to the share
+# gamex86_64x.dll, q2prox.exe, q2prodedx.exe, install-windows.bat, fonts/ and pics/ to the share
 # dir, which is /home/antti/share by default. Run install-windows.bat from
 # there inside Windows to drop the files into the Steam AQtion install.
 #
@@ -52,6 +52,9 @@ fi
 # gamex86_64x.dll first - so nothing of the stock install is overwritten.
 cp -f "$BUILDDIR/gamex86_64.dll" "$SHAREDIR/gamex86_64x.dll"
 cp -f "$BUILDDIR/q2pro.exe"      "$SHAREDIR/q2prox.exe"
+# and the dedicated server the same way, beside the stock q2proded.exe: an
+# engine with the stats channel, which the stock one is not
+cp -f "$BUILDDIR/q2proded.exe"   "$SHAREDIR/q2prodedx.exe"
 cp -f "$SRCDIR/install-windows.bat" "$SHAREDIR/install-windows.bat"
 # The TrueType text reads its fonts from action/fonts; without them every
 # *_font cvar quietly falls back to conchars
