@@ -1600,6 +1600,9 @@ static void S3_Free(menuFrameWork_t *self)
             S3_PageFree(&m_s3.pages[i]);
     Z_Free(m_s3.menu.items);
     memset(&m_s3, 0, sizeof(m_s3));
+    // registered with the menu (M_Menu_S3Demos): a UI restart - vid_restart
+    // force - builds it again, and the command with it
+    Cmd_Deregister(c_s3);
 }
 
 void M_Menu_S3Demos(void)
