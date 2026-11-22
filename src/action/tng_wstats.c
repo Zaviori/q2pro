@@ -38,6 +38,7 @@ typedef struct {
 	char     token[20];
 	char     sent_name[16];         // as last put in a sidmap line
 	int      sent_team;
+	int      sent_sub;              // a substitute (matchmode's resp.subteam), as last sent
 	int      tot[WS_NW][WS_NF];
 	int      base[WS_NW][WS_NF];
 	int      sent[WS_NW][WS_NF];
@@ -306,7 +307,8 @@ static void ws_line_sidmap(int p)
 		return;
 	}
 	ws_quote(name, sizeof(name), s->name);
-	ws_line("sidmap p=%d c=%d name=\"%s\" team=%d", p, s->slot, name, s->sent_team);
+	ws_line("sidmap p=%d c=%d name=\"%s\" team=%d%s", p, s->slot, name, s->sent_team,
+		s->sent_sub ? " sub=1" : "");
 }
 
 static void ws_round_values(const ws_sid_t *s, int w, int *v)
@@ -557,6 +559,7 @@ void WS_ClientBegin(edict_t *ent)
 			Q_strncpyz(s->ip, ent->client->pers.ip, sizeof(s->ip));
 			Q_strncpyz(s->sent_name, s->name, sizeof(s->sent_name));
 			s->sent_team = ent->client->resp.team;
+			s->sent_sub = ent->client->resp.subteam != 0;
 			c->sid = p;
 			if (ws_on()) {
 				ws_begin(WS_TO_ALL, NULL);
@@ -839,11 +842,13 @@ static void ws_sidmap_changes(void)
 		ent = g_edicts + 1 + s->slot;
 		if (!ent->inuse || !ent->client)
 			continue;
-		if (!strcmp(s->sent_name, ent->client->pers.netname) && s->sent_team == ent->client->resp.team)
+		if (!strcmp(s->sent_name, ent->client->pers.netname) && s->sent_team == ent->client->resp.team &&
+		    s->sent_sub == (ent->client->resp.subteam != 0))
 			continue;
 		Q_strncpyz(s->name, ent->client->pers.netname, sizeof(s->name));
 		Q_strncpyz(s->sent_name, s->name, sizeof(s->sent_name));
 		s->sent_team = ent->client->resp.team;
+		s->sent_sub = ent->client->resp.subteam != 0;
 		ws_line_sidmap(p);
 	}
 	for (p = 1; p <= ws.nsids; p++) {
