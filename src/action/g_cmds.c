@@ -1511,6 +1511,7 @@ void Cmd_Say_f (edict_t * ent, qboolean team, qboolean arg0, qboolean partner_ms
 		}
 
 		gi.cprintf(other, PRINT_CHAT, "%s", text);
+		WS_ChatTo(other, ent, team, text + offset_of_text);
 
 		if( show_info )
 			gi.cprintf( other, PRINT_CHAT, "console: AQ2:TNG %s (%i fps)\n", VERSION, game.framerate );

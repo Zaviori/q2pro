@@ -2883,6 +2883,8 @@ static void CL_InitLocal(void)
     // per-weapon stats channel (doc/weapon-stats.md): the feed version we
     // take, and the stats id token the server gave us for this map
     Cvar_Get("aq2feed", "1", CVAR_USERINFO);
+    // and the event lines (kills, the match's state, chat...): opt-in
+    Cvar_Get("aq2events", "0", CVAR_USERINFO);
     Cvar_Get("aq2sid", "", CVAR_USERINFO | CVAR_NOARCHIVE);
     cl_stats_echo = Cvar_Get("cl_stats_echo", "0", 0);
     #if USE_CLIENT && USE_AQTION

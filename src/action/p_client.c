@@ -1856,6 +1856,7 @@ void player_die(edict_t *self, edict_t *inflictor, edict_t *attacker, int damage
 		LookAtKiller(self, inflictor, attacker);
 		self->client->ps.pmove.pm_type = PM_DEAD;
 		ClientObituary(self, inflictor, attacker);
+		WS_Death(self, attacker);
 		if (ctf->value)
 			CTFFragBonuses(self, inflictor, attacker);
 

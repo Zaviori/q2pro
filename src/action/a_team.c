@@ -2463,6 +2463,7 @@ static void StartLCA(void)
 		lights_camera_action = 43;	// TempFile changed from 41
 	}
 	SpawnPlayers();
+	WS_RoundSpawns();
 
 	if (esp->value) {
 		#ifndef NO_BOTS
@@ -2687,6 +2688,7 @@ static qboolean CheckRoundTimeLimit( void )
 			int winTeam = NOTEAM;
 
 			gi.bprintf( PRINT_HIGH, "Round timelimit hit.\n" );
+			WS_RoundEndReason("time");
 			IRC_printf( IRC_T_GAME, "Round timelimit hit." );
 
 			winTeam = CheckForForcedWinner();
@@ -2772,7 +2774,7 @@ int WonGame (int winner)
 	int i;
 	char arg[64];
 
-	WS_RoundEnd();
+	WS_RoundEnd(winner);
 	gi.bprintf (PRINT_HIGH, "The round is over:\n");
 	IRC_printf (IRC_T_GAME, "The round is over:");
 	if (winner == WINNER_TIE)
