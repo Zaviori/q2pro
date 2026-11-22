@@ -435,8 +435,10 @@ before; `cmd score` opens the server's board on any server.
   weapons: no knife slash, kick, punch or grenade), damage, K/D, ping and
   **WEAPONS** - the three weapons they got most kills with, as a count and
   the kill feed's icon. Who left stays, greyed; a team's captain has a
-  **C** after the name, and in matchmode a team that is not ready says
-  **NOT READY** under its name.
+  **C** after the name, a team's subs come after its players under
+  **SUBS**, greyed, and in matchmode a team that is not ready says
+  **NOT READY** under its name. Spectators are listed on a line under the
+  teams.
 - Who is alive is in the server board's green - where the server's own
   boards show it: to the dead and spectators, or between rounds, and to
   nobody on a server with `limchasecam`.
