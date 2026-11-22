@@ -45,6 +45,7 @@ typedef struct {
     int     slot;               // client number, -1 when gone
     char    name[32];
     int     team;
+    bool    sub;                // a substitute for the team (matchmode)
     bool    have_ps;
     int     score, kills, deaths, dmg, ping;
     bool    alive;
@@ -312,6 +313,7 @@ void CL_WS_ParseLine(const char *line)
         if (wsc_get(&l, "name"))
             Q_strlcpy(p->name, wsc_get(&l, "name"), sizeof(p->name));
         p->team = wsc_int(&l, "team", p->team);
+        p->sub = wsc_int(&l, "sub", 0) != 0;
         return;
     }
 
@@ -473,6 +475,8 @@ static int wsc_cmp(const void *a, const void *b)
     const wsc_player_t *pa = &wsc.p[*(const int *)a];
     const wsc_player_t *pb = &wsc.p[*(const int *)b];
 
+    if (pa->sub != pb->sub)
+        return pa->sub ? 1 : -1;            // the subs after the players
     if ((pa->slot < 0) != (pb->slot < 0))
         return pa->slot < 0 ? 1 : -1;       // who left goes last
     if (pa->score != pb->score)
@@ -1093,6 +1097,7 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     int shots, hits;
 
     uint32_t bg = selected ? MakeColor(60, 60, 140, 200) :
+                  p->sub ? MakeColor(110, 110, 110, alt ? 40 : 26) :    // greyed: not in play
                   wsc_team_color(p->team, alt ? 60 : 40);
     R_DrawFill32(x, y, w, wsc_rh, bg);
     if (pi == wsc.me && !selected)
@@ -1117,7 +1122,7 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
                num[1], num[2], num[3], acc, num[4], kd, num[5]);
     // who is alive in the green the server's own scoreboard has for them,
     // where the server says we may know (dead, spectating, between rounds)
-    uint32_t color = gone && !selected ? MakeColor(150, 150, 150, 255) :
+    uint32_t color = (gone || p->sub) && !selected ? MakeColor(150, 150, 150, 255) :
                      wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
     wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
     int name_end;
@@ -1173,6 +1178,11 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     for (int t = 1; t <= nteams; t++) {
         int n = wsc_team_list(t, list);
         h += wsc_rh + 3 + wsc_rh + n * wsc_rh + CH / 2;
+        for (int i = 0; i < n; i++)
+            if (wsc.p[list[i]].sub) {
+                h += wsc_rh + 2;        // the SUBS heading
+                break;
+            }
         for (int i = 0; i < n; i++) {
             if (list[i] == wsc.expanded) {
                 int v[WSC_NF], rows = 0;
@@ -1216,6 +1226,15 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
         y += wsc_rh;
 
         for (int i = 0; i < n && y + wsc_rh <= bottom; i++) {
+            // the subs lined off from the players in play, under a heading
+            if (wsc.p[list[i]].sub && (!i || !wsc.p[list[i - 1]].sub)) {
+                if (y + wsc_rh * 2 + 2 > bottom)
+                    break;
+                R_DrawFill32(x, y, w, 1, MakeColor(120, 120, 120, 160));
+                y += 2;
+                wsc_text(x + CW, y, AL_LEFT, false, MakeColor(150, 150, 150, 220), "SUBS");
+                y += wsc_rh;
+            }
             y = wsc_draw_row(x, y, w, i + 1, list[i], i & 1);
             if (list[i] == wsc.expanded)
                 y = wsc_draw_weapons(x, y, w, bottom, list[i]);

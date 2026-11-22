@@ -81,7 +81,7 @@ Who is where is its own event, sent on every join, reconnect, slot,
 name and team change, and in the subscribe snapshot:
 
 ```
-sidmap p=3 c=6 name="FuBaR:RewinD" team=2
+sidmap p=3 c=6 name="FuBaR:RewinD" team=2 sub=1   ; sub: a substitute (matchmode), left out otherwise
 sidmap p=3 c=-1                            ; left
 ```
 
