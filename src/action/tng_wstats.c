@@ -46,6 +46,7 @@ typedef struct {
 	int      ps[5];                 // pstats as last sent: score k d dmg ping
 	int      ping_at;               // realFramenum the ping was last sent
 	int      alive;                 // as last sent in an alive line: 0, 1
+	int      held;                  // the weapon in hand as last sent (curr_weap)
 } ws_sid_t;
 
 typedef struct {
@@ -63,6 +64,7 @@ typedef struct {
 	int      req_next;              // its next record; -1 none
 	int      req_lines;
 	qboolean deadview;              // may see who is alive: has the list
+	qboolean events;                // takes the event lines too (userinfo aq2events)
 } ws_client_t;
 
 static struct {
@@ -76,6 +78,9 @@ static struct {
 	qboolean     map_ended;
 	int          live_at;           // realFramenum of the last wlive
 	int          team_sent[TEAM_TOP][4];    // wteam as last sent: score, name hash, ready, captain
+	qboolean     paused;            // the match paused or in a timeout, as last told
+	const char   *end_reason;       // why the round ending now ended: WS_RoundEndReason
+	short        dmg_on[MAX_CLIENTS][MAX_CLIENTS];  // damage on a victim (row) by each attacker, this life
 } ws;
 
 // Non-NULL on an engine that keeps svc_userstatistic out of the MVD but
@@ -87,6 +92,7 @@ void *engine_Stats_Channel;
 static cvar_t *wstats;              // 0: count, send nothing
 static cvar_t *wstats_mvd;          // 0: keep the stats out of the MVD
 static cvar_t *wstats_live_ms;      // wlive interval, 0 = off
+static cvar_t *wstats_events;       // 0: no event lines to anybody
 
 /* ------------------------------------------------------------------ */
 
@@ -185,6 +191,8 @@ static void ws_token(char *out, size_t size, int sid)
 #define WS_TO_WATCHERS  1   // spectators and the dummy: live data
 #define WS_TO_ONE       2
 #define WS_TO_DEADVIEW  3   // who may see who is alive, the dummy included
+#define WS_TO_EVENTS    4   // the event subscribers, the dummy included
+#define WS_TO_EVENTS_WATCH 5    // those of them who watch: spectators and the dummy
 
 static char ws_buf[8192];
 static int  ws_len;
@@ -236,6 +244,10 @@ static void ws_flush(void)
 			if (ws_mode == WS_TO_WATCHERS && !ws_watcher(ent))
 				continue;
 			if (ws_mode == WS_TO_DEADVIEW && !ws.cl[i].deadview)
+				continue;
+			if ((ws_mode == WS_TO_EVENTS || ws_mode == WS_TO_EVENTS_WATCH) && !ws.cl[i].events)
+				continue;
+			if (ws_mode == WS_TO_EVENTS_WATCH && !ws_watcher(ent))
 				continue;
 			ws_write(ent);
 		}
@@ -520,6 +532,10 @@ static void ws_subscribe(edict_t *ent)
 	} else if (!wants) {
 		ws.cl[slot].sub = false;
 	}
+	// the events, a subscription of their own (aq2events): the demo has
+	// them where the server allows them at all
+	ws.cl[slot].events = ws.cl[slot].sub && wstats_events->value &&
+		(ws_is_dummy(ent) || atoi(Info_ValueForKey(ent->client->pers.userinfo, "aq2events")) >= 1);
 }
 
 void WS_ClientBegin(edict_t *ent)
@@ -565,6 +581,9 @@ void WS_ClientBegin(edict_t *ent)
 				ws_begin(WS_TO_ALL, NULL);
 				ws_line_sidmap(p);
 				ws_flush();
+				ws_begin(WS_TO_EVENTS, NULL);
+				ws_line("player p=%d state=join c=%d f=%d", p, slot, level.framenum);
+				ws_flush();
 			}
 		}
 	}
@@ -588,9 +607,12 @@ void WS_ClientDisconnect(edict_t *ent)
 	if (c->sid) {
 		ws.sids[c->sid].slot = -1;
 		if (ws_on()) {
-			c->sub = false;     // not to the one leaving
+			c->sub = c->events = false;     // not to the one leaving
 			ws_begin(WS_TO_ALL, NULL);
 			ws_line_sidmap(c->sid);
+			ws_flush();
+			ws_begin(WS_TO_EVENTS, NULL);
+			ws_line("player p=%d state=leave f=%d", c->sid, level.framenum);
 			ws_flush();
 		}
 	}
@@ -616,6 +638,13 @@ static void ws_add(edict_t *ent, int mod, int f, int n)
 void WS_Shot(edict_t *ent, int mod)
 {
 	ws_add(ent, mod, F_SHOTS, 1);
+	// a knife or a grenade let go of: an event, for those watching
+	if ((mod == MOD_KNIFE_THROWN || mod == MOD_HG_SPLASH) && ws_on() && ws_sid_of(ent)) {
+		ws_begin(WS_TO_EVENTS_WATCH, NULL);
+		ws_line("throw p=%d kind=%s f=%d", (int)(ws_sid_of(ent) - ws.sids),
+			mod == MOD_KNIFE_THROWN ? "knife" : "grenade", level.framenum);
+		ws_flush();
+	}
 }
 
 void WS_Hit(edict_t *ent, int mod, int loc)
@@ -627,9 +656,14 @@ void WS_Hit(edict_t *ent, int mod, int loc)
 		ws_add(ent, mod, F_HEAD + (loc - LOC_HDAM), 1);
 }
 
-void WS_Damage(edict_t *ent, int mod, int damage)
+void WS_Damage(edict_t *ent, edict_t *targ, int mod, int damage)
 {
+	int a = ws_slot(ent), v = targ ? ws_slot(targ) : -1;
+
 	ws_add(ent, mod, F_DMG, damage);
+	// what this attacker has done to this victim, for the kill line
+	if (a >= 0 && v >= 0 && ws.dmg_on[v][a] < 30000)
+		ws.dmg_on[v][a] += damage;
 }
 
 void WS_Kill(edict_t *ent, int mod)
@@ -645,6 +679,7 @@ void WS_Init(void)
 	wstats = gi.cvar("wstats", "1", 0);
 	wstats_mvd = gi.cvar("wstats_mvd", "1", 0);
 	wstats_live_ms = gi.cvar("wstats_live_ms", "1000", 0);
+	wstats_events = gi.cvar("wstats_events", "1", 0);
 }
 
 static void ws_clear_counts(void)
@@ -709,7 +744,13 @@ void WS_RoundStart(void)
 		ws_begin(WS_TO_ALL, NULL);
 		ws_line("wround r=%d state=start f=%d", ws.round, level.framenum);
 		ws_flush();
+		if (ws.round == 1) {
+			ws_begin(WS_TO_EVENTS, NULL);
+			ws_line("match state=start f=%d", level.framenum);
+			ws_flush();
+		}
 	}
+	memset(ws.dmg_on, 0, sizeof(ws.dmg_on));
 }
 
 static void ws_hist_add(int p, int r, int w, const int *v)
@@ -736,11 +777,20 @@ static void ws_hist_add(int p, int r, int w, const int *v)
 	memcpy(h->v, v, sizeof(h->v));
 }
 
-void WS_RoundEnd(void)
+// the round ending next ended for this (the round time limit says so
+// before it calls WonGame); an elimination otherwise
+void WS_RoundEndReason(const char *reason)
+{
+	ws.end_reason = reason;
+}
+
+void WS_RoundEnd(int winner)
 {
 	int p, w, first = ws.nhist, i;
 	int v[WS_NF];
+	const char *reason = ws.end_reason ? ws.end_reason : "eliminated";
 
+	ws.end_reason = NULL;
 	if (!teamplay->value || !ws.going || !ws.round)
 		return;
 	ws.going = false;
@@ -766,7 +816,9 @@ void WS_RoundEnd(void)
 		ws_fields(fields, sizeof(fields), ws.sids[h->p].tot[h->w]);
 		ws_line("wstats p=%d scope=map w=%d%s", h->p, h->w, fields);
 	}
-	ws_line("wround r=%d state=end f=%d", ws.round, level.framenum);
+	// the winner (0 a tie or none) and why
+	ws_line("wround r=%d state=end f=%d winner=%d reason=%s", ws.round, level.framenum,
+		winner > NOTEAM && winner < TEAM_TOP ? winner : 0, reason);
 	ws_flush();
 }
 
@@ -777,7 +829,8 @@ void WS_MapEnd(void)
 
 	if (ws.map_ended)
 		return;
-	WS_RoundEnd();
+	WS_RoundEndReason("mapend");
+	WS_RoundEnd(0);
 	ws.map_ended = true;
 	if (!ws_on())
 		return;
@@ -791,6 +844,9 @@ void WS_MapEnd(void)
 		}
 	}
 	ws_line("wscope map=%s r=%d state=end", level.mapname, ws.round);
+	ws_flush();
+	ws_begin(WS_TO_EVENTS, NULL);
+	ws_line("match state=over r=%d f=%d", ws.round, level.framenum);
 	ws_flush();
 }
 
@@ -828,10 +884,27 @@ static void ws_live(void)
 	ws_flush();
 }
 
+// player events found by the tick, sent after its own lines: to the
+// event subscribers, a batch of their own
+static char ws_ev[32][96];
+static int ws_nev;
+
+static void ws_ev_add(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (ws_nev >= (int)q_countof(ws_ev))
+		return;
+	va_start(ap, fmt);
+	Q_vsnprintf(ws_ev[ws_nev++], sizeof(ws_ev[0]), fmt, ap);
+	va_end(ap);
+}
+
 static void ws_sidmap_changes(void)
 {
 	int p;
 
+	ws_nev = 0;
 	ws_begin(WS_TO_ALL, NULL);
 	for (p = 1; p <= ws.nsids; p++) {
 		ws_sid_t *s = &ws.sids[p];
@@ -845,6 +918,11 @@ static void ws_sidmap_changes(void)
 		if (!strcmp(s->sent_name, ent->client->pers.netname) && s->sent_team == ent->client->resp.team &&
 		    s->sent_sub == (ent->client->resp.subteam != 0))
 			continue;
+		if (s->sent_team != ent->client->resp.team)
+			ws_ev_add("player p=%d state=team team=%d f=%d", p, ent->client->resp.team, level.framenum);
+		if (s->sent_sub != (ent->client->resp.subteam != 0))
+			ws_ev_add("player p=%d state=%s team=%d f=%d", p,
+				ent->client->resp.subteam ? "sub" : "unsub", ent->client->resp.team, level.framenum);
 		Q_strncpyz(s->name, ent->client->pers.netname, sizeof(s->name));
 		Q_strncpyz(s->sent_name, s->name, sizeof(s->sent_name));
 		s->sent_team = ent->client->resp.team;
@@ -865,6 +943,10 @@ static void ws_sidmap_changes(void)
 		if (ws.team_sent[p][0] == sc && ws.team_sent[p][1] == nh && ws.team_sent[p][2] == rd &&
 		    ws.team_sent[p][3] == cp)
 			continue;
+		if (cp && ws.team_sent[p][3] != cp)
+			ws_ev_add("player p=%d state=captain team=%d f=%d", cp, p, level.framenum);
+		if (rd >= 0 && ws.team_sent[p][2] != rd && ws.team_sent[p][2] >= 0)
+			ws_ev_add("team t=%d state=%s f=%d", p, rd ? "ready" : "unready", level.framenum);
 		ws.team_sent[p][0] = sc;
 		ws.team_sent[p][1] = nh;
 		ws.team_sent[p][2] = rd;
@@ -872,6 +954,13 @@ static void ws_sidmap_changes(void)
 		ws_line_wteam(p);
 	}
 	ws_flush();
+
+	if (ws_nev) {
+		ws_begin(WS_TO_EVENTS, NULL);
+		for (p = 0; p < ws_nev; p++)
+			ws_line("%s", ws_ev[p]);
+		ws_flush();
+	}
 }
 
 static qboolean ws_req_match(const ws_client_t *c, const ws_hist_t *h)
@@ -986,6 +1075,147 @@ static void ws_alive_frame(void)
 	ws_flush();
 }
 
+/*
+ * Events (aq2events): what happened, as it happened. Kills, deaths and
+ * the match's state to every event subscriber; spawns, weapons in hand
+ * and throws, which would give a position or a loadout away, only to the
+ * watchers - spectators and the demo; chat to whoever the server prints
+ * it to.
+ */
+
+static const char *ws_loc_name(int loc)
+{
+	switch (loc) {
+	case LOC_HDAM:        return "head";
+	case LOC_CDAM:        return "chest";
+	case LOC_SDAM:        return "stomach";
+	case LOC_LDAM:        return "legs";
+	case LOC_KVLR_HELMET: return "helmet";
+	case LOC_KVLR_VEST:   return "vest";
+	default:              return "none";
+	}
+}
+
+// the alive counts of the teams, "a1=4 a2=3", the dying one not among them
+static void ws_alive_counts(const edict_t *dying, char *out, size_t size)
+{
+	int alive[TEAM_TOP] = { 0 }, t, i;
+	size_t len = 0;
+
+	for (i = 0; i < game.maxclients; i++) {
+		const edict_t *e = g_edicts + 1 + i;
+		if (e == dying || !e->inuse || !e->client || !IS_ALIVE(e))
+			continue;
+		t = e->client->resp.team;
+		if (t > NOTEAM && t < TEAM_TOP)
+			alive[t]++;
+	}
+	out[0] = 0;
+	for (t = TEAM1; t <= ws_teams() && len < size; t++)
+		len += Q_snprintf(out + len, size - len, " a%d=%d", t, alive[t]);
+}
+
+// player_die, after the obituary: meansOfDeath and locOfDeath are this death's
+void WS_Death(edict_t *self, edict_t *attacker)
+{
+	ws_sid_t *v = ws_sid_of(self);
+	int mod = meansOfDeath & ~MOD_FRIENDLY_FIRE, vs = ws_slot(self);
+	char alive[48];
+
+	if (!ws_on() || !v)
+		return;
+	ws_alive_counts(self, alive, sizeof(alive));
+	ws_begin(WS_TO_EVENTS, NULL);
+	if (attacker && attacker != self && attacker->client && ws_sid_of(attacker)) {
+		int as = ws_slot(attacker);
+		ws_line("kill a=%d v=%d w=%d loc=%s hs=%d dist=%d dmg=%d%s f=%d%s",
+			(int)(ws_sid_of(attacker) - ws.sids), (int)(v - ws.sids), ws_weapon(mod),
+			ws_loc_name(locOfDeath), locOfDeath == LOC_HDAM || locOfDeath == LOC_KVLR_HELMET,
+			(int)Distance(attacker->s.origin, self->s.origin),
+			as >= 0 && vs >= 0 ? ws.dmg_on[vs][as] : 0,
+			(meansOfDeath & MOD_FRIENDLY_FIRE) ? " ff=1" : "", level.framenum, alive);
+	} else {
+		const char *why =
+			mod == MOD_FALLING ? "fall" : mod == MOD_WATER ? "drown" :
+			mod == MOD_SLIME || mod == MOD_LAVA ? "lava" : mod == MOD_CRUSH ? "crush" :
+			mod == MOD_TELEFRAG ? "telefrag" : attacker == self ? "suicide" : "world";
+		ws_line("death v=%d reason=%s f=%d%s", (int)(v - ws.sids), why, level.framenum, alive);
+	}
+	ws_flush();
+	if (vs >= 0)
+		memset(ws.dmg_on[vs], 0, sizeof(ws.dmg_on[vs]));
+}
+
+// StartLCA, the players just spawned: where each stands at LIGHTS
+void WS_RoundSpawns(void)
+{
+	int i;
+
+	if (!ws_on())
+		return;
+	ws_begin(WS_TO_EVENTS_WATCH, NULL);
+	for (i = 0; i < game.maxclients; i++) {
+		edict_t *e = g_edicts + 1 + i;
+		ws_sid_t *s = ws_sid_of(e);
+		if (!s || !e->inuse || !e->client || e->client->resp.team == NOTEAM || !IS_ALIVE(e))
+			continue;
+		ws_line("spawn p=%d r=%d x=%d y=%d z=%d f=%d", (int)(s - ws.sids), ws.round + 1,
+			(int)e->s.origin[0], (int)e->s.origin[1], (int)e->s.origin[2], level.framenum);
+	}
+	ws_flush();
+}
+
+// Cmd_Say_f, as the server prints the message to `to`: the same line to
+// the same recipient, if it takes the events
+void WS_ChatTo(edict_t *to, edict_t *from, qboolean team, const char *text)
+{
+	int slot = ws_slot(to);
+	ws_sid_t *s = ws_sid_of(from);
+	char quoted[300];
+	size_t len;
+
+	if (!ws_on() || slot < 0 || !ws.cl[slot].events || !s)
+		return;
+	ws_quote(quoted, sizeof(quoted), text);
+	len = strlen(quoted);
+	while (len && (quoted[len - 1] == '\n' || quoted[len - 1] == '\r'))
+		quoted[--len] = 0;
+	ws_begin(WS_TO_ONE, to);
+	ws_line("chat p=%d team=%d dead=%d text=\"%s\" f=%d", (int)(s - ws.sids), team ? 1 : 0,
+		teamplay->value && !IS_ALIVE(from), quoted, level.framenum);
+	ws_flush();
+}
+
+// every frame: weapons taken in hand, and the match paused or going on
+static void ws_events_frame(void)
+{
+	qboolean paused = level.pauseFrames > 0 || level.timeoutFrames > 0;
+	int p;
+
+	if (paused != ws.paused) {
+		ws.paused = paused;
+		ws_begin(WS_TO_EVENTS, NULL);
+		ws_line("match state=%s f=%d", paused ? "pause" : "resume", level.framenum);
+		ws_flush();
+	}
+
+	ws_begin(WS_TO_EVENTS_WATCH, NULL);
+	for (p = 1; p <= ws.nsids; p++) {
+		ws_sid_t *s = &ws.sids[p];
+		edict_t *e;
+		if (s->slot < 0)
+			continue;
+		e = g_edicts + 1 + s->slot;
+		if (!e->inuse || !e->client || e->client->resp.team == NOTEAM || !IS_ALIVE(e))
+			continue;
+		if (e->client->curr_weap == s->held)
+			continue;
+		s->held = e->client->curr_weap;
+		ws_line("hold p=%d w=%d f=%d", p, s->held, level.framenum);
+	}
+	ws_flush();
+}
+
 void WS_Frame(void)
 {
 	int i, ms = wstats_live_ms->value;
@@ -997,6 +1227,7 @@ void WS_Frame(void)
 		ws_sidmap_changes();
 
 	ws_alive_frame();
+	ws_events_frame();
 
 	if (ms > 0 && ws.going && (level.realFramenum - ws.live_at) * 1000 >= ms * (HZ > 0 ? HZ : 10)) {
 		ws.live_at = level.realFramenum;

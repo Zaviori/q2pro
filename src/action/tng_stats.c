@@ -140,7 +140,7 @@ void Stats_AddDamage( edict_t *attacker, edict_t *targ, int mod, int damage )
 		Stats_AddHit(attacker, mod, LOC_NO);
 	}
 	attacker->client->resp.gunstats[Stats_GunSlot(mod)].damage += damage;
-	WS_Damage(attacker, mod, damage);
+	WS_Damage(attacker, targ, mod, damage);
 }
 
 void Stats_AddHit( edict_t *ent, int gun, int hitPart )

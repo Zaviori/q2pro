@@ -175,6 +175,34 @@ wround r=4 state=end f=1902             ; after the round's wstats
 Without teamplay there are no rounds: the map is round 0, `wlive`
 runs all map, and only the `scope=map` keyframes come.
 
+## Events
+
+What happened, as it happened - an opt-in of its own: userinfo
+`aq2events 1` (0 by default) on top of the channel, and the dummy when
+`wstats_mvd` is on. `wstats_events 0` on the server sends none. About
+4 KB a round at 5v5; no per-hit lines and no round clock.
+
+```
+kill a=1 v=3 w=3 loc=head hs=1 dist=735 dmg=195 f=365 a1=2 a2=1   ; dmg: the killer's on the victim this life; ff=1 a team kill
+death v=4 reason=fall|drown|lava|crush|telefrag|suicide|world f=370 a1=2 a2=0
+match state=start|pause|resume|over f=284      ; start: the map's first round; pause: a pause or a timeout
+player p=6 state=join|leave|team|sub|unsub|captain [team=2] f=112
+team t=1 state=ready|unready f=…               ; matchmode
+spawn p=4 r=1 x=352 y=-32 z=106 f=241          ; at LIGHTS
+hold p=1 w=5 f=241                             ; the weapon taken in hand
+throw p=1 kind=knife|grenade f=…
+chat p=5 team=0|1 dead=0|1 text="…" f=363
+```
+
+`kill`, `death`, `match`, `player` and `team` go to every event
+subscriber; `spawn`, `hold` and `throw`, which give positions and
+loadouts away, only to spectators and the dummy; `chat` to whoever the
+server prints the message to (a team's chat to that team, the dead's to
+the dead), the same line as it goes. `a1=`/`a2=` are the teams' alive
+counts after the death. The round's end, in the channel itself, says who
+won and why: `wround r=17 state=end winner=1 reason=eliminated|time|mapend`
+(winner 0: a tie).
+
 ## Round history
 
 The module keeps every round's `wstats` for the scope, players who left
