@@ -1125,22 +1125,18 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     uint32_t color = (gone || p->sub) && !selected ? MakeColor(150, 150, 150, 255) :
                      wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
     wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
-    int name_end;
     {
-        const char *name = p->name[0] ? p->name : "(unnamed)";
+        // a team's captain wears an @ before the name, as on the server's board
+        bool captain = p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi;
+        char name[40];
+        Q_snprintf(name, sizeof(name), "%s%s", captain ? "@" : "", p->name[0] ? p->name : "(unnamed)");
         int len = (int)strlen(name), room = NAME_W * CW;
         while (len > 1 && wsc_measure(false, name, len) > room)
             len--;
         wsc_str(x + row_cols[ROW_NAME_COL].start * CW, y, AL_LEFT, false, color, name, len);
-        name_end = x + row_cols[ROW_NAME_COL].start * CW + wsc_measure(false, name, len);
     }
 
     wsc_draw_row_weapons(x, y, w, pi, color);
-
-    // the team's captain: a C after the name
-    if (p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi)
-        wsc_text(min(name_end + CW, x + (row_cols[ROW_NAME_COL].start + NAME_W) * CW), y,
-                 AL_LEFT, false, MakeColor(230, 230, 120, 255), "C");
 
     // the expand mark at the row's end
     wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
