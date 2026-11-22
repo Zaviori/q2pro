@@ -434,8 +434,8 @@ before; `cmd score` opens the server's board on any server.
   players, best score first: score, kills, deaths, accuracy (the aimed
   weapons: no knife slash, kick, punch or grenade), damage, K/D, ping and
   **WEAPONS** - the three weapons they got most kills with, as a count and
-  the kill feed's icon. Who left stays, greyed; a team's captain has a
-  **C** after the name, a team's subs come after its players under
+  the kill feed's icon. Who left stays, greyed; a team's captain has an
+  **@** before the name, as on the server's board, a team's subs come after its players under
   **SUBS**, greyed, and in matchmode a team that is not ready says
   **NOT READY** under its name. Spectators are listed on a line under the
   teams.
