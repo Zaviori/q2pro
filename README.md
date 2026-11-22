@@ -461,9 +461,10 @@ before; `cmd score` opens the server's board on any server.
 | `scr_statsboard_size` | 10 | its text size |
 | `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |
 | `cl_stats_echo` | 0 | 1 prints every line of the channel as `[stat] ...` |
+| `aq2events` | 0 | 1 asks for the event lines too (kills, the match's state, chat...): see `doc/weapon-stats.md` |
 
 On the server (`q2proded` and the game library of this release): `wstats`
-(1; 0 counts but sends nothing), `wstats_mvd` (1; the stats in recorded
+(1; 0 counts but sends nothing), `wstats_events` (1; 0 no event lines), `wstats_mvd` (1; the stats in recorded
 MVDs, which need `sv_mvd_enable 1`) and `wstats_live_ms` (1000; how often
 spectators get the round being played, 0 never). The format, and what an
 older client or engine does with a demo that has them, is
