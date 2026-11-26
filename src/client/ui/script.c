@@ -917,11 +917,24 @@ static void StatsboardMenu_Draw(menuFrameWork_t *self)
 
     Menu_Draw(self);
 
+    // the layout item's choice as it stands: the cvar takes it only when
+    // the menu closes (Pairs_Pop)
+    int style = Cvar_VariableInteger("scr_statsboard_style");
+    for (int i = 0; i < self->nitems; i++) {
+        menuSpinControl_t *sc = self->items[i];
+        if (sc->generic.type == MTYPE_PAIRS && sc->cvar &&
+            !strcmp(sc->cvar->name, "scr_statsboard_style") &&
+            sc->curvalue >= 0 && sc->curvalue < sc->numItems) {
+            style = Q_atoi(sc->itemvalues[sc->curvalue]);
+            break;
+        }
+    }
+
     focus = Menu_ItemAtCursor(self);
     if (focus && focus->name && strstr(focus->name, "on the list"))
         name = "list";
     else
-        name = layouts[Q_clip(Cvar_VariableInteger("scr_statsboard_style"), 0, 2)];
+        name = layouts[Q_clip(style, 0, 2)];
     pic = R_RegisterPic(va("statsboard/%s", name));
     if (!pic)
         return;
