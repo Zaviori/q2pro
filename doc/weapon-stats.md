@@ -292,12 +292,13 @@ its captions in green as the layout's headings, and the key hints under
 that table, only while it is open.
 
 - The board opens as the server's own looks, every time: no cursor bar
-  until an arrow is pressed (the first Up/Down shows it on your own row),
+  until a key is pressed (the first Enter or Up/Down shows it on your
+  own row),
   no weapon table and so no key hints until Enter.
 - **Up/Down** walks the players, **Left/Right** crosses to the other
   team's column at the same place in its list (its last when shorter).
-- **Enter** - once an arrow has shown the bar; before that it does
-  nothing - opens the selected player's weapons under the board - shots,
+- **Enter** - once the bar shows; the first press only shows it - opens
+  the selected player's weapons under the board - shots,
   hits, accuracy, headshots, kills, damage and the locations per weapon,
   each row opening with the weapon's kill-feed icon - with the key hints
   under it, and closes them again. While the table is open it follows

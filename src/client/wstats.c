@@ -675,9 +675,13 @@ bool CL_WS_KeyEvent(int key)
         return true;
     case K_ENTER:
     case K_KP_ENTER:
-        // nothing to open before the arrows have shown whose it would be
-        if (!wsc.cursor_shown)
+        // the first press only shows the bar - on you, where the cursor
+        // starts - so the next one opens whose it marks
+        if (!wsc.cursor_shown) {
+            wsc_fix_cursor();
+            wsc.cursor_shown = true;
             return true;
+        }
         wsc_fix_cursor();
         if (wsc.expanded == wsc.cursor) {
             wsc.expanded = 0;
