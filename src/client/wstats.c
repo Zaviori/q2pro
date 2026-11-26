@@ -1090,12 +1090,22 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
     for (int t = 1; t < WSC_MAX_TEAMS; t++)
         if (wsc.team_ready[t] >= 0)
             matchmode = true;
-    for (int w = 1; w < WSC_NW; w++)
+    // the weapons somebody on the list killed with, most kills in all on
+    // the left (a tie keeps the weapons' own order)
+    int wtot[WSC_NW] = { 0 };
+    for (int w = 1; w < WSC_NW; w++) {
         for (int i = 0; i < n; i++)
-            if (wsc_weapon_values(list[i], w, 0, v) && v[F_K]) {
-                wk[nw++] = w;
-                break;
-            }
+            if (wsc_weapon_values(list[i], w, 0, v))
+                wtot[w] += v[F_K];
+        if (wtot[w] > 0)
+            wk[nw++] = w;
+    }
+    for (int a = 1; a < nw; a++)        // a handful: insertion sort, stable
+        for (int b = a; b > 0 && wtot[wk[b]] > wtot[wk[b - 1]]; b--) {
+            int t = wk[b];
+            wk[b] = wk[b - 1];
+            wk[b - 1] = t;
+        }
 
     int chars = LS_CHARS + nw * 4;
     int ox = hud_x + hud_w / 2 - 160, oy = hud_y + hud_h / 2 - 120;

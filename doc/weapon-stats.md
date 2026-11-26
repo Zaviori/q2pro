@@ -289,7 +289,8 @@ default "FNMPIT" columns) at its places: Frags, Player, Time, Ping
 matchmode), everyone connected in the server's order. Added: **Acc**
 after Damage (the aimed weapons, as the weapon table's), and after Team
 the kills per weapon - a column for each weapon somebody on the list
-has killed with, its kill-feed icon standing on the column's bar. The
+has killed with, the most kills in all on the left (ties in the weapons'
+order), its kill-feed icon standing on the column's bar. The
 cursor, Enter, the weapon table and PgUp/PgDn are the team board's;
 Left/Right go through. `pstats` carries what the channel lacked for
 it, at the end of the line: `min=` (minutes on the server) and `bot=1`. `cl_statsboard 0` keeps the server's board everywhere.
