@@ -431,8 +431,9 @@ Anywhere else `score` goes to the server and its own scoreboard shows as
 before; `cmd score` opens the server's board on any server.
 
 **Three layouts**, `scr_statsboard_style`, cycled in **Settings > Extras >
-Stats Scoreboard** (its **show the board** closes the menu and opens the
-board, to see one):
+Stats Scoreboard**, which shows an example of the one picked under its
+items (`pics/statsboard/`; on the list's switch, the list page's) - no
+server needed; its **show the board** opens the real one:
 
 - **0, the dark board** (default): the teams' names, icons and scores,
   the map and the round; per team its players, best score first: score,

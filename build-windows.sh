@@ -73,6 +73,9 @@ cp -f "$SRCDIR"/action/pics/xhair/*.png "$SHAREDIR/pics/xhair/"
 # and the icon cells redrawn (tools/glyph-gen.py): the kill report's skull
 mkdir -p "$SHAREDIR/pics/glyph"
 cp -f "$SRCDIR"/action/pics/glyph/*.png "$SHAREDIR/pics/glyph/"
+# the stats scoreboard menu's examples of each layout
+mkdir -p "$SHAREDIR/pics/statsboard"
+cp -f "$SRCDIR"/action/pics/statsboard/*.jpg "$SHAREDIR/pics/statsboard/"
 
 echo "Staged in $SHAREDIR:"
 ls -l "$SHAREDIR/gamex86_64x.dll" "$SHAREDIR/q2prox.exe" "$SHAREDIR/install-windows.bat" \

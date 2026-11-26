@@ -890,7 +890,7 @@ static const char ui_menu_statsboard[] =
     "title \"Stats Scoreboard\"\n"
     "pairs \"layout\" scr_statsboard_style \"dark board\" 0 \"classic light\" 1 "
         "\"server's own (conchars)\" 2\n"
-    "action -s \"close the menu and open the scoreboard (on a server with the stats channel)\" "
+    "action -s \"the picture below is an example; this opens the real board (on a server with the stats channel)\" "
         "\"show the board\" \"forcemenuoff; score\"\n"
     "blank\n"
     "range \"background opacity\" scr_statsboard_alpha 0 1 0.05\n"
@@ -902,6 +902,66 @@ static const char ui_menu_statsboard[] =
     "toggle \"kills per weapon on the list\" scr_statslist_weapons\n"
     "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
     "end\n";
+
+// The scoreboard's menu shows what the layout looks like - a picture of
+// each (pics/statsboard/), as they need a server with the channel to be
+// seen for real - in the room under its items; on the list's switch, the
+// list page's
+static void StatsboardMenu_Draw(menuFrameWork_t *self)
+{
+    static const char *const layouts[] = { "style0", "style1", "style2" };
+    menuCommon_t *focus;
+    const char *name;
+    qhandle_t pic;
+    int iw, ih, top, bottom, w, h;
+
+    Menu_Draw(self);
+
+    focus = Menu_ItemAtCursor(self);
+    if (focus && focus->name && strstr(focus->name, "on the list"))
+        name = "list";
+    else
+        name = layouts[Q_clip(Cvar_VariableInteger("scr_statsboard_style"), 0, 2)];
+    pic = R_RegisterPic(va("statsboard/%s", name));
+    if (!pic)
+        return;
+    R_GetPicSize(&iw, &ih, pic);
+    if (iw <= 0 || ih <= 0)
+        return;
+
+    // under the items, above the status line
+    top = self->maxs[1] + CONCHAR_HEIGHT;
+    bottom = uis.height - CONCHAR_HEIGHT * 3;
+    if (bottom - top < 40)
+        return;
+    w = uis.width - CONCHAR_WIDTH * 4;
+    h = ih * w / iw;
+    if (h > bottom - top) {
+        h = bottom - top;
+        w = iw * h / ih;
+    }
+    R_DrawStretchPic((uis.width - w) / 2, top, w, h, pic);
+}
+
+// its items up under the title, so the example below them is large
+static void StatsboardMenu_Size(menuFrameWork_t *self)
+{
+    int i, first = -1, shift;
+
+    Menu_Size(self);
+    for (i = 0; i < self->nitems; i++) {
+        menuCommon_t *item = self->items[i];
+        if (!(item->flags & QMF_HIDDEN)) {
+            first = item->y;
+            break;
+        }
+    }
+    shift = first - MENU_SPACING * 3;
+    if (first < 0 || shift <= 0)
+        return;
+    for (i = 0; i < self->nitems; i++)
+        ((menuCommon_t *)self->items[i])->y -= shift;
+}
 
 static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
@@ -942,6 +1002,13 @@ static void UI_LoadExtras(void)
     if (len < sizeof(buf))
         Q_strlcat(buf, "end\n", sizeof(buf));
     Parse_Builtin(buf);
+
+    // the scoreboard's menu draws an example of the layout picked
+    menu = UI_FindMenu("statsboard");
+    if (menu) {
+        menu->draw = StatsboardMenu_Draw;
+        menu->size = StatsboardMenu_Size;
+    }
 
     // and its line in the game's settings, once
     menu = UI_FindMenu("settings");

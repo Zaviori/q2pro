@@ -133,6 +133,16 @@ if exist "%SRC%\pics\" (
         )
         echo   %SRC%\pics\glyph\*  ^-^>  %DEST%\action\pics\glyph\
     )
+    rem and the stats scoreboard menu's examples
+    if exist "%SRC%\pics\statsboard\" (
+        if not exist "%DEST%\action\pics\statsboard\" mkdir "%DEST%\action\pics\statsboard"
+        copy /y "%SRC%\pics\statsboard\*" "%DEST%\action\pics\statsboard\" >nul
+        if errorlevel 1 (
+            echo ERROR: failed to copy the scoreboard examples
+            exit /b 1
+        )
+        echo   %SRC%\pics\statsboard\*  ^-^>  %DEST%\action\pics\statsboard\
+    )
 )
 
 echo Done.

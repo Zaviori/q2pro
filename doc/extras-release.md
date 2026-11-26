@@ -55,6 +55,7 @@ off the branch it builds on) and is merged into `extras` when done.
            action/pics/glyph/*.png         the icon cells (6.png, the skull)
            action/pics/hud_boot.png, hud_fist.png   the stats board's kick and punch icons
            action/pics/w_knife_slash.png, w_knife_throw.png   the knife's slash and throw
+           action/pics/statsboard/*.jpg   the scoreboard menu's examples of each layout
        q2pro-extras-<sha>-windows-x86_64.zip
            q2prox.exe                      build-windows/q2pro.exe, x86_64-w64-mingw32-strip
            q2prodedx.exe                   build-windows/q2proded.exe, x86_64-w64-mingw32-strip
