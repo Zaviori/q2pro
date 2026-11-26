@@ -92,6 +92,7 @@ static struct {
 } wsc;
 
 static cvar_t *cl_statsboard;
+static cvar_t *scr_statslist_weapons;   // the list page's kills per weapon, icons over them
 
 /* ------------------------------------------------------------------ */
 /* state                                                              */
@@ -828,6 +829,7 @@ bool CL_WS_KeyEvent(int key)
 void CL_WS_Init(void)
 {
     cl_statsboard = Cvar_Get("cl_statsboard", "1", 0);
+    scr_statslist_weapons = Cvar_Get("scr_statslist_weapons", "1", CVAR_ARCHIVE);
     Cmd_AddCommand("score", CL_WS_Score_f);
     CL_WS_Clear();
 }
@@ -1096,7 +1098,7 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
     // the weapons somebody on the list killed with, most kills in all on
     // the left (a tie keeps the weapons' own order)
     int wtot[WSC_NW] = { 0 };
-    for (int w = 1; w < WSC_NW; w++) {
+    for (int w = 1; w < WSC_NW && scr_statslist_weapons->integer; w++) {
         for (int i = 0; i < n; i++)
             if (wsc_weapon_values(list[i], w, 0, v))
                 wtot[w] += v[F_K];

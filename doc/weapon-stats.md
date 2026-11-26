@@ -294,7 +294,8 @@ order), its kill-feed icon standing on the column's bar. The knife's
 two have icons of ours, made from `w_knife`: the slash `pics/
 w_knife_slash.png` (held level, 2:1) and the throw `pics/
 w_knife_throw.png` (in flight, streaks behind); without them both fall
-back to `w_knife`. The
+back to `w_knife`. `scr_statslist_weapons 0` (saved; 1 by default)
+leaves the kills per weapon out, the list ending at Team. The
 cursor, Enter, the weapon table and PgUp/PgDn are the team board's;
 Left/Right go through. `pstats` carries what the channel lacked for
 it, at the end of the line: `min=` (minutes on the server) and `bot=1`. `cl_statsboard 0` keeps the server's board everywhere.
