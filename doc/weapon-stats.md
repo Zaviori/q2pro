@@ -285,9 +285,11 @@ server says we may know - never under limchasecam, as its own board;
 "Subs" at yv 96 with as many of them as the server fits, Ready / Not
 Ready at yv 128. Where the server has its match clock (yv 144), which
 the channel does not carry, the map and round. Added to it: a faint bar
-for the cursor, who left greyed (they keep their stats), and the
+for the cursor - only once the arrows are used, the first press showing
+it on your own row - who left greyed (they keep their stats), and the
 selected player's weapon table under the board, headed by their name,
-its captions in green as the layout's headings.
+its captions in green as the layout's headings, and the key hints under
+that table, only while it is open.
 
 - **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under the board - shots, hits, accuracy, headshots, kills,

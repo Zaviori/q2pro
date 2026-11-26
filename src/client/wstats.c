@@ -79,6 +79,7 @@ static struct {
     // the board
     bool            open;
     int             cursor;     // stats id under the cursor
+    bool            cursor_shown;   // the arrows moved it since the board opened
     int             expanded;   // stats id whose weapons are shown, 0 none
     int             scope;      // 0 the map, else a round
 } wsc;
@@ -535,6 +536,7 @@ static void wsc_open(bool open)
 {
     wsc.open = open;
     if (open) {
+        wsc.cursor_shown = false;   // its bar waits for the arrows
         if (!wsc.cursor && wsc.me)
             wsc.cursor = wsc.me;
         wsc_fix_cursor();
@@ -577,6 +579,12 @@ static void wsc_move(int step)
 
     if (!n)
         return;
+    // the first press shows the bar where the cursor is - on you - and
+    // only the next ones move it
+    if (!wsc.cursor_shown) {
+        wsc.cursor_shown = true;
+        return;
+    }
     for (i = 0; i < n && list[i] != wsc.cursor; i++)
         ;
     if (i == n)
@@ -584,6 +592,7 @@ static void wsc_move(int step)
     else
         i = (i + step + n) % n;
     wsc.cursor = list[i];
+    wsc.cursor_shown = true;
     // the weapons open follow the cursor, in the scope they were in
     if (wsc.expanded)
         wsc.expanded = wsc.cursor;
@@ -889,7 +898,7 @@ static void wsc_rp_row(int ox, int oy, int xv, int yv, int pi, bool alt)
     const wsc_player_t *p = &wsc.p[pi];
     char name[20];
 
-    if (pi == wsc.cursor)
+    if (pi == wsc.cursor && wsc.cursor_shown)
         R_DrawFill32(ox + xv - 2, oy + yv - 1, 15 * CW + 4, CH + 2, WSC_CURSOR);
     bool captain = p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi;
     // playername[16] on the server: the '@' and fifteen letters at most
@@ -1033,5 +1042,8 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     wsc_rh = CH + 2;
     if (wsc.expanded && wsc.p[wsc.expanded].used)
         y = wsc_draw_weapons(tx, y, tw, bottom, wsc.expanded) + CH / 2;
-    wsc_text(tx + CW, min(y, bottom), AL_LEFT, false, WSC_DIM, wsc_hints());
+    // the keys only with a player's weapons open: the board alone is the
+    // server's, as it looks
+    if (wsc.expanded && wsc.p[wsc.expanded].used)
+        wsc_text(tx + CW, min(y, bottom), AL_LEFT, false, WSC_DIM, wsc_hints());
 }
