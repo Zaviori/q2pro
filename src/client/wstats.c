@@ -36,7 +36,8 @@ static const char *const wsc_wname[WSC_NW] = {
 // the game's slippers standing in for the boot where they are missing
 static const char *const wsc_wpic[WSC_NW][2] = {
     { NULL }, { "w_mk23" }, { "w_mp5" }, { "w_m4" }, { "w_super90" }, { "w_cannon" },
-    { "w_sniper" }, { "w_akimbo" }, { "w_knife" }, { "a_m61frag" }, { "w_knife" },
+    { "w_sniper" }, { "w_akimbo" }, { "w_knife" }, { "a_m61frag" },
+    { "w_knife_throw", "w_knife" },     // ours: the knife in flight, the slash's without it
     { "hud_boot", "slippers" }, { "hud_fist" }, { "a_m61frag" }
 };
 
