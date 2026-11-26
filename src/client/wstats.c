@@ -84,12 +84,6 @@ static struct {
 } wsc;
 
 static cvar_t *cl_statsboard;
-static cvar_t *scr_statsboard_x;    // the board's middle, a fraction of the width
-static cvar_t *scr_statsboard_y;    // its upper edge, a fraction of the height
-#ifdef TEXT_BOLD                // the refresh has TrueType text (the extras branch)
-static cvar_t *scr_statsboard_font;
-static cvar_t *scr_statsboard_size;
-#endif
 
 /* ------------------------------------------------------------------ */
 /* state                                                              */
@@ -432,24 +426,6 @@ static bool wsc_weapon_values(int pi, int w, int scope, int *v)
     return false;
 }
 
-// shots and hits over every weapon (the map): the board's accuracy
-static void wsc_accuracy(int pi, int *shots, int *hits)
-{
-    int v[WSC_NF];
-
-    *shots = *hits = 0;
-    for (int w = 1; w < WSC_NW; w++) {
-        // kick, punch and the slash are no aim, and a grenade counts
-        // every body it hurts: none of them is accuracy
-        if (w == 8 || w == 9 || w == 11 || w == 12 || w == 13)
-            continue;
-        if (wsc_weapon_values(pi, w, 0, v)) {
-            *shots += v[F_SHOTS];
-            *hits += v[F_HITS];
-        }
-    }
-}
-
 // the rounds the player has a line for, and the one being played
 static int wsc_rounds(int pi, int *out, int max)
 {
@@ -479,11 +455,17 @@ static int wsc_cmp(const void *a, const void *b)
         return pa->sub ? 1 : -1;            // the subs after the players
     if ((pa->slot < 0) != (pb->slot < 0))
         return pa->slot < 0 ? 1 : -1;       // who left goes last
+    // then as the server's own board (G_PlayerCmp): score, fewer deaths,
+    // more damage, the client slot
     if (pa->score != pb->score)
         return pb->score - pa->score;
-    if (pa->kills != pb->kills)
-        return pb->kills - pa->kills;
-    return pa->deaths - pb->deaths;
+    if (pa->deaths != pb->deaths)
+        return pa->deaths - pb->deaths;
+    if (pa->dmg != pb->dmg)
+        return pb->dmg - pa->dmg;
+    if (pa->slot != pb->slot)
+        return pa->slot - pb->slot;
+    return *(const int *)a - *(const int *)b;
 }
 
 static bool wsc_has_stats(const wsc_player_t *p)
@@ -602,6 +584,9 @@ static void wsc_move(int step)
     else
         i = (i + step + n) % n;
     wsc.cursor = list[i];
+    // the weapons open follow the cursor, in the scope they were in
+    if (wsc.expanded)
+        wsc.expanded = wsc.cursor;
 }
 
 // Left goes back in time: map, the newest round, ... the first; right back
@@ -675,12 +660,6 @@ bool CL_WS_KeyEvent(int key)
 void CL_WS_Init(void)
 {
     cl_statsboard = Cvar_Get("cl_statsboard", "1", 0);
-    scr_statsboard_x = Cvar_Get("scr_statsboard_x", "0.5", CVAR_ARCHIVE);
-    scr_statsboard_y = Cvar_Get("scr_statsboard_y", "0.1", CVAR_ARCHIVE);
-#ifdef TEXT_BOLD
-    scr_statsboard_font = Cvar_Get("scr_statsboard_font", "1", CVAR_ARCHIVE);
-    scr_statsboard_size = Cvar_Get("scr_statsboard_size", "10", CVAR_ARCHIVE);
-#endif
     Cmd_AddCommand("score", CL_WS_Score_f);
     CL_WS_Clear();
 }
@@ -688,35 +667,23 @@ void CL_WS_Init(void)
 /* ------------------------------------------------------------------ */
 /* drawing                                                            */
 /*                                                                    */
-/* The board is laid out in conchar cells, as columns. Each field is    */
-/* drawn whole at its column - left-aligned at its start, numbers right */
-/* aligned at its end - so it reads the same in conchars and, where the */
-/* refresh has TrueType text (scr_statsboard_font), in the font.        */
+/* The server's own matchmode scoreboard (A_ScoreboardMessage with    */
+/* use_newscore 0) as the server draws it: conchars on the layout's   */
+/* 320x240 grid at the same places, no panel. Added to it: a bar for  */
+/* the cursor, who left greyed, and the cursor's weapons in a table    */
+/* under the board.                                                    */
 
 #define CW  CONCHAR_WIDTH
 #define CH  CONCHAR_HEIGHT
 
 static qhandle_t wsc_font;
-static float wsc_hud_scale;
-static bool wsc_ttf;
-static float wsc_size;
-static int wsc_rh;              // a row
+static int wsc_rh;              // a row: eight on the board, ten in the table
+
+#define WSC_DIM     MakeColor(150, 150, 150, 255)
+#define WSC_STRIPE  MakeColor(0, 0, 0, 70)
+#define WSC_CURSOR  MakeColor(255, 255, 255, 56)
 
 enum { AL_LEFT, AL_RIGHT, AL_CENTER };
-
-typedef struct {
-    int start, width, align;    // in cells
-} wsc_col_t;
-
-// " %-2s %-16s %5s %5s %6s %4s %6s %5s %4s"
-#define ROW_FMT     " %-2s %-*.*s %5s %5s %6s %4s %6s %5s %4s"
-#define NAME_W      16
-static const wsc_col_t row_cols[] = {
-    { 1, 2, AL_LEFT }, { 4, NAME_W, AL_LEFT }, { 21, 5, AL_RIGHT }, { 27, 5, AL_RIGHT },
-    { 33, 6, AL_RIGHT }, { 40, 4, AL_RIGHT }, { 45, 6, AL_RIGHT }, { 52, 5, AL_RIGHT },
-    { 58, 4, AL_RIGHT },
-};
-#define ROW_NAME_COL 1
 
 // The weapon table: the name, then these columns in this order, each a
 // cell apart and right-aligned. The optional ones (a helmet, and the
@@ -731,130 +698,38 @@ static const struct {
     int         field;          // a counter, or WC_ACC
     bool        optional;
 } wpn_table[] = {
-    { "SHOTS", 5, F_SHOTS }, { "HITS", 4, F_HITS }, { "ACC", 4, WC_ACC },
-    { "HS", 3, F_HS }, { "K", 3, F_K }, { "DMG", 5, F_DMG },
-    { "HEAD", 4, F_HEAD }, { "HELM", 4, F_HELMET, true }, { "CHEST", 5, F_CHEST },
-    { "VEST", 4, F_VEST }, { "STOM", 4, F_STOMACH }, { "LEGS", 4, F_LEGS },
-    { "NOLOC", 5, F_NOLOC, true },
+    { "SHOTS", 6, F_SHOTS }, { "HITS", 5, F_HITS }, { "ACC", 5, WC_ACC },
+    { "HS", 3, F_HS }, { "K", 3, F_K }, { "DMG", 6, F_DMG },
+    { "HEAD", 5, F_HEAD }, { "HELM", 5, F_HELMET, true }, { "CHEST", 6, F_CHEST },
+    { "VEST", 5, F_VEST }, { "STOM", 5, F_STOMACH }, { "LEGS", 5, F_LEGS },
+    { "NOLOC", 6, F_NOLOC, true },
 };
-#define BOARD_CHARS 81
+#define BOARD_CHARS 92  // the weapon table with every column
 
-static int wsc_measure(int bold, const char *s, size_t len)
-{
-#ifdef TEXT_BOLD
-    if (wsc_ttf)
-        return R_MeasureText(bold ? TEXT_BOLD : 0, wsc_size, s, len);
-#endif
-    (void)bold;
-    return (int)len * CW;
-}
-
-// one string at x, vertically centred in a row starting at y
-static void wsc_str(int x, int y, int align, bool bold, uint32_t color, const char *s, size_t len)
+// one string at x, vertically centred in a row starting at y; alt is the
+// layout's string2, the alt charset's green
+static void wsc_str(int x, int y, int align, bool alt, uint32_t color, const char *s, size_t len)
 {
     if (!len)
         return;
-#ifdef TEXT_BOLD
-    if (wsc_ttf) {
-        int flags = (bold ? TEXT_BOLD : 0) | (align == AL_RIGHT ? TEXT_RIGHT :
-                                              align == AL_CENTER ? TEXT_CENTER : 0);
-        uint32_t c = color ? color : U32_WHITE;
-        int lh = R_TextLineHeight(flags, wsc_size);
-        R_DrawText(x, y + (wsc_rh - lh) / 2, flags, wsc_size, c, c, s, len);
-        return;
-    }
-    R_TextConchars(true);       // real conchars here, whatever r_ttf says
-#endif
     if (align == AL_RIGHT)
         x -= (int)len * CW;
     else if (align == AL_CENTER)
         x -= (int)len * CW / 2;
     if (color)
         R_SetColor(color);
-    R_DrawString(x, y + (wsc_rh - CH) / 2, bold ? UI_ALTCOLOR : 0, len, s, wsc_font);
+    R_DrawString(x, y + (wsc_rh - CH) / 2, alt ? UI_ALTCOLOR : 0, len, s, wsc_font);
     if (color)
         R_ClearColor();
-#ifdef TEXT_BOLD
-    R_TextConchars(false);
-#endif
 }
 
-static void wsc_text(int x, int y, int align, bool bold, uint32_t color, const char *s)
+static void wsc_text(int x, int y, int align, bool alt, uint32_t color, const char *s)
 {
-    wsc_str(x, y, align, bold, color, s, strlen(s));
-}
-
-// A line printf'ed in cells, drawn field by field at its columns. The
-// name column is cut to its width by measure.
-static void wsc_grid(int x, int y, bool bold, uint32_t color, const char *line,
-                     const wsc_col_t *cols, int ncols, int name_col)
-{
-    int linelen = (int)strlen(line);
-
-    for (int i = 0; i < ncols; i++) {
-        const wsc_col_t *c = &cols[i];
-        if (c->start >= linelen)
-            break;
-        const char *f = line + c->start;
-        int len = min(c->width, linelen - c->start);
-        while (len && *f == ' ') {
-            f++;
-            len--;
-        }
-        while (len && f[len - 1] == ' ')
-            len--;
-        if (i == name_col) {
-            // a whole name, as long as it fits its column
-            const char *full = f;
-            int room = c->width * CW;
-            len = (int)strlen(full);
-            while (len > 1 && wsc_measure(bold, full, len) > room)
-                len--;
-            wsc_str(x + c->start * CW, y, AL_LEFT, bold, color, full, len);
-            continue;
-        }
-        if (c->align == AL_RIGHT)
-            wsc_str(x + (c->start + c->width) * CW, y, AL_RIGHT, bold, color, f, len);
-        else
-            wsc_str(x + c->start * CW, y, AL_LEFT, bold, color, f, len);
-    }
-}
-
-static uint32_t wsc_team_color(int team, int alpha)
-{
-    switch (team) {
-    case 1:  return MakeColor(190,  55,  55, alpha);
-    case 2:  return MakeColor( 55,  90, 190, alpha);
-    case 3:  return MakeColor( 55, 180,  70, alpha);
-    default: return MakeColor(120, 120, 120, alpha);
-    }
-}
-
-// double size, for the team names
-static void wsc_big_text(int cx, int y, uint32_t color, const char *s)
-{
-#ifdef TEXT_BOLD
-    if (wsc_ttf) {
-        R_DrawText(cx, y, TEXT_BOLD | TEXT_OUTLINE | TEXT_CENTER, wsc_size * 2, color, color,
-                   s, strlen(s));
-        return;
-    }
-    R_TextConchars(true);
-#endif
-    // half the scale draws twice the size: the coordinates halve with it
-    int x = cx - (int)strlen(s) * CW;
-    R_SetScale(wsc_hud_scale * 0.5f);
-    R_SetColor(color);
-    R_DrawString(x / 2, y / 2, 0, strlen(s), s, wsc_font);
-    R_ClearColor();
-    R_SetScale(wsc_hud_scale);
-#ifdef TEXT_BOLD
-    R_TextConchars(false);
-#endif
+    wsc_str(x, y, align, alt, color, s, strlen(s));
 }
 
 // the HUD's big digits, 16x24
-static int wsc_draw_number(int x, int y, int value)
+static void wsc_draw_number(int x, int y, int value)
 {
     char buf[16];
     int n = Q_snprintf(buf, sizeof(buf), "%d", value);
@@ -865,7 +740,6 @@ static int wsc_draw_number(int x, int y, int value)
         if (pic)
             R_DrawPic(x + i * 16, y, pic);
     }
-    return n * 16;
 }
 
 static void wsc_fmt_acc(char *out, size_t size, int hits, int shots)
@@ -874,57 +748,6 @@ static void wsc_fmt_acc(char *out, size_t size, int hits, int shots)
         Q_snprintf(out, size, "%d%%", hits * 100 / shots);
     else
         Q_strlcpy(out, "-", size);
-}
-
-static int wsc_draw_header(int px, int pw, int y)
-{
-    int mid = px + pw / 2;
-
-    for (int t = 1; t <= 2; t++) {
-        const char *name = wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
-        char cut[17];
-        Q_strlcpy(cut, name, sizeof(cut));
-        wsc_big_text(t == 1 ? mid - pw / 4 : mid + pw / 4, y, wsc_team_color(t, 255), cut);
-    }
-    y += CH * 2 + 4;
-
-    // matchmode: a team that is not ready says so under its name
-    if (wsc.team_ready[1] == 0 || wsc.team_ready[2] == 0) {
-        for (int t = 1; t <= 2; t++)
-            if (wsc.team_ready[t] == 0)
-                wsc_text(t == 1 ? mid - pw / 4 : mid + pw / 4, y, AL_CENTER, false,
-                         MakeColor(255, 170, 60, 255), "NOT READY");
-        y += wsc_rh + 2;
-    }
-
-    // team icons beside the big scores, the scores hugging the middle
-    for (int t = 1; t <= 2; t++) {
-        char buf[16];
-        int sw = Q_snprintf(buf, sizeof(buf), "%d", wsc.team_score[t]) * 16;
-        int sx = t == 1 ? mid - CW * 2 - sw : mid + CW * 2;
-        wsc_draw_number(sx, y, wsc.team_score[t]);
-
-        qhandle_t icon = wsc.team_icon[t][0] ? R_RegisterPic(wsc.team_icon[t]) : 0;
-        if (icon) {
-            int iw, ih;
-            R_GetPicSize(&iw, &ih, icon);
-            // the server's own board draws them 24 high, as the digits
-            int dw = ih > 0 ? iw * 24 / ih : 24;
-            int ix = t == 1 ? sx - CW - dw : sx + sw + CW;
-            R_DrawStretchPic(ix, y, dw, 24, icon);
-        }
-    }
-    wsc_text(mid, y + (24 - wsc_rh) / 2, AL_CENTER, false, MakeColor(200, 200, 200, 255), "-");
-    y += 24 + 4;
-
-    char info[64];
-    if (wsc.round)
-        Q_snprintf(info, sizeof(info), "%s - round %d%s", wsc.mapname, wsc.round,
-                   wsc.going ? "" : " over");
-    else
-        Q_strlcpy(info, wsc.mapname, sizeof(info));
-    wsc_text(mid, y, AL_CENTER, false, MakeColor(170, 170, 170, 255), info);
-    return y + wsc_rh + 4;
 }
 
 // The icons are 96x96 art drawn a row tall: as plain pics - no mip chain,
@@ -964,14 +787,15 @@ static void wsc_draw_icon(int x, int y, int wi)
     R_DrawStretchPic(x + (CW * 2 - dw) / 2, y + (wsc_rh - h) / 2, dw, h, pic);
 }
 
+// a player's weapons in the board's scope, headed by their name; the
+// captions green, as the layout's headings
 static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
 {
+    const wsc_player_t *p = &wsc.p[pi];
+    const char *who = p->name[0] ? p->name : "(unnamed)";
     char line[160], scope[48];
     int rounds[256];
     int nr = wsc_rounds(pi, rounds, 256);
-    uint32_t cap = MakeColor(185, 185, 185, 235);
-
-    R_DrawFill32(x, y, w, wsc_rh * 2 + 2, MakeColor(20, 20, 30, 200));
 
     if (!wsc.scope)
         Q_strlcpy(scope, "MAP TOTAL", sizeof(scope));
@@ -979,7 +803,8 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
         Q_snprintf(scope, sizeof(scope), "ROUND %d%s", wsc.scope,
                    wsc.scope == wsc.round && wsc.going ? " (live)" : "");
     Q_snprintf(line, sizeof(line), "%s%s%s", nr ? "< " : "", scope, nr ? " >" : "");
-    wsc_text(x + 3 * CW, y + 1, AL_LEFT, true, MakeColor(230, 230, 120, 255), line);
+    wsc_text(x + 3 * CW, y + 1, AL_LEFT, true, 0, who);
+    wsc_text(x + (6 + (int)strlen(who)) * CW, y + 1, AL_LEFT, true, 0, line);
     y += wsc_rh;
 
     // which columns: the optional ones where some weapon has a count
@@ -1001,17 +826,18 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
         ends[c] = col;
     }
 
-    wsc_text(x + WPN_NAME_X * CW, y + 1, AL_LEFT, true, cap, "WEAPON");
+    wsc_text(x + WPN_NAME_X * CW, y + 1, AL_LEFT, true, 0, "WEAPON");
     for (int c = 0; c < (int)q_countof(wpn_table); c++)
         if (show[c])
-            wsc_text(x + ends[c] * CW, y + 1, AL_RIGHT, true, cap, wpn_table[c].caption);
+            wsc_text(x + ends[c] * CW, y + 1, AL_RIGHT, true, 0, wpn_table[c].caption);
     y += wsc_rh;
 
     int rows = 0;
     for (int wi = 1; wi < WSC_NW && y + wsc_rh <= bottom; wi++) {
         if (!wsc_weapon_values(pi, wi, wsc.scope, v))
             continue;
-        R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, rows & 1 ? 200 : 170));
+        if (rows & 1)
+            R_DrawFill32(x, y, w, wsc_rh, WSC_STRIPE);
         wsc_draw_icon(x + CW / 2, y, wi);
         wsc_text(x + WPN_NAME_X * CW, y, AL_LEFT, false, 0, wsc_wname[wi]);
         for (int c = 0; c < (int)q_countof(wpn_table); c++) {
@@ -1030,232 +856,182 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
         rows++;
     }
     if (!rows && y + wsc_rh <= bottom) {
-        R_DrawFill32(x, y, w, wsc_rh, MakeColor(20, 20, 30, 170));
-        wsc_text(x + 3 * CW, y, AL_LEFT, false, MakeColor(150, 150, 150, 255), "no shots");
+        wsc_text(x + 3 * CW, y, AL_LEFT, false, WSC_DIM, "no shots");
         y += wsc_rh;
     }
     return y + 3;
 }
 
-// The weapons a player got their kills with, most first (ties by weapon
-// number), at most `max`: the map total and the round being played
-static int wsc_top_weapons(int pi, int *ids, int *kills, int max)
+static const char *wsc_hints(void)
 {
-    int n = 0, v[WSC_NF];
-
-    for (int w = 1; w < WSC_NW; w++) {
-        if (!wsc_weapon_values(pi, w, 0, v) || v[F_K] <= 0)
-            continue;
-        int i = n < max ? n++ : max;
-        if (i == max) {
-            if (v[F_K] <= kills[max - 1])
-                continue;
-            i = max - 1;
-        }
-        while (i > 0 && kills[i - 1] < v[F_K]) {
-            ids[i] = ids[i - 1];
-            kills[i] = kills[i - 1];
-            i--;
-        }
-        ids[i] = w;
-        kills[i] = v[F_K];
-    }
-    return n;
+    return wsc.expanded ? "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close"
+                        : "[UP/DOWN] Player   [ENTER] Weapon stats   [ESC] Close";
 }
 
-#define WPN_COL_END 2   // cells from the row's end to the weapons' end: the expand mark
-
-// "count icon" per weapon, best first, the group right-aligned against
-// the end of the row, as on the stream branch's score view
-static void wsc_draw_row_weapons(int x, int y, int w, int pi, uint32_t color)
+static const char *wsc_team_title(int t)
 {
-    int ids[3], kills[3], widths[3], total = 0;
-    char cnt[3][8];
-    int n = wsc_top_weapons(pi, ids, kills, 3);
-    const int gap = 2, after = CW;
-
-    for (int i = 0; i < n; i++) {
-        Q_snprintf(cnt[i], sizeof(cnt[i]), "%d", kills[i]);
-        widths[i] = wsc_measure(false, cnt[i], strlen(cnt[i])) + gap + CW * 2;
-        total += widths[i] + (i ? after : 0);
-    }
-    int cx = x + w - WPN_COL_END * CW - total;
-    for (int i = 0; i < n; i++) {
-        int cw = widths[i] - gap - CW * 2;
-        wsc_str(cx, y, AL_LEFT, false, color, cnt[i], strlen(cnt[i]));
-        wsc_draw_icon(cx + cw + gap, y, ids[i]);
-        cx += widths[i] + after;
-    }
+    return wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
 }
 
-static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
+#define RP_ROW_W        160     // TEAM_ROW_WIDTH: twenty cells a team
+#define RP_MAX_ROWS     9       // MAX_SCORES_PER_TEAM
+
+// one of the layout's strings at its xv/yv
+static void wsc_rp_string(int ox, int oy, int xv, int yv, bool alt, uint32_t color,
+                          const char *s)
+{
+    wsc_str(ox + xv, oy + yv, AL_LEFT, alt, color, s, strlen(s));
+}
+
+// a player's row, the cursor's bar under it
+static void wsc_rp_row(int ox, int oy, int xv, int yv, int pi, bool alt)
 {
     const wsc_player_t *p = &wsc.p[pi];
-    bool selected = pi == wsc.cursor;
-    bool gone = p->slot < 0;
-    char line[160], num[8][12], acc[8], kd[12];
-    int shots, hits;
+    char name[20];
 
-    uint32_t bg = selected ? MakeColor(60, 60, 140, 200) :
-                  p->sub ? MakeColor(110, 110, 110, alt ? 40 : 26) :    // greyed: not in play
-                  wsc_team_color(p->team, alt ? 60 : 40);
-    R_DrawFill32(x, y, w, wsc_rh, bg);
-    if (pi == wsc.me && !selected)
-        R_DrawFill32(x, y, 2, wsc_rh, MakeColor(230, 230, 120, 255));
-
-    wsc_accuracy(pi, &shots, &hits);
-    wsc_fmt_acc(acc, sizeof(acc), hits, shots);
-    float ratio = p->deaths > 0 ? (float)p->kills / p->deaths : (float)p->kills;
-    Q_snprintf(kd, sizeof(kd), ratio >= 100.0f ? "%.0f" : "%.2f", ratio);
-    Q_snprintf(num[0], sizeof(num[0]), "%d", rank);
-    Q_snprintf(num[1], sizeof(num[1]), "%d", p->score);
-    Q_snprintf(num[2], sizeof(num[2]), "%d", p->kills);
-    Q_snprintf(num[3], sizeof(num[3]), "%d", p->deaths);
-    Q_snprintf(num[4], sizeof(num[4]), "%d", p->dmg);
-    if (gone)
-        Q_strlcpy(num[5], "left", sizeof(num[5]));
-    else
-        Q_snprintf(num[5], sizeof(num[5]), "%d", p->ping);
-
-    // the name goes in whole: the grid cuts it to its column by measure
-    Q_snprintf(line, sizeof(line), ROW_FMT, num[0], NAME_W, NAME_W, "",
-               num[1], num[2], num[3], acc, num[4], kd, num[5]);
-    // who is alive in the green the server's own scoreboard has for them,
-    // where the server says we may know (dead, spectating, between rounds)
-    uint32_t color = (gone || p->sub) && !selected ? MakeColor(150, 150, 150, 255) :
-                     wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
-    wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
-    {
-        // a team's captain wears an @ before the name, as on the server's board
-        bool captain = p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi;
-        char name[40];
-        Q_snprintf(name, sizeof(name), "%s%s", captain ? "@" : "", p->name[0] ? p->name : "(unnamed)");
-        int len = (int)strlen(name), room = NAME_W * CW;
-        while (len > 1 && wsc_measure(false, name, len) > room)
-            len--;
-        wsc_str(x + row_cols[ROW_NAME_COL].start * CW, y, AL_LEFT, false, color, name, len);
-    }
-
-    wsc_draw_row_weapons(x, y, w, pi, color);
-
-    // the expand mark at the row's end
-    wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
-             wsc.expanded == pi ? "-" : "+");
-    return y + wsc_rh;
+    if (pi == wsc.cursor)
+        R_DrawFill32(ox + xv - 2, oy + yv - 1, 15 * CW + 4, CH + 2, WSC_CURSOR);
+    bool captain = p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == pi;
+    // playername[16] on the server: the '@' and fifteen letters at most
+    Q_snprintf(name, 16, "%s%s", captain ? "@" : "", p->name[0] ? p->name : "(unnamed)");
+    // who left keeps their line here, greyed, as they keep their stats
+    wsc_rp_string(ox, oy, xv, yv, alt, p->slot < 0 ? WSC_DIM : 0, name);
 }
 
 void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale, qhandle_t font)
 {
-    int list[WSC_MAX_P];
-    char line[160];
+    static int lists[WSC_MAX_TEAMS][WSC_MAX_P];
+    int nteams, ox, oy, base_x;
+    bool matchmode = false, deadview;
+    qhandle_t tag;
+    char buf[64];
 
+    (void)hud_scale;
     if (!CL_WS_BoardOpen())
         return;
     wsc_font = font;
-    wsc_hud_scale = hud_scale;
-    wsc_ttf = false;
-    wsc_size = CH;
-    wsc_rh = CH + 2;
-#ifdef TEXT_BOLD
-    if (scr_statsboard_font && scr_statsboard_font->integer && R_TextAvailable()) {
-        wsc_ttf = true;
-        wsc_size = Cvar_ClampValue(scr_statsboard_size, 6, 24);
-        wsc_rh = max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
-    }
-#endif
+    wsc_rh = CH;
     wsc_fix_cursor();
 
-    // height: the header, each team's band, caption and rows, the
-    // expanded weapons, spectators and the footer
-    int nteams = wsc_num_teams();
-    int h = CH * 2 + 4 + 24 + 4 + wsc_rh + 4;
-    if (wsc.team_ready[1] == 0 || wsc.team_ready[2] == 0)
-        h += wsc_rh + 2;        // NOT READY under the names
-    for (int t = 1; t <= nteams; t++) {
-        int n = wsc_team_list(t, list);
-        h += wsc_rh + 3 + wsc_rh + n * wsc_rh + CH / 2;
-        for (int i = 0; i < n; i++)
-            if (wsc.p[list[i]].sub) {
-                h += wsc_rh + 2;        // the SUBS heading
-                break;
-            }
+    nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
+    ox = hud_x + hud_w / 2 - 160;
+    oy = hud_y + hud_h / 2 - 120;
+    base_x = 160 - (RP_ROW_W * nteams) / 2;
+    deadview = wsc.alive_shown;     // never under limchasecam: the server says
+    tag = R_RegisterPic("tag3");
+
+    for (int t = 1; t <= nteams; t++)
+        if (wsc.team_ready[t] >= 0)
+            matchmode = true;
+
+    for (int t = 1, lx = base_x; t <= nteams; t++, lx += RP_ROW_W) {
+        int *list = lists[t], n = wsc_team_list(t, list);
+        int total = 0, subs = 0, score = 0, alive = 0;
+
         for (int i = 0; i < n; i++) {
-            if (list[i] == wsc.expanded) {
-                int v[WSC_NF], rows = 0;
-                for (int w = 1; w < WSC_NW; w++)
-                    rows += wsc_weapon_values(list[i], w, wsc.scope, v);
-                h += wsc_rh * (2 + max(rows, 1)) + 3;
+            const wsc_player_t *p = &wsc.p[list[i]];
+            if (p->sub) {
+                subs++;
+            } else {
+                total++;
+                if (p->slot >= 0)
+                    score += p->score;
+                if (p->alive)
+                    alive++;
             }
         }
-    }
-    h += wsc_rh * 3;
 
-    int pw = min(BOARD_CHARS * CW + CW * 2, (int)(hud_w * 0.96f));
-    // The upper edge stays where scr_statsboard_y puts it, and the board
-    // grows down from there: opening a player never moves it. What does
-    // not fit above the screen's bottom is cut (the rows stop at
-    // `bottom`), the footer kept.
-    int px = hud_x + (int)(hud_w * Cvar_ClampValue(scr_statsboard_x, 0, 1)) - pw / 2;
-    int py = hud_y + (int)(hud_h * Cvar_ClampValue(scr_statsboard_y, 0, 0.9f));
-    px = Q_clip(px, hud_x, hud_x + hud_w - pw);
-    int ph = min(h + CH, hud_y + hud_h - py);
-    int bottom = py + ph - wsc_rh * 2;
+        // the header: the team's skin and tag pics, the totals, the
+        // big score, the name centred over twenty cells
+        qhandle_t icon = wsc.team_icon[t][0] ? R_RegisterPic(wsc.team_icon[t]) : 0;
+        if (icon)
+            R_DrawPic(ox + lx, oy + 8, icon);
+        if (tag)
+            R_DrawPic(ox + lx + 32, oy + 8, tag);
+        if (matchmode)
+            Q_snprintf(buf, sizeof(buf), "%4i/%2i/%-2d", score, total, subs);
+        else
+            Q_snprintf(buf, sizeof(buf), "%4i/%2i", score, total);
+        wsc_rp_string(ox, oy, lx + 32, 28, false, 0, buf);
+        // the num widget: three digits, right-aligned, two pixels in
+        int digits = Q_snprintf(buf, sizeof(buf), "%d", wsc.team_score[t]);
+        wsc_draw_number(ox + lx + 96 + 2 + 16 * max(3 - digits, 0), oy + 12, wsc.team_score[t]);
+        const char *tn = wsc_team_title(t);
+        int name_pos = max((20 - (int)strlen(tn)) / 2, 0) * 8;
+        wsc_rp_string(ox, oy, lx + name_pos, 0, false, 0, tn);
 
-    R_DrawFill32(px, py, pw, ph, MakeColor(0, 0, 0, 215));
+        // the players from yv 42, alive ones in green when we may know;
+        // the subs under their heading at yv 96, as the server fits them
+        int max_rows = RP_MAX_ROWS, sub_lines = 0;
+        if (matchmode) {
+            sub_lines = 1 + min(subs, 2);
+            if (max_rows - sub_lines < 4)
+                sub_lines = 1;
+            max_rows -= sub_lines;
+        }
+        int shown = total > max_rows ? max_rows - 1 : total;
+        int y = 42, printed = 0, alive_printed = 0;
+        for (int i = 0; i < n && printed < shown; i++) {
+            const wsc_player_t *p = &wsc.p[list[i]];
+            if (p->sub)
+                continue;
+            wsc_rp_row(ox, oy, lx, y, list[i], deadview && p->alive);
+            alive_printed += p->alive;
+            y += 8;
+            printed++;
+        }
+        if (printed < total) {
+            if (!deadview)
+                Q_snprintf(buf, sizeof(buf), "..and %i more", total - printed);
+            else
+                Q_snprintf(buf, sizeof(buf), "..and %i/%i more", alive - alive_printed,
+                           total - printed);
+            wsc_rp_string(ox, oy, lx, y, deadview && alive > alive_printed, 0, buf);
+        }
 
-    int x = px + CW, w = pw - CW * 2;
-    int y = wsc_draw_header(px, pw, py + CH / 2);
-    uint32_t cap = MakeColor(185, 185, 185, 235);
-
-    for (int t = 1; t <= nteams && y + wsc_rh * 3 <= bottom; t++) {
-        int n = wsc_team_list(t, list);
-        const char *tname = wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
-
-        R_DrawFill32(x, y, w, wsc_rh + 2, wsc_team_color(t, 150));
-        wsc_text(x + CW, y + 1, AL_LEFT, true, U32_WHITE, tname);
-        y += wsc_rh + 3;
-
-        Q_snprintf(line, sizeof(line), ROW_FMT, "#", NAME_W, NAME_W, "PLAYER",
-                   "SCORE", "KILLS", "DEATHS", "ACC", "DMG", "K/D", "PING");
-        wsc_grid(x, y, true, cap, line, row_cols, q_countof(row_cols), -1);
-        wsc_text(x + w - WPN_COL_END * CW, y, AL_RIGHT, true, cap, "WEAPONS");
-        y += wsc_rh;
-
-        for (int i = 0; i < n && y + wsc_rh <= bottom; i++) {
-            // the subs lined off from the players in play, under a heading
-            if (wsc.p[list[i]].sub && (!i || !wsc.p[list[i - 1]].sub)) {
-                if (y + wsc_rh * 2 + 2 > bottom)
-                    break;
-                R_DrawFill32(x, y, w, 1, MakeColor(120, 120, 120, 160));
-                y += 2;
-                wsc_text(x + CW, y, AL_LEFT, false, MakeColor(150, 150, 150, 220), "SUBS");
-                y += wsc_rh;
+        if (sub_lines == 1 && subs) {
+            Q_snprintf(buf, sizeof(buf), "%d Subs", subs);
+            wsc_rp_string(ox, oy, lx, 96, true, 0, buf);
+        } else if (sub_lines > 0) {
+            wsc_rp_string(ox, oy, lx, 96, true, 0, "Subs");
+            int sub_max = subs > sub_lines - 1 ? sub_lines - 2 : subs;
+            y = 104;
+            printed = 0;
+            for (int i = 0; i < n && printed < sub_max; i++) {
+                if (!wsc.p[list[i]].sub)
+                    continue;
+                wsc_rp_row(ox, oy, lx, y, list[i], false);
+                y += 8;
+                printed++;
             }
-            y = wsc_draw_row(x, y, w, i + 1, list[i], i & 1);
-            if (list[i] == wsc.expanded)
-                y = wsc_draw_weapons(x, y, w, bottom, list[i]);
+            if (printed < subs) {
+                Q_snprintf(buf, sizeof(buf), " + %i more", subs - printed);
+                wsc_rp_string(ox, oy, lx, y, false, 0, buf);
+            }
         }
-        y += CH / 2;
+
+        if (wsc.team_ready[t] >= 0)
+            wsc_rp_string(ox, oy, base_x + 39 + (t - 1) * RP_ROW_W, 128, true, 0,
+                          wsc.team_ready[t] ? "Ready" : "Not Ready");
     }
 
-    // spectators on one line, cut to the board
-    size_t len = Q_strlcpy(line, "Spectators:", sizeof(line));
-    bool any = false;
-    for (int i = 1; i < WSC_MAX_P && len < sizeof(line); i++) {
-        const wsc_player_t *p = &wsc.p[i];
-        if (p->used && p->slot >= 0 && p->team == 0) {
-            len += Q_snprintf(line + len, sizeof(line) - len, " %s", p->name);
-            any = true;
-        }
-    }
-    if (any && y + wsc_rh <= bottom) {
-        len = min(strlen(line), sizeof(line) - 1);
-        while (len > 1 && wsc_measure(false, line, len) > w)
-            len--;
-        wsc_str(x, y, AL_LEFT, false, MakeColor(150, 150, 150, 220), line, len);
-    }
+    // where the server has its match clock (yv 144): the map and round,
+    // which is what the channel knows
+    if (wsc.round)
+        Q_snprintf(buf, sizeof(buf), "%s - round %d%s", wsc.mapname, wsc.round,
+                   wsc.going ? "" : " over");
+    else
+        Q_strlcpy(buf, wsc.mapname, sizeof(buf));
+    wsc_text(ox + 160, oy + 144, AL_CENTER, false, 0, buf);
 
-    wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, MakeColor(150, 150, 150, 220),
-             wsc.expanded ? "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close"
-                          : "[UP/DOWN] Player   [ENTER] Weapon stats   [ESC] Close");
+    // below: the opened player's weapons, a row two pixels taller for the
+    // icons, then the keys
+    int bottom = hud_y + hud_h - CH * 2;
+    int y = oy + 160;
+    int tw = min(BOARD_CHARS * CW, hud_w - CW * 2);
+    int tx = hud_x + (hud_w - tw) / 2;
+    wsc_rh = CH + 2;
+    if (wsc.expanded && wsc.p[wsc.expanded].used)
+        y = wsc_draw_weapons(tx, y, tw, bottom, wsc.expanded) + CH / 2;
+    wsc_text(tx + CW, min(y, bottom), AL_LEFT, false, WSC_DIM, wsc_hints());
 }

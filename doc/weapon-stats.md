@@ -195,7 +195,9 @@ chat p=5 team=0|1 dead=0|1 text="…" f=363
 ```
 
 `kill`, `death`, `match`, `player` and `team` go to every event
-subscriber; `spawn`, `hold` and `throw`, which give positions and
+subscriber - except under `limchasecam`, where `kill` and `death` go
+only to spectators and the dummy: the server hides who is alive from
+the players then, and the lines carry the alive counts; `spawn`, `hold` and `throw`, which give positions and
 loadouts away, only to spectators and the dummy; `chat` to whoever the
 server prints the message to (a team's chat to that team, the dead's to
 the dead), the same line as it goes. `a1=`/`a2=` are the teams' alive
@@ -271,24 +273,28 @@ connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
 the fallback. `cl_statsboard 0` keeps the server's board everywhere.
-`scr_statsboard_x` (0.5) is the board's middle as a fraction of the
-width, `scr_statsboard_y` (0.1) its upper edge as a fraction of the
-height (at most 0.9). The upper edge stays put and the board grows
-down from it; what does not fit above the bottom of the screen is cut. In the TrueType build `scr_statsboard_font` (1) and
-`scr_statsboard_size` (10) set its text.
 
-- The header: team names, icons and big scores, the map and round.
-- Per team a band, then its players best score first: score, kills,
-  deaths, accuracy (the aimed weapons: no knife slash, kick, punch or
-  grenade), damage, K/D, ping, and WEAPONS: the (up to) three weapons
-  they got their kills with, most first, as a count and the kill-feed
-  icon - from the channel's per-weapon `k`, the round being played
-  included. Who left stays, greyed, with "left". Who is alive is in
-  the server board's green, where the server says you may know.
+The board is the server's own matchmode scoreboard
+(`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws
+it - conchars on the layout's 320x240 grid at the same places, no
+panel: per team its skin and `tag3` pics, "score/players/subs", the big
+score, the name centred over twenty cells; the names from yv 42 (an '@'
+for the captain), in the server's order (score, fewer deaths, more
+damage, client slot), alive ones in the alt charset's green where the
+server says we may know - never under limchasecam, as its own board;
+"Subs" at yv 96 with as many of them as the server fits, Ready / Not
+Ready at yv 128. Where the server has its match clock (yv 144), which
+the channel does not carry, the map and round. Added to it: a faint bar
+for the cursor, who left greyed (they keep their stats), and the
+selected player's weapon table under the board, headed by their name,
+its captions in green as the layout's headings.
+
 - **Up/Down** walks the players, **Enter** opens the selected player's
-  weapons under their row - shots, hits, accuracy, headshots, kills,
+  weapons under the board - shots, hits, accuracy, headshots, kills,
   damage and the locations per weapon, each row opening with the
-  weapon's kill-feed icon - and closes it again. The locations read
+  weapon's kill-feed icon - and closes it again. While it is open it
+  follows the cursor: Up/Down shows each player's in turn, in the same
+  map/round scope. The locations read
   HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and NOLOC only
   when a weapon in the table has a count there.
   **Left/Right** steps that table between the map total and each
