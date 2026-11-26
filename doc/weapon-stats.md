@@ -217,7 +217,11 @@ lines with their `r=`:
   `wstats_get state=done n=<lines>`. Paced like the backfill.
 - **Backfill**: after the subscribe snapshot, past rounds newest first,
   at most ~1 KB a frame and only while live traffic leaves room; a
-  request jumps the queue. It ends with `wstats_hist state=done r=1-14`.
+  request jumps the queue. It opens with `wstats_hist state=start r=1-14`
+  (sent with the snapshot) and ends with `wstats_hist state=done r=1-14`;
+  between them the board's weapon table shows "loading rounds" and a
+  spinner, PgUp/PgDn reaching back only as far as has come. The demo gets
+  neither line, nor any history.
   ~90 KB is ~20 s at 4 KB/s. Sending it all at once would not fit the
   32 KB of queue a client has (and crowds out the frames).
 

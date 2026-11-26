@@ -515,6 +515,13 @@ static void ws_snapshot(edict_t *ent)
 	// history is in the demo already, as it happened
 	ws.cl[slot].hist_next = ws_is_dummy(ent) ? -2 : ws.nhist - 1;
 	ws.cl[slot].budget = 0;
+
+	// the backfill's start, for the client's "loading" until its done line
+	if (!ws_is_dummy(ent)) {
+		ws_begin(WS_TO_ONE, ent);
+		ws_line("wstats_hist state=start r=1-%d", ws.round);
+		ws_flush();
+	}
 }
 
 static void ws_subscribe(edict_t *ent)

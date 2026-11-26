@@ -66,6 +66,7 @@ static struct {
     bool            going;
     int             me;
     bool            alive_shown;    // the server sent who is alive: we may know
+    bool            hist_loading;   // the round history is still coming
     wsc_player_t    p[WSC_MAX_P];
     char            team_name[WSC_MAX_TEAMS][32];
     char            team_icon[WSC_MAX_TEAMS][MAX_QPATH];
@@ -292,6 +293,15 @@ void CL_WS_ParseLine(const char *line)
             wsc.going = false;
         else
             wsc.going = wsc_int(&l, "going", wsc.going) != 0;
+        return;
+    }
+
+    // the backfill of past rounds: started, and done (an older server
+    // sends no start, the demo neither: no spinner then)
+    if (!strcmp(l.event, "wstats_hist")) {
+        const char *state = wsc_get(&l, "state");
+        if (state)
+            wsc.hist_loading = !strcmp(state, "start");
         return;
     }
 
@@ -864,7 +874,15 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
                    wsc.scope == wsc.round && wsc.going ? " (live)" : "");
     Q_snprintf(line, sizeof(line), "%s%s%s", nr ? "< " : "", scope, nr ? " >" : "");
     wsc_text(x + 3 * CW, y + 1, AL_LEFT, true, 0, who);
-    wsc_text(x + (6 + (int)strlen(who)) * CW, y + 1, AL_LEFT, true, 0, line);
+    int lx = x + (6 + (int)strlen(who)) * CW;
+    wsc_text(lx, y + 1, AL_LEFT, true, 0, line);
+    // the rounds still arriving: PgUp/PgDn reach only as far back as came
+    if (wsc.hist_loading) {
+        static const char spin[] = "|/-\\";
+        char busy[32];
+        Q_snprintf(busy, sizeof(busy), "loading rounds %c", spin[(cls.realtime / 120) % 4]);
+        wsc_text(lx + ((int)strlen(line) + 3) * CW, y + 1, AL_LEFT, false, WSC_DIM, busy);
+    }
     y += wsc_rh;
 
     // which columns: the optional ones where some weapon has a count
