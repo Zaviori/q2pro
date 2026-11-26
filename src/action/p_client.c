@@ -3595,6 +3595,18 @@ STAT_BOT_CHECK();
 	if (use_mvd2->value == 2) // Must be set to 2, 1 is classic behavior of teamplay-only recording
 		StartAutoRecordDemo(); // Even though this is called on every player join, only the 'first' player initiates the demo
 
+	// use_ghosts 2: who left and came back (the same name and address)
+	// gets their score and team back - here, with the name read and resp
+	// set up, before the stats channel sends them
+	if (use_ghosts->value == 2 && !ent->client->pers.mvdspec) {
+		qboolean bot = false;
+#ifndef NO_BOTS
+		bot = IS_BOT(ent);
+#endif
+		if (!bot && Ghost_Exist(ent))
+			Cmd_Ghost_f(ent);
+	}
+
 	// bots begin here too, never through ClientBegin
 	WS_ClientBegin(ent);
 
@@ -3892,11 +3904,9 @@ qboolean ClientConnect(edict_t * ent, char *userinfo)
 		is_bot = true;
 	#endif
 
-	if (!is_bot && use_ghosts->value == 2) {
-		if (Ghost_Exist(ent)) {
-			Cmd_Ghost_f(ent);
-		}
-	}
+	// use_ghosts 2's restore is in ClientBeginDeathmatch: here the name
+	// is not read yet, and the begin clears resp after
+	(void)is_bot;
 
 	return true;
 }
@@ -3932,6 +3942,11 @@ void ClientDisconnect(edict_t * ent)
 		CenterPrintAll(tempmsg);
 	}
 
+	// the ghost first: leaving the team below clears resp.team, and the
+	// ghost would come back without one
+	if( use_ghosts->value )
+		CreateGhost( ent );
+
 	MM_LeftTeam( ent );
 	if (esp->value)		
 		EspLeaderLeftTeam(ent);
@@ -3965,8 +3980,7 @@ void ClientDisconnect(edict_t * ent)
 		gi.multicast( ent->s.origin, MULTICAST_PVS );
 	}
 
-	if( use_ghosts->value )
-		CreateGhost( ent );
+	// (the ghost is made above, before the team is left)
 
 	// go clear any clients that have this guy as their attacker
 	for (i = 1, etemp = g_edicts + 1; i <= game.maxclients; i++, etemp++) {
@@ -4025,7 +4039,7 @@ void CreateGhost(edict_t * ent)
 
 	//check if its already there
 	for (i = 0, ghost = ghost_players; i < num_ghost_players; i++, ghost++) {
-		if (!strcmp(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
+		if (Ghost_SameIP(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
 			break;
 		}
 	}

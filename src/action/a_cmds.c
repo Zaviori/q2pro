@@ -1270,6 +1270,19 @@ Cmd_Ghost_f
 Person gets frags/kills/damage/weapon/item/team/stats back if he disconnected
 */
 
+// The same address, its port aside: the client's "ip" userinfo carries
+// the port, and a reconnect comes from a new one ("[v6]:port" or
+// "a.b.c.d:port")
+qboolean Ghost_SameIP(const char *a, const char *b)
+{
+	const char *pa = a[0] == '[' ? strchr(a, ']') : strrchr(a, ':');
+	const char *pb = b[0] == '[' ? strchr(b, ']') : strrchr(b, ':');
+	size_t la = pa ? (size_t)(pa - a) : strlen(a);
+	size_t lb = pb ? (size_t)(pb - b) : strlen(b);
+
+	return la == lb && !strncmp(a, b, la);
+}
+
 qboolean Ghost_Exist(edict_t *ent)
 {
 	int i;
@@ -1280,7 +1293,7 @@ qboolean Ghost_Exist(edict_t *ent)
 
 	for (i = 0, ghost = ghost_players; i < num_ghost_players; i++, ghost++) {
 		if (ghost->ip && ent->client->pers.ip && ghost->netname && ent->client->pers.netname &&
-			!strcmp(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
+			Ghost_SameIP(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
 			return true;
 		}
 	}
@@ -1303,7 +1316,7 @@ void Cmd_Ghost_f(edict_t * ent)
 	}
 
 	for (i = 0, ghost = ghost_players; i < num_ghost_players; i++, ghost++) {
-		if (!strcmp(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
+		if (Ghost_SameIP(ghost->ip, ent->client->pers.ip) && !strcmp(ghost->netname, ent->client->pers.netname)) {
 			break;
 		}
 	}
