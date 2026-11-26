@@ -296,7 +296,8 @@ that table, only while it is open.
   no weapon table and so no key hints until Enter.
 - **Up/Down** walks the players, **Left/Right** crosses to the other
   team's column at the same place in its list (its last when shorter).
-- **Enter** opens the selected player's weapons under the board - shots,
+- **Enter** - once an arrow has shown the bar; before that it does
+  nothing - opens the selected player's weapons under the board - shots,
   hits, accuracy, headshots, kills, damage and the locations per weapon,
   each row opening with the weapon's kill-feed icon - with the key hints
   under it, and closes them again. While the table is open it follows

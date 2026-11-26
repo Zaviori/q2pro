@@ -675,6 +675,9 @@ bool CL_WS_KeyEvent(int key)
         return true;
     case K_ENTER:
     case K_KP_ENTER:
+        // nothing to open before the arrows have shown whose it would be
+        if (!wsc.cursor_shown)
+            return true;
         wsc_fix_cursor();
         if (wsc.expanded == wsc.cursor) {
             wsc.expanded = 0;
