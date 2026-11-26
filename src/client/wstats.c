@@ -37,9 +37,9 @@ static const char *const wsc_wname[WSC_NW] = {
 static const char *const wsc_wpic[WSC_NW][2] = {
     { NULL }, { "w_mk23" }, { "w_mp5" }, { "w_m4" }, { "w_super90" }, { "w_cannon" },
     { "w_sniper" }, { "w_akimbo" },
-    { "w_knife_slash", "w_knife" },     // ours: the knife held level
+    { "w_knife_slash", "w_knife" },     // ours: the fist on the handle, blade out
     { "a_m61frag" },
-    { "w_knife_throw", "w_knife" },     // ours: the knife in flight
+    { "w_knife_throw", "w_knife" },     // ours: the hand raised, holding the blade
     { "hud_boot", "slippers" }, { "hud_fist" }, { "a_m61frag" }
 };
 

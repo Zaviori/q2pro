@@ -291,10 +291,10 @@ after Damage (the aimed weapons, as the weapon table's), and after Team
 the kills per weapon - a column for each weapon somebody on the list
 has killed with, the most kills in all on the left (ties in the weapons'
 order), its kill-feed icon standing on the column's bar. The knife's
-two have icons of ours, made from `w_knife`: the slash `pics/
-w_knife_slash.png` (held level, 2:1) and the throw `pics/
-w_knife_throw.png` (in flight, streaks behind); without them both fall
-back to `w_knife`. `scr_statslist_weapons 0` (saved; 1 by default)
+two have icons of ours, cut out of the view model in game: the slash
+`pics/w_knife_slash.png` (the fist on the handle, the blade out) and the
+throw `pics/w_knife_throw.png` (the hand raised, holding the blade);
+without them both fall back to `w_knife`. `scr_statslist_weapons 0` (saved; 1 by default)
 leaves the kills per weapon out, the list ending at Team. The
 cursor, Enter, the weapon table and PgUp/PgDn are the team board's;
 Left/Right go through. `pstats` carries what the channel lacked for
