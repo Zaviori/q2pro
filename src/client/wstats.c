@@ -536,7 +536,11 @@ static void wsc_open(bool open)
 {
     wsc.open = open;
     if (open) {
-        wsc.cursor_shown = false;   // its bar waits for the arrows
+        // as the server's board: no bar until the arrows, no weapon table
+        // (and with it no key hints) until Enter
+        wsc.cursor_shown = false;
+        wsc.expanded = 0;
+        wsc.scope = 0;
         if (!wsc.cursor && wsc.me)
             wsc.cursor = wsc.me;
         wsc_fix_cursor();
@@ -598,8 +602,8 @@ static void wsc_move(int step)
         wsc.expanded = wsc.cursor;
 }
 
-// Left/Right with no weapons open: the next team's column, at the same
-// place in its list (or its last), the bar shown
+// Left/Right: the next team's column, at the same place in its list (or
+// its last), the bar shown; an open weapon table follows
 static void wsc_team_step(int dir)
 {
     int list[WSC_MAX_P], n, i, t, nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
@@ -619,13 +623,15 @@ static void wsc_team_step(int dir)
         if (m) {
             wsc.cursor = list[min(i, m - 1)];
             wsc.cursor_shown = true;
+            if (wsc.expanded)
+                wsc.expanded = wsc.cursor;
             return;
         }
     }
     wsc.cursor_shown = true;    // no other team with players: just the bar
 }
 
-// Left goes back in time: map, the newest round, ... the first; right back
+// PgUp goes back in time: map, the newest round, ... the first; right back
 static void wsc_step_scope(int dir)
 {
     int rounds[256], n, i;
@@ -679,18 +685,23 @@ bool CL_WS_KeyEvent(int key)
         return true;
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
-        if (!wsc.expanded) {
-            wsc_team_step(-1);
-            return true;
-        }
-        wsc_step_scope(1);
+        wsc_team_step(-1);
         return true;
     case K_RIGHTARROW:
     case K_KP_RIGHTARROW:
-        if (!wsc.expanded) {
-            wsc_team_step(1);
-            return true;
-        }
+        wsc_team_step(1);
+        return true;
+    // the open table's map total and rounds: up goes back in time
+    case K_PGUP:
+    case K_KP_PGUP:
+        if (!wsc.expanded)
+            return false;
+        wsc_step_scope(1);
+        return true;
+    case K_PGDN:
+    case K_KP_PGDN:
+        if (!wsc.expanded)
+            return false;
         wsc_step_scope(-1);
         return true;
     }
@@ -904,7 +915,7 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
 
 static const char *wsc_hints(void)
 {
-    return "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close";
+    return "[ARROWS] Player/team   [PGUP/PGDN] Map/rounds   [ENTER] Close stats   [ESC] Close";
 }
 
 static const char *wsc_team_title(int t)

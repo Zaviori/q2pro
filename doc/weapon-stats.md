@@ -291,20 +291,23 @@ selected player's weapon table under the board, headed by their name,
 its captions in green as the layout's headings, and the key hints under
 that table, only while it is open.
 
-- **Left/Right**, with no weapons open, crosses to the other team's
-  column at the same place in its list. **Up/Down** walks the players, **Enter** opens the selected player's
-  weapons under the board - shots, hits, accuracy, headshots, kills,
-  damage and the locations per weapon, each row opening with the
-  weapon's kill-feed icon - and closes it again. While it is open it
-  follows the cursor: Up/Down shows each player's in turn, in the same
-  map/round scope. The locations read
-  HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and NOLOC only
-  when a weapon in the table has a count there.
-  **Left/Right** steps that table between the map total and each
-  round (newest first; the round being played is "live" to a
-  spectator). **Esc** or `score` closes the board, and so does the
-  server opening something of its own - a menu (TAB), the inventory,
-  its scoreboard at intermission - which shows in its place as before. Releases pass
+- The board opens as the server's own looks, every time: no cursor bar
+  until an arrow is pressed (the first Up/Down shows it on your own row),
+  no weapon table and so no key hints until Enter.
+- **Up/Down** walks the players, **Left/Right** crosses to the other
+  team's column at the same place in its list (its last when shorter).
+- **Enter** opens the selected player's weapons under the board - shots,
+  hits, accuracy, headshots, kills, damage and the locations per weapon,
+  each row opening with the weapon's kill-feed icon - with the key hints
+  under it, and closes them again. While the table is open it follows
+  the cursor, every arrow showing that player's in the same scope. The
+  locations read HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and
+  NOLOC only when a weapon in the table has a count there.
+- **PgUp/PgDn** step the open table between the map total and each round
+  (PgUp back in time; the round being played is "live" to a spectator).
+- **Esc** or `score` closes the board, and so does the server opening
+  something of its own - a menu (TAB), the inventory, its scoreboard at
+  intermission - which shows in its place as before. Releases pass
   through, so a key held before it opened is let go of.
 
 ## Size
