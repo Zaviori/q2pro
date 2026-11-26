@@ -430,35 +430,58 @@ key (`score`, F1) opens the client's own board instead of the server's.
 Anywhere else `score` goes to the server and its own scoreboard shows as
 before; `cmd score` opens the server's board on any server.
 
-- The teams' names, icons and scores, the map and the round; per team its
-  players, best score first: score, kills, deaths, accuracy (the aimed
-  weapons: no knife slash, kick, punch or grenade), damage, K/D, ping and
-  **WEAPONS** - the three weapons they got most kills with, as a count and
-  the kill feed's icon. Who left stays, greyed; a team's captain has an
-  **@** before the name, as on the server's board, a team's subs come after its players under
-  **SUBS**, greyed, and in matchmode a team that is not ready says
-  **NOT READY** under its name. Spectators are listed on a line under the
-  teams.
-- Who is alive is in the server board's green - where the server's own
-  boards show it: to the dead and spectators, or between rounds, and to
-  nobody on a server with `limchasecam`.
-- **Up/Down** picks a player, **Enter** opens their weapons under their
-  row - shots, hits, accuracy, headshots, kills, damage and where the hits
-  landed (head, helmet, chest, vest, stomach, legs, and no location for the
-  shotgun and handcannon; helmet and no location only when there is any) -
-  and closes it again. **Left/Right** steps it between the map total and
-  each round, the one being played "live" to a spectator. **Esc** or
-  `score` closes the board, and so does the server opening a menu (TAB).
-- The board's upper edge stays put and it grows down; what does not fit
-  above the screen's bottom is cut.
+**Three layouts**, `scr_statsboard_style`, cycled in **Settings > Extras >
+Stats Scoreboard** (its **show the board** closes the menu and opens the
+board, to see one):
+
+- **0, the dark board** (default): the teams' names, icons and scores,
+  the map and the round; per team its players, best score first: score,
+  kills, deaths, accuracy (the aimed weapons: no knife slash, kick, punch
+  or grenade), damage, K/D, ping and **WEAPONS** - the three weapons they
+  got most kills with, as a count and the kill feed's icon. A team's subs
+  come after its players under **SUBS**, spectators on a line under the
+  teams. In the TrueType font where `scr_statsboard_font` is on.
+- **1, the classic board**: the teams side by side like the old AQ2
+  scoreboard - name, icon and big score over each team's players (score,
+  kills, deaths, accuracy, damage, ping), light grey with dark text.
+  See-through (`scr_statsboard_alpha` under 0.5) it takes the old board's
+  light letters with a dark edge.
+- **2, the server's own**: AQtion's matchmode scoreboard as the server
+  draws it, in conchars at its places - team pics, totals, big scores,
+  names, subs, Ready / Not Ready.
+
+On all three: who left stays, greyed; a captain has an **@**; who is alive
+is in the server board's green where the server's own boards show it (the
+dead and spectators, or between rounds; nobody under `limchasecam`).
+
+- **F1** cycles as the server's own key: the board, then the **player
+  list** - the server's second page (frags, time, ping, damage, team) with
+  **Acc** and the **kills per weapon**, a column per weapon used, its icon
+  over it, most used on the left (`scr_statslist_weapons 0` leaves them
+  out) - then closed. With a server layout up (a menu, its own board), F1
+  puts it away and goes on from there.
+- Both open plain: no highlight and no key help. **Enter** shows the
+  highlight on you; the **arrows** move it (Up/Down a player, Left/Right
+  the other team), **Enter** opens that player's **weapon table** -
+  shots, hits, accuracy, headshots, kills, damage and where the hits
+  landed (head, helmet, chest, vest, stomach, legs, and no location for
+  the shotgun and handcannon; helmet and no location only when there is
+  any) - with the key help under it. While it is open the arrows show the
+  next player's, **PgUp/PgDn** step it between the map total and each
+  round ("live" to a spectator), and "loading rounds" spins while past
+  rounds still arrive after joining mid-map. **Esc** closes.
+- The thrown knife and the slash have icons of their own.
 
 | Cvar | Default | What |
 | --- | --- | --- |
 | `cl_statsboard` | 1 | 0 keeps the server's scoreboard everywhere (not saved) |
-| `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width |
+| `scr_statsboard_style` | 0 | 0 the dark board, 1 the classic light one, 2 the server's own in conchars |
+| `scr_statsboard_alpha` | 0.85 | the background's opacity, 0 (none) to 1 (opaque); dark and classic |
+| `scr_statsboard_font` | 1 | dark and classic in the TrueType font; 0 the old characters |
+| `scr_statsboard_size` | 0 | their text size; 0 the layout's own: 16 classic (about the conchars' size), 10 dark |
+| `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width (dark and classic) |
 | `scr_statsboard_y` | 0.1 | its upper edge, a fraction of the height (at most 0.9) |
-| `scr_statsboard_font` | 1 | the board in the TrueType font; 0 the old characters |
-| `scr_statsboard_size` | 10 | its text size |
+| `scr_statslist_weapons` | 1 | the player list's kills per weapon; 0 leaves them out |
 | `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |
 | `cl_stats_echo` | 0 | 1 prints every line of the channel as `[stat] ...` |
 | `aq2events` | 0 | 1 asks for the event lines too (kills, the match's state, chat...): see `doc/weapon-stats.md` |

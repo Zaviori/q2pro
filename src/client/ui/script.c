@@ -883,10 +883,31 @@ static const char ui_menu_xhair[] =
     "toggle \"hide when scoped\" ch_hide_while_zoomed\n"
     "end\n";
 
+// The stats scoreboard (servers with the per-weapon stats channel): the
+// layout to cycle, a way out to the board to see it, and its knobs
+static const char ui_menu_statsboard[] =
+    "begin statsboard\n"
+    "title \"Stats Scoreboard\"\n"
+    "pairs \"layout\" scr_statsboard_style \"dark board\" 0 \"classic light\" 1 "
+        "\"server's own (conchars)\" 2\n"
+    "action -s \"close the menu and open the scoreboard (on a server with the stats channel)\" "
+        "\"show the board\" \"forcemenuoff; score\"\n"
+    "blank\n"
+    "range \"background opacity\" scr_statsboard_alpha 0 1 0.05\n"
+    "toggle \"truetype text\" scr_statsboard_font\n"
+    "range \"text size (0 = the layout's)\" scr_statsboard_size 0 24 1\n"
+    "range \"position across\" scr_statsboard_x 0 1 0.05\n"
+    "range \"position down\" scr_statsboard_y 0 0.9 0.05\n"
+    "blank\n"
+    "toggle \"kills per weapon on the list\" scr_statslist_weapons\n"
+    "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
+    "end\n";
+
 static const ui_extra_t ui_extras[] = {
     { "TrueType Text", "ttf", ui_menu_ttf },
     { "Crosshair", "xhair", ui_menu_xhair },
     { "Stainmaps", "stains", ui_menu_stains },
+    { "Stats Scoreboard", "statsboard", ui_menu_statsboard },
     { "Jump Mod Keys", "jmodkeys", ui_menu_jmod },
 #ifdef _WIN32
     { "Keyboard", "keyboard", ui_menu_keyboard },
