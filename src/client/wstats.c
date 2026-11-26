@@ -598,6 +598,33 @@ static void wsc_move(int step)
         wsc.expanded = wsc.cursor;
 }
 
+// Left/Right with no weapons open: the next team's column, at the same
+// place in its list (or its last), the bar shown
+static void wsc_team_step(int dir)
+{
+    int list[WSC_MAX_P], n, i, t, nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
+
+    wsc_fix_cursor();
+    if (!wsc.cursor)
+        return;
+    t = wsc.p[wsc.cursor].team;
+    if (t < 1 || t > nteams)
+        return;
+    n = wsc_team_list(t, list);
+    for (i = 0; i < n && list[i] != wsc.cursor; i++)
+        ;
+    for (int k = 1; k < nteams; k++) {
+        int nt = (t - 1 + dir * k + nteams * k) % nteams + 1;
+        int m = wsc_team_list(nt, list);
+        if (m) {
+            wsc.cursor = list[min(i, m - 1)];
+            wsc.cursor_shown = true;
+            return;
+        }
+    }
+    wsc.cursor_shown = true;    // no other team with players: just the bar
+}
+
 // Left goes back in time: map, the newest round, ... the first; right back
 static void wsc_step_scope(int dir)
 {
@@ -652,14 +679,18 @@ bool CL_WS_KeyEvent(int key)
         return true;
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
-        if (!wsc.expanded)
-            return false;
+        if (!wsc.expanded) {
+            wsc_team_step(-1);
+            return true;
+        }
         wsc_step_scope(1);
         return true;
     case K_RIGHTARROW:
     case K_KP_RIGHTARROW:
-        if (!wsc.expanded)
-            return false;
+        if (!wsc.expanded) {
+            wsc_team_step(1);
+            return true;
+        }
         wsc_step_scope(-1);
         return true;
     }
@@ -873,8 +904,7 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
 
 static const char *wsc_hints(void)
 {
-    return wsc.expanded ? "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close"
-                        : "[UP/DOWN] Player   [ENTER] Weapon stats   [ESC] Close";
+    return "[UP/DOWN] Player   [ENTER] Close stats   [LEFT/RIGHT] Map/rounds   [ESC] Close";
 }
 
 static const char *wsc_team_title(int t)

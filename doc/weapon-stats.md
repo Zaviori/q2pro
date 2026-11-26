@@ -291,7 +291,8 @@ selected player's weapon table under the board, headed by their name,
 its captions in green as the layout's headings, and the key hints under
 that table, only while it is open.
 
-- **Up/Down** walks the players, **Enter** opens the selected player's
+- **Left/Right**, with no weapons open, crosses to the other team's
+  column at the same place in its list. **Up/Down** walks the players, **Enter** opens the selected player's
   weapons under the board - shots, hits, accuracy, headshots, kills,
   damage and the locations per weapon, each row opening with the
   weapon's kill-feed icon - and closes it again. While it is open it
