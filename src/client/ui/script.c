@@ -888,6 +888,8 @@ static const char ui_menu_xhair[] =
 static const char ui_menu_statsboard[] =
     "begin statsboard\n"
     "title \"Stats Scoreboard\"\n"
+    "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
+    "blank\n"
     "pairs \"layout\" scr_statsboard_style \"dark board\" 0 \"classic light\" 1 "
         "\"server's own (conchars)\" 2\n"
     "action -s \"the picture below is an example; this opens the real board (on a server with the stats channel)\" "
@@ -900,7 +902,6 @@ static const char ui_menu_statsboard[] =
     "range \"position down\" scr_statsboard_y 0 0.9 0.05\n"
     "blank\n"
     "toggle \"kills per weapon on the list (server's own)\" scr_statslist_weapons\n"
-    "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
     "end\n";
 
 // The scoreboard's menu shows what the layout looks like - a picture of
