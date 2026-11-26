@@ -43,7 +43,7 @@ typedef struct {
 	int      base[WS_NW][WS_NF];
 	int      sent[WS_NW][WS_NF];
 	unsigned changed;               // bit per weapon, since the last wlive
-	int      ps[5];                 // pstats as last sent: score k d dmg ping
+	int      ps[7];                 // pstats as last sent: score k d dmg ping min bot
 	int      ping_at;               // realFramenum the ping was last sent
 	int      alive;                 // as last sent in an alive line: 0, 1
 	int      held;                  // the weapon in hand as last sent (curr_weap)
@@ -354,14 +354,17 @@ static void ws_line_hist(const ws_hist_t *h)
 
 #define WS_PING_FRAMES  (5 * (HZ > 0 ? HZ : 10))
 
-static const char *const ws_pkey[5] = { "score", "k", "d", "dmg", "ping" };
+static const char *const ws_pkey[7] = { "score", "k", "d", "dmg", "ping", "min", "bot" };
 
+// min (minutes on the server) and bot (the server's list shows "BOT" for
+// the ping) are the list page's, at the end of the line
 static void ws_line_pstats(int p)
 {
 	const int *v = ws.sids[p].ps;
 
-	ws_line("pstats p=%d %s=%d %s=%d %s=%d %s=%d %s=%d", p,
-		ws_pkey[0], v[0], ws_pkey[1], v[1], ws_pkey[2], v[2], ws_pkey[3], v[3], ws_pkey[4], v[4]);
+	ws_line("pstats p=%d %s=%d %s=%d %s=%d %s=%d %s=%d %s=%d %s=%d", p,
+		ws_pkey[0], v[0], ws_pkey[1], v[1], ws_pkey[2], v[2], ws_pkey[3], v[3], ws_pkey[4], v[4],
+		ws_pkey[5], v[5], ws_pkey[6], v[6]);
 }
 
 // Refresh a connected player's scoreboard numbers; true when they changed
@@ -370,7 +373,7 @@ static qboolean ws_pstats_update(int p, qboolean force)
 {
 	ws_sid_t *s = &ws.sids[p];
 	edict_t *ent;
-	int v[5];
+	int v[7];
 	qboolean changed;
 
 	if (s->slot < 0)
@@ -383,7 +386,20 @@ static qboolean ws_pstats_update(int p, qboolean force)
 	v[2] = ent->client->resp.deaths;
 	v[3] = ent->client->resp.damage_dealt;
 	v[4] = ent->client->ping;
-	changed = memcmp(v, s->ps, 4 * sizeof(int)) != 0;
+	v[5] = (level.framenum - ent->client->resp.enterframe) / (60 * HZ);
+	v[6] = 0;
+#ifndef NO_BOTS
+	// as the server's own list (A_ScoreboardMessage, 'P'): "BOT", or the
+	// bot's made-up ping when it reports as a client
+	if (IS_BOT(ent)) {
+		if (bot_reportasclient->value && bot_reportpings->value)
+			v[4] = ent->bot.bot_ping;
+		else
+			v[6] = 1;
+	}
+#endif
+	changed = memcmp(v, s->ps, 4 * sizeof(int)) != 0 ||
+		v[5] != s->ps[5] || v[6] != s->ps[6];
 	if (v[4] != s->ps[4] && level.realFramenum - s->ping_at >= WS_PING_FRAMES)
 		changed = true;
 	if (changed || force) {

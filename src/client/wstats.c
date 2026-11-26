@@ -48,6 +48,8 @@ typedef struct {
     bool    sub;                // a substitute for the team (matchmode)
     bool    have_ps;
     int     score, kills, deaths, dmg, ping;
+    int     minutes;            // on the server, for the list page
+    bool    bot;                // the server's list shows "BOT" for the ping
     bool    alive;
     int     map[WSC_NW][WSC_NF];    // rounds that are over
     int     live[WSC_NW][WSC_NF];   // the round being played, from wlive
@@ -67,6 +69,7 @@ static struct {
     int             me;
     bool            alive_shown;    // the server sent who is alive: we may know
     bool            hist_loading;   // the round history is still coming
+    int             page;       // 1 the team board, 2 the list (the server's second page)
     wsc_player_t    p[WSC_MAX_P];
     char            team_name[WSC_MAX_TEAMS][32];
     char            team_icon[WSC_MAX_TEAMS][MAX_QPATH];
@@ -277,10 +280,13 @@ void CL_WS_ParseLine(const char *line)
         if (!state) {
             // a snapshot: everything comes again
             bool open = wsc.open;
-            int cursor = wsc.cursor, expanded = wsc.expanded;
+            int cursor = wsc.cursor, expanded = wsc.expanded, page = wsc.page;
+            bool shown = wsc.cursor_shown;
             CL_WS_Clear();
             wsc.active = true;
             wsc.open = open;
+            wsc.page = page;
+            wsc.cursor_shown = shown;
             wsc.cursor = cursor;
             wsc.expanded = expanded;
         } else if (!strcmp(state, "reset")) {
@@ -331,6 +337,8 @@ void CL_WS_ParseLine(const char *line)
         p->deaths = wsc_int(&l, "d", p->deaths);
         p->dmg = wsc_int(&l, "dmg", p->dmg);
         p->ping = wsc_int(&l, "ping", p->ping);
+        p->minutes = wsc_int(&l, "min", p->minutes);
+        p->bot = wsc_int(&l, "bot", p->bot) != 0;
         return;
     }
 
@@ -437,6 +445,24 @@ static bool wsc_weapon_values(int pi, int w, int scope, int *v)
     return false;
 }
 
+// shots and hits over every weapon (the map): the list's accuracy
+static void wsc_accuracy(int pi, int *shots, int *hits)
+{
+    int v[WSC_NF];
+
+    *shots = *hits = 0;
+    for (int w = 1; w < WSC_NW; w++) {
+        // kick, punch and the slash are no aim, and a grenade counts
+        // every body it hurts: none of them is accuracy
+        if (w == 8 || w == 9 || w == 11 || w == 12 || w == 13)
+            continue;
+        if (wsc_weapon_values(pi, w, 0, v)) {
+            *shots += v[F_SHOTS];
+            *hits += v[F_HITS];
+        }
+    }
+}
+
 // the rounds the player has a line for, and the one being played
 static int wsc_rounds(int pi, int *out, int max)
 {
@@ -519,9 +545,39 @@ static int wsc_num_teams(void)
 }
 
 // every player on a team, in the board's order: the cursor walks this
+// The list page's order, as the server's (G_PlayerCmp): everyone
+// connected, spectators too - score, fewer deaths, more damage, the slot
+static int wsc_cmp_list(const void *a, const void *b)
+{
+    const wsc_player_t *pa = &wsc.p[*(const int *)a];
+    const wsc_player_t *pb = &wsc.p[*(const int *)b];
+
+    if (pa->score != pb->score)
+        return pb->score - pa->score;
+    if (pa->deaths != pb->deaths)
+        return pa->deaths - pb->deaths;
+    if (pa->dmg != pb->dmg)
+        return pb->dmg - pa->dmg;
+    return pa->slot - pb->slot;
+}
+
+static int wsc_list_page(int *out)
+{
+    int n = 0;
+
+    for (int i = 1; i < WSC_MAX_P; i++)
+        if (wsc.p[i].used && wsc.p[i].slot >= 0)
+            out[n++] = i;
+    qsort(out, n, sizeof(int), wsc_cmp_list);
+    return n;
+}
+
 static int wsc_board_list(int *out)
 {
     int n = 0;
+
+    if (wsc.page == 2)
+        return wsc_list_page(out);
 
     for (int t = 1; t <= wsc_num_teams(); t++)
         n += wsc_team_list(t, out + n);
@@ -568,22 +624,39 @@ static void CL_WS_Score_f(void)
         CL_ClientCommand("score");
         return;
     }
-    // a layout of the server's up (its second page, its board at
-    // intermission, a menu): the key is the server's, as ever
-    if (cl.frame.ps.stats[STAT_LAYOUTS] & LAYOUTS_LAYOUT) {
+    int layouts = cl.frame.ps.stats[STAT_LAYOUTS];
+    // intermission: the server's board, which it keeps up itself
+    if (layouts & LAYOUTS_INTERMISSION) {
         CL_ClientCommand("score");
+        return;
+    }
+    // a layout of the server's up: put away, and the cycle goes on as
+    // the server's own would from it - its team board (the big scores'
+    // num widgets, or the new board's "Frg Tim Png") to the list page,
+    // its list (the "Player" caption) closed, a menu to the team board
+    if (layouts & LAYOUTS_LAYOUT) {
+        int next = strstr(cl.layout, " num ") || strstr(cl.layout, "Frg Tim Png") ? 2 :
+                   strstr(cl.layout, "Player") ? 0 : 1;
+        CL_ClientCommand("putaway");
+        if (next) {
+            wsc.page = next;
+            wsc_open(true);
+        } else {
+            wsc.open = false;
+        }
+        return;
+    }
+    // the server's cycle, both pages ours: the team board, the list, closed
+    if (wsc.open && wsc.page == 1) {
+        wsc.page = 2;
+        wsc_open(true);
         return;
     }
     if (wsc.open) {
-        // ours was the first page: on to the server's second. Its cycle
-        // starts at the team board, so two steps, sent in one packet - the
-        // server runs both in a frame and only the last layout is drawn.
-        // Outside teamplay its second step closes it, as its own would.
         wsc.open = false;
-        CL_ClientCommand("score");
-        CL_ClientCommand("score");
         return;
     }
+    wsc.page = 1;
     wsc_open(true);
 }
 
@@ -722,13 +795,13 @@ bool CL_WS_KeyEvent(int key)
         return true;
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
-        if (!wsc.cursor_shown)
+        if (!wsc.cursor_shown || wsc.page == 2)
             return false;
         wsc_team_step(-1);
         return true;
     case K_RIGHTARROW:
     case K_KP_RIGHTARROW:
-        if (!wsc.cursor_shown)
+        if (!wsc.cursor_shown || wsc.page == 2)
             return false;
         wsc_team_step(1);
         return true;
@@ -964,7 +1037,8 @@ static int wsc_draw_weapons(int x, int y, int w, int bottom, int pi)
 
 static const char *wsc_hints(void)
 {
-    return "[ARROWS] Player/team   [PGUP/PGDN] Map/rounds   [ENTER] Close stats   [ESC] Close";
+    return wsc.page == 2 ? "[UP/DOWN] Player   [PGUP/PGDN] Map/rounds   [ENTER] Close stats   [ESC] Close"
+                         : "[ARROWS] Player/team   [PGUP/PGDN] Map/rounds   [ENTER] Close stats   [ESC] Close";
 }
 
 static const char *wsc_team_title(int t)
@@ -997,6 +1071,122 @@ static void wsc_rp_row(int ox, int oy, int xv, int yv, int pi, bool alt)
     wsc_rp_string(ox, oy, xv, yv, alt, p->slot < 0 ? WSC_DIM : 0, name);
 }
 
+
+/* ------------------------------------------------------------------ */
+/* the list page: the server's second scoreboard (LAYOUT_SCORES2, its    */
+/* default "FNMPIT" columns) at its places, with Acc after Damage and    */
+/* the kills per weapon after Team - a column for each weapon somebody   */
+/* on the list has killed with, its kill-feed icon over it               */
+
+#define LS_CHARS    47      // "Frags Player... Time Ping Damage Acc Team"
+
+static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
+{
+    int list[WSC_MAX_P], n = wsc_list_page(list);
+    int wk[WSC_NW], nw = 0, v[WSC_NF];
+    bool matchmode = false;
+    char line[256];
+
+    for (int t = 1; t < WSC_MAX_TEAMS; t++)
+        if (wsc.team_ready[t] >= 0)
+            matchmode = true;
+    for (int w = 1; w < WSC_NW; w++)
+        for (int i = 0; i < n; i++)
+            if (wsc_weapon_values(list[i], w, 0, v) && v[F_K]) {
+                wk[nw++] = w;
+                break;
+            }
+
+    int chars = LS_CHARS + nw * 4;
+    int ox = hud_x + hud_w / 2 - 160, oy = hud_y + hud_h / 2 - 120;
+    int lx = ox + 160 - chars * 4;
+
+    // the captions and their bars, string2
+    size_t len = Q_strlcpy(line, "Frags Player          Time Ping Damage Acc Team", sizeof(line));
+    for (int k = 0; k < nw && len + 4 < sizeof(line); k++)
+        len += Q_strlcpy(line + len, "    ", sizeof(line) - len);
+    wsc_str(lx, oy + 32, AL_LEFT, true, 0, line, strlen(line));
+    len = Q_strlcpy(line, "\x9D\x9E\x9E\x9E\x9F \x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F "
+                    "\x9D\x9E\x9E\x9F \x9D\x9E\x9E\x9F \x9D\x9E\x9E\x9E\x9E\x9F \x9D\x9E\x9F \x9D\x9E\x9E\x9F",
+                    sizeof(line));
+    for (int k = 0; k < nw && len + 4 < sizeof(line); k++)
+        len += Q_strlcpy(line + len, " \x9D\x9E\x9F", sizeof(line) - len);
+    wsc_str(lx, oy + 40, AL_LEFT, true, 0, line, strlen(line));
+    // the weapons' icons over their columns: the column's three cells wide
+    // at most, standing on its bar
+    for (int k = 0; k < nw; k++) {
+        qhandle_t pic = 0;
+        int iw, ih, bw = CW * 3, bh = 14;
+        for (int j = 0; j < 2 && !pic && wsc_wpic[wk[k]][j]; j++)
+            pic = wsc_icon_pic(wsc_wpic[wk[k]][j]);
+        if (!pic)
+            continue;
+        R_GetPicSize(&iw, &ih, pic);
+        if (iw <= 0 || ih <= 0)
+            continue;
+        int dw = iw * bh / ih, dh = bh;
+        if (dw > bw) {
+            dh = dh * bw / dw;
+            dw = bw;
+        }
+        R_DrawStretchPic(lx + (LS_CHARS + k * 4 + 1) * CW + (bw - dw) / 2, oy + 40 - 1 - dh, dw, dh, pic);
+    }
+
+    int y = oy + 48, bottom = hud_y + hud_h - CH * 2;
+    for (int i = 0; i < n; i++) {
+        const wsc_player_t *p = &wsc.p[list[i]];
+        char tm[8], pg[8], tc[8];
+        int shots, hits;
+
+        if (y + CH > bottom - CH) {
+            Q_snprintf(line, sizeof(line), "..and %d more", n - i);
+            wsc_str(lx, y, AL_LEFT, false, 0, line, strlen(line));
+            y += 8;
+            break;
+        }
+        if (list[i] == wsc.cursor && wsc.cursor_shown)
+            R_DrawFill32(lx - 2, y - 1, chars * CW + 4, CH + 2, WSC_CURSOR);
+
+        if (p->minutes < 60)
+            Q_snprintf(tm, sizeof(tm), "%4d", p->minutes);
+        else if (p->minutes < 600)
+            Q_snprintf(tm, sizeof(tm), "%1d:%02d", p->minutes / 60, p->minutes % 60);
+        else
+            Q_snprintf(tm, sizeof(tm), "%3dh", min(999, p->minutes / 60));
+        if (p->bot)
+            Q_strlcpy(pg, " BOT", sizeof(pg));
+        else
+            Q_snprintf(pg, sizeof(pg), "%4d", min(9999, p->ping));
+        char team = p->team > 0 && p->team < 10 ? '0' + p->team : ' ';
+        if (matchmode) {
+            bool captain = p->team > 0 && p->team < WSC_MAX_TEAMS && wsc.team_captain[p->team] == list[i];
+            Q_snprintf(tc, sizeof(tc), "  %c%c", team, captain ? 'C' : p->sub ? 'S' : ' ');
+        } else {
+            Q_snprintf(tc, sizeof(tc), "   %c", team);
+        }
+        wsc_accuracy(list[i], &shots, &hits);
+        len = Q_snprintf(line, sizeof(line), "%5d %-15.15s %s %s %6d %3d %s",
+                         min(99999, p->score), p->name[0] ? p->name : "(unnamed)", tm, pg,
+                         min(999999, p->dmg), shots ? hits * 100 / shots : 0, tc);
+        for (int k = 0; k < nw && len + 4 < sizeof(line); k++) {
+            int kills = wsc_weapon_values(list[i], wk[k], 0, v) ? v[F_K] : 0;
+            len += Q_snprintf(line + len, sizeof(line) - len, " %3d", kills);
+        }
+        wsc_str(lx, y, AL_LEFT, false, 0, line, strlen(line));
+        y += 8;
+    }
+
+    // below: the opened player's weapons, then the keys, as on the board
+    int tw = min(BOARD_CHARS * CW, hud_w - CW * 2);
+    int tx = hud_x + (hud_w - tw) / 2;
+    y += CH;
+    wsc_rh = CH + 2;
+    if (wsc.expanded && wsc.p[wsc.expanded].used) {
+        y = wsc_draw_weapons(tx, y, tw, bottom, wsc.expanded) + CH / 2;
+        wsc_text(tx + CW, min(y, bottom), AL_LEFT, false, WSC_DIM, wsc_hints());
+    }
+}
+
 void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale, qhandle_t font)
 {
     static int lists[WSC_MAX_TEAMS][WSC_MAX_P];
@@ -1011,6 +1201,10 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     wsc_font = font;
     wsc_rh = CH;
     wsc_fix_cursor();
+    if (wsc.page == 2) {
+        wsc_draw_list(hud_x, hud_y, hud_w, hud_h);
+        return;
+    }
 
     nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
     ox = hud_x + hud_w / 2 - 160;

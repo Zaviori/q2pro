@@ -146,7 +146,7 @@ subscribe and once a second when they change (the ping at most every
 5 s):
 
 ```
-pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41   ; the mod's resp counters
+pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41 min=14 bot=0 ; the mod's resp counters, minutes on, BOT ping
 wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i captain=3 ready=1   ; captain: a stats id, 0 none; ready in matchmode only
 ```
 
@@ -276,12 +276,23 @@ Where the server sends the channel - a snapshot has come since the
 connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
-the fallback. The server's own cycle is kept, ours as its first page:
-the second `score` puts ours away and brings up the server's second
-page (frags, time, ping, damage, team - in teamplay; outside it the
-server's step closes), the third closes that. With any layout of the
-server's up - that page, its board at intermission, a menu - `score`
-goes to the server. `cl_statsboard 0` keeps the server's board everywhere.
+the fallback. The server's own cycle is kept, both pages ours: the
+second `score` brings the **list page**, the third closes. With a layout
+of the server's up, `score` puts it away (`putaway`) and goes on as the
+server's cycle would from it - its team board to our list, its list
+closed, a menu to our team board; at intermission the key is the
+server's.
+
+The list page is the server's second scoreboard (`LAYOUT_SCORES2`, its
+default "FNMPIT" columns) at its places: Frags, Player, Time, Ping
+(" BOT" where the server would say so), Damage and Team (with C/S in
+matchmode), everyone connected in the server's order. Added: **Acc**
+after Damage (the aimed weapons, as the weapon table's), and after Team
+the kills per weapon - a column for each weapon somebody on the list
+has killed with, its kill-feed icon standing on the column's bar. The
+cursor, Enter, the weapon table and PgUp/PgDn are the team board's;
+Left/Right go through. `pstats` carries what the channel lacked for
+it, at the end of the line: `min=` (minutes on the server) and `bot=1`. `cl_statsboard 0` keeps the server's board everywhere.
 
 The board is the server's own matchmode scoreboard
 (`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws
