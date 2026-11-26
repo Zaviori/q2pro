@@ -1080,7 +1080,9 @@ static void ws_alive_frame(void)
  * the match's state to every event subscriber; spawns, weapons in hand
  * and throws, which would give a position or a loadout away, only to the
  * watchers - spectators and the demo; chat to whoever the server prints
- * it to.
+ * it to. Under limchasecam the kills and deaths are the watchers' alone:
+ * the server hides who is alive from the players then, and every kill
+ * line carries the teams' alive counts.
  */
 
 static const char *ws_loc_name(int loc)
@@ -1125,7 +1127,7 @@ void WS_Death(edict_t *self, edict_t *attacker)
 	if (!ws_on() || !v)
 		return;
 	ws_alive_counts(self, alive, sizeof(alive));
-	ws_begin(WS_TO_EVENTS, NULL);
+	ws_begin(limchasecam->value != 0 ? WS_TO_EVENTS_WATCH : WS_TO_EVENTS, NULL);
 	if (attacker && attacker != self && attacker->client && ws_sid_of(attacker)) {
 		int as = ws_slot(attacker);
 		ws_line("kill a=%d v=%d w=%d loc=%s hs=%d dist=%d dmg=%d%s f=%d%s",
