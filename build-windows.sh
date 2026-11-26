@@ -65,6 +65,8 @@ mkdir -p "$SHAREDIR/pics"
 cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SRCDIR/action/pics/mvd.png" "$SHAREDIR/pics/"
 # the stats board's kick and punch icons; without them the slippers, and none
 cp -f "$SRCDIR/action/pics/hud_boot.png" "$SRCDIR/action/pics/hud_fist.png" "$SHAREDIR/pics/"
+# and the knife's two, the slash and the throw apart
+cp -f "$SRCDIR/action/pics/w_knife_slash.png" "$SRCDIR/action/pics/w_knife_throw.png" "$SHAREDIR/pics/"
 # the sharp crosshairs (tools/xhair-gen.py); without them ch_sharp draws the pak's pixel art
 mkdir -p "$SHAREDIR/pics/xhair"
 cp -f "$SRCDIR"/action/pics/xhair/*.png "$SHAREDIR/pics/xhair/"
