@@ -146,7 +146,7 @@ subscribe and once a second when they change (the ping at most every
 5 s):
 
 ```
-pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41   ; the mod's resp counters
+pstats p=3 score=12 k=10 d=8 dmg=2140 ping=41 min=14 bot=0 ; the mod's resp counters, minutes on, BOT ping
 wteam t=1 name="RED" score=7 icon=../players/male/ctf_r_i captain=3 ready=1   ; captain: a stats id, 0 none; ready in matchmode only
 ```
 
@@ -195,7 +195,9 @@ chat p=5 team=0|1 dead=0|1 text="…" f=363
 ```
 
 `kill`, `death`, `match`, `player` and `team` go to every event
-subscriber; `spawn`, `hold` and `throw`, which give positions and
+subscriber - except under `limchasecam`, where `kill` and `death` go
+only to spectators and the dummy: the server hides who is alive from
+the players then, and the lines carry the alive counts; `spawn`, `hold` and `throw`, which give positions and
 loadouts away, only to spectators and the dummy; `chat` to whoever the
 server prints the message to (a team's chat to that team, the dead's to
 the dead), the same line as it goes. `a1=`/`a2=` are the teams' alive
@@ -215,7 +217,11 @@ lines with their `r=`:
   `wstats_get state=done n=<lines>`. Paced like the backfill.
 - **Backfill**: after the subscribe snapshot, past rounds newest first,
   at most ~1 KB a frame and only while live traffic leaves room; a
-  request jumps the queue. It ends with `wstats_hist state=done r=1-14`.
+  request jumps the queue. It opens with `wstats_hist state=start r=1-14`
+  (sent with the snapshot) and ends with `wstats_hist state=done r=1-14`;
+  between them the board's weapon table shows "loading rounds" and a
+  spinner, PgUp/PgDn reaching back only as far as has come. The demo gets
+  neither line, nor any history.
   ~90 KB is ~20 s at 4 KB/s. Sending it all at once would not fit the
   32 KB of queue a client has (and crowds out the frames).
 
@@ -270,32 +276,67 @@ Where the server sends the channel - a snapshot has come since the
 connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
-the fallback. `cl_statsboard 0` keeps the server's board everywhere.
-`scr_statsboard_x` (0.5) is the board's middle as a fraction of the
-width, `scr_statsboard_y` (0.1) its upper edge as a fraction of the
-height (at most 0.9). The upper edge stays put and the board grows
-down from it; what does not fit above the bottom of the screen is cut. In the TrueType build `scr_statsboard_font` (1) and
-`scr_statsboard_size` (10) set its text.
+the fallback. The server's own cycle is kept, both pages ours: the
+second `score` brings the **list page**, the third closes. With a layout
+of the server's up, `score` puts it away (`putaway`) and goes on as the
+server's cycle would from it - its team board to our list, its list
+closed, a menu to our team board; at intermission the key is the
+server's.
 
-- The header: team names, icons and big scores, the map and round.
-- Per team a band, then its players best score first: score, kills,
-  deaths, accuracy (the aimed weapons: no knife slash, kick, punch or
-  grenade), damage, K/D, ping, and WEAPONS: the (up to) three weapons
-  they got their kills with, most first, as a count and the kill-feed
-  icon - from the channel's per-weapon `k`, the round being played
-  included. Who left stays, greyed, with "left". Who is alive is in
-  the server board's green, where the server says you may know.
-- **Up/Down** walks the players, **Enter** opens the selected player's
-  weapons under their row - shots, hits, accuracy, headshots, kills,
-  damage and the locations per weapon, each row opening with the
-  weapon's kill-feed icon - and closes it again. The locations read
-  HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and NOLOC only
-  when a weapon in the table has a count there.
-  **Left/Right** steps that table between the map total and each
-  round (newest first; the round being played is "live" to a
-  spectator). **Esc** or `score` closes the board, and so does the
-  server opening something of its own - a menu (TAB), the inventory,
-  its scoreboard at intermission - which shows in its place as before. Releases pass
+The list page is the server's second scoreboard (`LAYOUT_SCORES2`, its
+default "FNMPIT" columns) at its places: Frags, Player, Time, Ping
+(" BOT" where the server would say so), Damage and Team (with C/S in
+matchmode), everyone connected in the server's order. Added: **Acc**
+after Damage (the aimed weapons, as the weapon table's), and after Team
+the kills per weapon - a column for each weapon somebody on the list
+has killed with, the most kills in all on the left (ties in the weapons'
+order), its kill-feed icon standing on the column's bar. The knife's
+two have icons of ours: `w_knife` turned to the knife's angle in the
+view model and filling the icon as the guns do - the slash `pics/
+w_knife_slash.png` nearly level (handle left, as held for a stab), the
+throw `pics/w_knife_throw.png` steep (handle up, as held by the blade to
+throw); without them both fall back to `w_knife`. `scr_statslist_weapons 0` (saved; 1 by default)
+leaves the kills per weapon out, the list ending at Team. The
+cursor, Enter, the weapon table and PgUp/PgDn are the team board's;
+Left/Right go through. `pstats` carries what the channel lacked for
+it, at the end of the line: `min=` (minutes on the server) and `bot=1`. `cl_statsboard 0` keeps the server's board everywhere.
+
+The board is the server's own matchmode scoreboard
+(`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws
+it - conchars on the layout's 320x240 grid at the same places, no
+panel: per team its skin and `tag3` pics, "score/players/subs", the big
+score, the name centred over twenty cells; the names from yv 42 (an '@'
+for the captain), in the server's order (score, fewer deaths, more
+damage, client slot), alive ones in the alt charset's green where the
+server says we may know - never under limchasecam, as its own board;
+"Subs" at yv 96 with as many of them as the server fits, Ready / Not
+Ready at yv 128. The server's match clock (yv 144, matchmode) is left
+out: the channel does not carry it. Added to it: a faint bar
+for the cursor - only once Enter is pressed, the first press showing
+it on your own row - who left greyed (they keep their stats), and the
+selected player's weapon table under the board, headed by their name,
+its captions in green as the layout's headings, and the key hints under
+that table, only while it is open.
+
+- The board opens as the server's own looks, every time: no cursor bar
+  until Enter shows it on your own row - the arrows go through to their
+  binds until then -
+  no weapon table and so no key hints until Enter.
+- **Up/Down** walks the players, **Left/Right** crosses to the other
+  team's column at the same place in its list (its last when shorter).
+- **Enter** - once the bar shows; the first press only shows it - opens
+  the selected player's weapons under the board - shots,
+  hits, accuracy, headshots, kills, damage and the locations per weapon,
+  each row opening with the weapon's kill-feed icon - with the key hints
+  under it, and closes them again. While the table is open it follows
+  the cursor, every arrow showing that player's in the same scope. The
+  locations read HEAD, (HELM,) CHEST, VEST, STOM, LEGS, (NOLOC): HELM and
+  NOLOC only when a weapon in the table has a count there.
+- **PgUp/PgDn** step the open table between the map total and each round
+  (PgUp back in time; the round being played is "live" to a spectator).
+- **Esc** or `score` closes the board, and so does the server opening
+  something of its own - a menu (TAB), the inventory, its scoreboard at
+  intermission - which shows in its place as before. Releases pass
   through, so a key held before it opened is let go of.
 
 ## Size

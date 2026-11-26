@@ -1240,7 +1240,9 @@ void HUD_SpectatorUpdate(edict_t *clent)
 		if (teamplay->value) {
 			if (!(clent->client->pers.spec_flags & SPECFL_SPECHUD_NEW)) // hide all elements since client doesn't want them
 			{
-				for (i = 0; i <= h_spectator_time_ss; i++)
+				// to the timer's separator, the enum's last: it comes after
+				// the seconds, and a loop to them left the ':' on screen
+				for (i = 0; i <= h_spectator_time_sep; i++)
 				{
 					Ghud_SetFlags(clent, hud[i], GHF_HIDE);
 				}
