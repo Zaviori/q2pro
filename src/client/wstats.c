@@ -541,7 +541,9 @@ static void wsc_open(bool open)
         wsc.cursor_shown = false;
         wsc.expanded = 0;
         wsc.scope = 0;
-        if (!wsc.cursor && wsc.me)
+        // every opening starts on you, wherever the arrows left it -
+        // alive or dead (a spectator, not on the board, starts on its first)
+        if (wsc.me)
             wsc.cursor = wsc.me;
         wsc_fix_cursor();
     }
