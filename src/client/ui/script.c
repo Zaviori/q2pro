@@ -899,7 +899,7 @@ static const char ui_menu_statsboard[] =
     "range \"position across\" scr_statsboard_x 0 1 0.05\n"
     "range \"position down\" scr_statsboard_y 0 0.9 0.05\n"
     "blank\n"
-    "toggle \"kills per weapon on the list\" scr_statslist_weapons\n"
+    "toggle \"kills per weapon on the list (server's own)\" scr_statslist_weapons\n"
     "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
     "end\n";
 

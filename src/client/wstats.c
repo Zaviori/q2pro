@@ -650,6 +650,10 @@ static void CL_WS_Score_f(void)
     if (layouts & LAYOUTS_LAYOUT) {
         int next = strstr(cl.layout, " num ") || strstr(cl.layout, "Frg Tim Png") ? 2 :
                    strstr(cl.layout, "Player") ? 0 : 1;
+        // the list page is the server's own layout's (2) only: the dark
+        // and classic boards have the frags and the weapons in their rows
+        if (next == 2 && scr_statsboard_style->integer != 2)
+            next = 0;
         CL_ClientCommand("putaway");
         if (next) {
             wsc.page = next;
@@ -659,8 +663,10 @@ static void CL_WS_Score_f(void)
         }
         return;
     }
-    // the server's cycle, both pages ours: the team board, the list, closed
-    if (wsc.open && wsc.page == 1) {
+    // the server's cycle, both pages ours: the team board, the list,
+    // closed - on the server's own layout (2); the dark and classic
+    // boards open and close, their rows having what the list adds
+    if (wsc.open && wsc.page == 1 && scr_statsboard_style->integer == 2) {
         wsc.page = 2;
         wsc_open(true);
         return;

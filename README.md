@@ -455,11 +455,13 @@ On all three: who left stays, greyed; a captain has an **@**; who is alive
 is in the server board's green where the server's own boards show it (the
 dead and spectators, or between rounds; nobody under `limchasecam`).
 
-- **F1** cycles as the server's own key: the board, then the **player
-  list** - the server's second page (frags, time, ping, damage, team) with
+- **F1** opens and closes the board. On the server's own layout (2) it
+  cycles as the server's key does: the board, then the **player list** -
+  the server's second page (frags, time, ping, damage, team) with
   **Acc** and the **kills per weapon**, a column per weapon used, its icon
   over it, most used on the left (`scr_statslist_weapons 0` leaves them
-  out) - then closed. With a server layout up (a menu, its own board), F1
+  out) - then closed; the dark and classic boards have those in their
+  rows and skip it. With a server layout up (a menu, its own board), F1
   puts it away and goes on from there.
 - Both open plain: no highlight and no key help. **Enter** shows the
   highlight on you; the **arrows** move it (Up/Down a player, Left/Right

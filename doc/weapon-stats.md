@@ -311,8 +311,10 @@ them, light letters with a dark edge when see-through
 (`scr_statsboard_alpha` under 0.5); both in the TrueType font where
 `scr_statsboard_font` is on, at `scr_statsboard_size` (0: 16 classic, 10
 dark), placed by `scr_statsboard_x`/`_y`. 2 is the replica below. The
-keys, the plain opening and the list page are the same on all three; the
-list page and the replica are always conchars.
+keys and the plain opening are the same on all three; the list page is
+the replica's alone (F1's second press) - the dark and classic boards
+have the frags and the weapons in their rows, and F1 opens and closes
+them. The list page and the replica are always conchars.
 
 The replica (2) is the server's own matchmode scoreboard
 (`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws
