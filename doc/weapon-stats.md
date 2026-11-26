@@ -302,19 +302,22 @@ Left/Right go through. `pstats` carries what the channel lacked for
 it, at the end of the line: `min=` (minutes on the server) and `bot=1`. `cl_statsboard 0` keeps the server's board everywhere.
 
 `scr_statsboard_style` picks the board's layout (Settings > Extras >
-Stats Scoreboard cycles it): 0 the **dark board** (default) - per team a
+Stats Scoreboard cycles it, with a picture of each): 0 **extended dark**
+(default) - per team a
 band and its players best first, score, kills, deaths, accuracy, damage,
 K/D, ping and their three best weapons, a weapon table opening under the
-player's row; 1 the **classic** light board - the teams side by side,
+player's row; 1 **extended light** - the teams side by side,
 name, icon and big score over each, the table across the board under
 them, light letters with a dark edge when see-through
 (`scr_statsboard_alpha` under 0.5); both in the TrueType font where
 `scr_statsboard_font` is on, at `scr_statsboard_size` (0: 16 classic, 10
-dark), placed by `scr_statsboard_x`/`_y`. 2 is the replica below. The
-keys and the plain opening are the same on all three; the list page is
-the replica's alone (F1's second press) - the dark and classic boards
-have the frags and the weapons in their rows, and F1 opens and closes
-them. The list page and the replica are always conchars.
+dark), placed by `scr_statsboard_x`/`_y`. 2, **classic**, is the replica
+below. The keys and the plain opening are the same on all three; the
+list page is the classic layout's alone (F1's second press) - the
+extended boards have the frags and the weapons in their rows, and F1
+opens and closes them. The classic layout and its list are conchars, or
+with `scr_statsboard_font` the font at the server layouts' size (10) on
+the same rows, each field at its column, string2 in the conchars' green.
 
 The replica (2) is the server's own matchmode scoreboard
 (`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws

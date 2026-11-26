@@ -435,27 +435,28 @@ Stats Scoreboard**, which shows an example of the one picked under its
 items (`pics/statsboard/`; on the list's switch, the list page's) - no
 server needed; its **show the board** opens the real one:
 
-- **0, the dark board** (default): the teams' names, icons and scores,
+- **0, extended dark** (default): the teams' names, icons and scores,
   the map and the round; per team its players, best score first: score,
   kills, deaths, accuracy (the aimed weapons: no knife slash, kick, punch
   or grenade), damage, K/D, ping and **WEAPONS** - the three weapons they
   got most kills with, as a count and the kill feed's icon. A team's subs
   come after its players under **SUBS**, spectators on a line under the
   teams. In the TrueType font where `scr_statsboard_font` is on.
-- **1, the classic board**: the teams side by side like the old AQ2
+- **1, extended light**: the teams side by side like the old AQ2
   scoreboard - name, icon and big score over each team's players (score,
   kills, deaths, accuracy, damage, ping), light grey with dark text.
   See-through (`scr_statsboard_alpha` under 0.5) it takes the old board's
   light letters with a dark edge.
-- **2, the server's own**: AQtion's matchmode scoreboard as the server
-  draws it, in conchars at its places - team pics, totals, big scores,
-  names, subs, Ready / Not Ready.
+- **2, classic**: AQtion's matchmode scoreboard as the server draws it,
+  at its places - team pics, totals, big scores, names, subs, Ready /
+  Not Ready - in conchars, or with `scr_statsboard_font` in the font at
+  the server layouts' size (10), its green lines in the conchars' green.
 
 On all three: who left stays, greyed; a captain has an **@**; who is alive
 is in the server board's green where the server's own boards show it (the
 dead and spectators, or between rounds; nobody under `limchasecam`).
 
-- **F1** opens and closes the board. On the server's own layout (2) it
+- **F1** opens and closes the board. On the classic layout (2) it
   cycles as the server's key does: the board, then the **player list** -
   the server's second page (frags, time, ping, damage, team) with
   **Acc** and the **kills per weapon**, a column per weapon used, its icon
@@ -478,13 +479,13 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
 | Cvar | Default | What |
 | --- | --- | --- |
 | `cl_statsboard` | 1 | 0 keeps the server's scoreboard everywhere (not saved) |
-| `scr_statsboard_style` | 0 | 0 the dark board, 1 the classic light one, 2 the server's own in conchars |
+| `scr_statsboard_style` | 0 | 0 extended dark, 1 extended light, 2 classic (the server's own board) |
 | `scr_statsboard_alpha` | 0.85 | the background's opacity, 0 (none) to 1 (opaque); dark and classic |
-| `scr_statsboard_font` | 1 | dark and classic in the TrueType font; 0 the old characters |
-| `scr_statsboard_size` | 0 | their text size; 0 the layout's own: 16 classic (about the conchars' size), 10 dark |
+| `scr_statsboard_font` | 1 | the boards in the TrueType font; 0 the old characters |
+| `scr_statsboard_size` | 0 | the text size; 0 the layout's own: 16 extended light (about the conchars' size), 10 extended dark and classic |
 | `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width (dark and classic) |
 | `scr_statsboard_y` | 0.1 | its upper edge, a fraction of the height (at most 0.9) |
-| `scr_statslist_weapons` | 1 | the player list's kills per weapon; 0 leaves them out |
+| `scr_statslist_weapons` | 1 | the classic layout's player list: kills per weapon; 0 leaves them out |
 | `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |
 | `cl_stats_echo` | 0 | 1 prints every line of the channel as `[stat] ...` |
 | `aq2events` | 0 | 1 asks for the event lines too (kills, the match's state, chat...): see `doc/weapon-stats.md` |

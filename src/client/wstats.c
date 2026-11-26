@@ -898,6 +898,7 @@ static void wsc_fill(int x, int y, int w, int h, uint32_t c)
 }
 static bool wsc_alt_bold;       // bold in conchars is the alt charset: the dark board's
 static bool wsc_clear;          // the classic board see-through: light letters, dark shadow
+static bool wsc_alt_green;      // in the font, bold is the conchars' green (the classic layout)
 
 enum { AL_LEFT, AL_RIGHT, AL_CENTER };
 
@@ -958,6 +959,12 @@ static void wsc_str(int x, int y, int align, bool bold, uint32_t color, const ch
         int flags = (bold ? TEXT_BOLD : 0) | (align == AL_RIGHT ? TEXT_RIGHT :
                                               align == AL_CENTER ? TEXT_CENTER : 0);
         uint32_t c = color ? color : U32_WHITE;
+        if (bold && wsc_alt_green) {
+            // the layout's string2: the charset's green half, not bold
+            flags &= ~TEXT_BOLD;
+            if (!color || color == U32_WHITE)
+                c = SCR_TEXT_ALT;
+        }
         int lh = R_TextLineHeight(flags, wsc_size);
         if (wsc_clear)
             flags |= TEXT_SHADOW;
@@ -978,6 +985,25 @@ static void wsc_str(int x, int y, int align, bool bold, uint32_t color, const ch
 #ifdef TEXT_BOLD
     R_TextConchars(false);
 #endif
+}
+
+// the charset's own graphics (the layout's bars) stay conchars in the font
+static void wsc_str_conchars(int x, int y, bool alt, const char *s)
+{
+    bool ttf = wsc_ttf;
+    wsc_ttf = false;
+    wsc_str(x, y, AL_LEFT, alt, 0, s, strlen(s));
+    wsc_ttf = ttf;
+}
+
+// the weapon table's row under the classic layout: room for the font
+static int wsc_table_rh(void)
+{
+#ifdef TEXT_BOLD
+    if (wsc_ttf)
+        return max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
+#endif
+    return CH + 2;
 }
 
 static void wsc_text(int x, int y, int align, bool bold, uint32_t color, const char *s)
@@ -1906,17 +1932,33 @@ static void wsc_draw_replica(int hud_x, int hud_y, int hud_w, int hud_h)
             R_DrawPic(ox + lx, oy + 8, icon);
         if (tag)
             R_DrawPic(ox + lx + 32, oy + 8, tag);
-        if (matchmode)
-            Q_snprintf(buf, sizeof(buf), "%4i/%2i/%-2d", score, total, subs);
-        else
-            Q_snprintf(buf, sizeof(buf), "%4i/%2i", score, total);
-        wsc_rp_string(ox, oy, lx + 32, 28, false, 0, buf);
+        if (wsc_ttf) {
+            // the conchars' padding does not align in the font: the score
+            // right-aligned at its four cells, the counts after it
+            Q_snprintf(buf, sizeof(buf), "%i", score);
+            wsc_str(ox + lx + 32 + 4 * CW, oy + 28, AL_RIGHT, false, 0, buf, strlen(buf));
+            if (matchmode)
+                Q_snprintf(buf, sizeof(buf), "/%i/%i", total, subs);
+            else
+                Q_snprintf(buf, sizeof(buf), "/%i", total);
+            wsc_rp_string(ox, oy, lx + 32 + 4 * CW, 28, false, 0, buf);
+        } else {
+            if (matchmode)
+                Q_snprintf(buf, sizeof(buf), "%4i/%2i/%-2d", score, total, subs);
+            else
+                Q_snprintf(buf, sizeof(buf), "%4i/%2i", score, total);
+            wsc_rp_string(ox, oy, lx + 32, 28, false, 0, buf);
+        }
         // the num widget: three digits, right-aligned, two pixels in
         int digits = Q_snprintf(buf, sizeof(buf), "%d", wsc.team_score[t]);
         wsc_draw_number(ox + lx + 96 + 2 + 16 * max(3 - digits, 0), oy + 12, wsc.team_score[t]);
         const char *tn = wsc_team_title(t);
-        int name_pos = max((20 - (int)strlen(tn)) / 2, 0) * 8;
-        wsc_rp_string(ox, oy, lx + name_pos, 0, false, 0, tn);
+        if (wsc_ttf) {
+            wsc_str(ox + lx + RP_ROW_W / 2, oy, AL_CENTER, false, 0, tn, strlen(tn));
+        } else {
+            int name_pos = max((20 - (int)strlen(tn)) / 2, 0) * 8;
+            wsc_rp_string(ox, oy, lx + name_pos, 0, false, 0, tn);
+        }
 
         // the players from yv 42, alive ones in green when we may know;
         // the subs under their heading at yv 96, as the server fits them
@@ -1980,7 +2022,7 @@ static void wsc_draw_replica(int hud_x, int hud_y, int hud_w, int hud_h)
     int y = oy + 160;
     int tw = min(BOARD_CHARS * CW, hud_w - CW * 2);
     int tx = hud_x + (hud_w - tw) / 2;
-    wsc_rh = CH + 2;
+    wsc_rh = wsc_table_rh();
     if (wsc.expanded && wsc.p[wsc.expanded].used)
         y = wsc_draw_weapons(tx, y, tw, bottom, wsc.expanded, &wsc_replica,
                              wsc.p[wsc.expanded].name[0] ? wsc.p[wsc.expanded].name : "(unnamed)",
@@ -2030,17 +2072,20 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
     int ox = hud_x + hud_w / 2 - 160, oy = hud_y + hud_h / 2 - 120;
     int lx = ox + 160 - chars * 4;
 
-    // the captions and their bars, string2
-    size_t len = Q_strlcpy(line, "Frags Player          Time Ping Damage Acc Team", sizeof(line));
-    for (int k = 0; k < nw && len + 4 < sizeof(line); k++)
-        len += Q_strlcpy(line + len, "    ", sizeof(line) - len);
-    wsc_str(lx, oy + 32, AL_LEFT, true, 0, line, strlen(line));
-    len = Q_strlcpy(line, "\x9D\x9E\x9E\x9E\x9F \x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F "
+    // the captions at their columns, string2, and their bars (the
+    // charset's, conchars in the font too)
+    static const struct { int col; const char *s; } caps[] = {
+        { 0, "Frags" }, { 6, "Player" }, { 22, "Time" }, { 27, "Ping" },
+        { 32, "Damage" }, { 39, "Acc" }, { 43, "Team" },
+    };
+    for (int c = 0; c < (int)q_countof(caps); c++)
+        wsc_str(lx + caps[c].col * CW, oy + 32, AL_LEFT, true, 0, caps[c].s, strlen(caps[c].s));
+    size_t len = Q_strlcpy(line, "\x9D\x9E\x9E\x9E\x9F \x9D\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9E\x9F "
                     "\x9D\x9E\x9E\x9F \x9D\x9E\x9E\x9F \x9D\x9E\x9E\x9E\x9E\x9F \x9D\x9E\x9F \x9D\x9E\x9E\x9F",
                     sizeof(line));
     for (int k = 0; k < nw && len + 4 < sizeof(line); k++)
         len += Q_strlcpy(line + len, " \x9D\x9E\x9F", sizeof(line) - len);
-    wsc_str(lx, oy + 40, AL_LEFT, true, 0, line, strlen(line));
+    wsc_str_conchars(lx, oy + 40, true, line);
     // the weapons' icons over their columns: the column's three cells wide
     // at most, standing on its bar
     for (int k = 0; k < nw; k++) {
@@ -2094,14 +2139,25 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
             Q_snprintf(tc, sizeof(tc), "   %c", team);
         }
         wsc_accuracy(list[i], &shots, &hits);
-        len = Q_snprintf(line, sizeof(line), "%5d %-15.15s %s %s %6d %3d %s",
-                         min(99999, p->score), p->name[0] ? p->name : "(unnamed)", tm, pg,
-                         min(999999, p->dmg), shots ? hits * 100 / shots : 0, tc);
-        for (int k = 0; k < nw && len + 4 < sizeof(line); k++) {
+        // each field at its column, numbers right-aligned at its end: the
+        // server's printf columns, holding in the font as in conchars
+        char f[24], nm[16];
+        Q_snprintf(f, sizeof(f), "%d", min(99999, p->score));
+        wsc_str(lx + 5 * CW, y, AL_RIGHT, false, 0, f, strlen(f));
+        Q_strlcpy(nm, p->name[0] ? p->name : "(unnamed)", sizeof(nm));
+        wsc_str(lx + 6 * CW, y, AL_LEFT, false, 0, nm, strlen(nm));
+        wsc_str(lx + 26 * CW, y, AL_RIGHT, false, 0, tm, strlen(tm));
+        wsc_str(lx + 31 * CW, y, AL_RIGHT, false, 0, pg, strlen(pg));
+        Q_snprintf(f, sizeof(f), "%d", min(999999, p->dmg));
+        wsc_str(lx + 38 * CW, y, AL_RIGHT, false, 0, f, strlen(f));
+        Q_snprintf(f, sizeof(f), "%d", shots ? hits * 100 / shots : 0);
+        wsc_str(lx + 42 * CW, y, AL_RIGHT, false, 0, f, strlen(f));
+        wsc_str(lx + 47 * CW, y, AL_RIGHT, false, 0, tc, strlen(tc));
+        for (int k = 0; k < nw; k++) {
             int kills = wsc_weapon_values(list[i], wk[k], 0, v) ? v[F_K] : 0;
-            len += Q_snprintf(line + len, sizeof(line) - len, " %3d", kills);
+            Q_snprintf(f, sizeof(f), "%d", kills);
+            wsc_str(lx + (LS_CHARS + k * 4 + 4) * CW, y, AL_RIGHT, false, 0, f, strlen(f));
         }
-        wsc_str(lx, y, AL_LEFT, false, 0, line, strlen(line));
         y += 8;
     }
 
@@ -2109,7 +2165,7 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
     int tw = min(BOARD_CHARS * CW, hud_w - CW * 2);
     int tx = hud_x + (hud_w - tw) / 2;
     y += CH;
-    wsc_rh = CH + 2;
+    wsc_rh = wsc_table_rh();
     if (wsc.expanded && wsc.p[wsc.expanded].used) {
         y = wsc_draw_weapons(tx, y, tw, bottom, wsc.expanded, &wsc_replica,
                              wsc.p[wsc.expanded].name[0] ? wsc.p[wsc.expanded].name : "(unnamed)",
@@ -2130,12 +2186,22 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     wsc_bg_k = Cvar_ClampValue(scr_statsboard_alpha, 0, 1) / (215.0f / 255.0f);
     wsc_fix_cursor();
 
-    // the list page and the replica are the server's own boards: its
-    // conchars, rows of eight, whatever the style's text
+    // the classic layout (and its list page): the server's own boards, at
+    // their places on rows of eight - in conchars, or in the font at the
+    // layout font's size (10: a conchar's cap height), its string2 green
     if (wsc.page == 2 || scr_statsboard_style->integer == 2) {
         wsc_rh = CH;
         wsc_alt_bold = true;
+        wsc_alt_green = false;
         wsc_clear = false;
+#ifdef TEXT_BOLD
+        if (scr_statsboard_font && scr_statsboard_font->integer && R_TextAvailable()) {
+            wsc_ttf = true;
+            wsc_size = scr_statsboard_size->value ? Cvar_ClampValue(scr_statsboard_size, 6, 24) : 10;
+            wsc_alt_green = true;
+            wsc_clear = true;       // no panel: a shadow, as the layout font's
+        }
+#endif
         if (wsc.page == 2)
             wsc_draw_list(hud_x, hud_y, hud_w, hud_h);
         else
@@ -2151,6 +2217,7 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
         wsc_rh = max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
     }
 #endif
+    wsc_alt_green = false;
     // the classic board's dark text on light: the alt charset's green would
     // stand out of it, so its bold is the plain letters in their colour
     wsc_alt_bold = scr_statsboard_style->integer != 1;

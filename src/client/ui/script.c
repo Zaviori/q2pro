@@ -890,8 +890,8 @@ static const char ui_menu_statsboard[] =
     "title \"Stats Scoreboard\"\n"
     "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
     "blank\n"
-    "pairs \"layout\" scr_statsboard_style \"dark board\" 0 \"classic light\" 1 "
-        "\"server's own (conchars)\" 2\n"
+    "pairs \"layout\" scr_statsboard_style \"classic\" 2 \"extended dark\" 0 "
+        "\"extended light\" 1\n"
     "action -s \"the picture below is an example; this opens the real board (on a server with the stats channel)\" "
         "\"show the board\" \"forcemenuoff; score\"\n"
     "blank\n"
@@ -901,7 +901,7 @@ static const char ui_menu_statsboard[] =
     "range \"position across\" scr_statsboard_x 0 1 0.05\n"
     "range \"position down\" scr_statsboard_y 0 0.9 0.05\n"
     "blank\n"
-    "toggle \"kills per weapon on the list (server's own)\" scr_statslist_weapons\n"
+    "toggle \"kills per weapon on the list (classic)\" scr_statslist_weapons\n"
     "end\n";
 
 // The scoreboard's menu shows what the layout looks like - a picture of
@@ -911,6 +911,7 @@ static const char ui_menu_statsboard[] =
 static void StatsboardMenu_Draw(menuFrameWork_t *self)
 {
     static const char *const layouts[] = { "style0", "style1", "style2" };
+    bool ttf = Cvar_VariableInteger("scr_statsboard_font") != 0;
     menuCommon_t *focus;
     const char *name;
     qhandle_t pic;
@@ -927,13 +928,18 @@ static void StatsboardMenu_Draw(menuFrameWork_t *self)
             !strcmp(sc->cvar->name, "scr_statsboard_style") &&
             sc->curvalue >= 0 && sc->curvalue < sc->numItems) {
             style = Q_atoi(sc->itemvalues[sc->curvalue]);
-            break;
         }
+        // the font's switch likewise: the classic layout has a picture in each
+        if (sc->generic.type == MTYPE_TOGGLE && sc->cvar &&
+            !strcmp(sc->cvar->name, "scr_statsboard_font"))
+            ttf = (sc->curvalue != 0) != sc->negate;
     }
 
     focus = Menu_ItemAtCursor(self);
     if (focus && focus->name && strstr(focus->name, "on the list"))
-        name = "list";
+        name = ttf ? "list_ttf" : "list";
+    else if (style == 2 && ttf)
+        name = "style2_ttf";
     else
         name = layouts[Q_clip(style, 0, 2)];
     pic = R_RegisterPic(va("statsboard/%s", name));
