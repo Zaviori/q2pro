@@ -702,12 +702,18 @@ bool CL_WS_KeyEvent(int key)
             wsc.scope = 0;
         }
         return true;
+    // the teams only once the bar shows (Enter or Up/Down brings it):
+    // before that the keys go through, to whatever they are bound
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
+        if (!wsc.cursor_shown)
+            return false;
         wsc_team_step(-1);
         return true;
     case K_RIGHTARROW:
     case K_KP_RIGHTARROW:
+        if (!wsc.cursor_shown)
+            return false;
         wsc_team_step(1);
         return true;
     // the open table's map total and rounds: up goes back in time

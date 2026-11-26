@@ -300,7 +300,8 @@ that table, only while it is open.
   own row),
   no weapon table and so no key hints until Enter.
 - **Up/Down** walks the players, **Left/Right** crosses to the other
-  team's column at the same place in its list (its last when shorter).
+  team's column at the same place in its list (its last when shorter) -
+  once the bar shows; before that Left/Right go through to their binds.
 - **Enter** - once the bar shows; the first press only shows it - opens
   the selected player's weapons under the board - shots,
   hits, accuracy, headshots, kills, damage and the locations per weapon,
