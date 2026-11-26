@@ -559,14 +559,32 @@ static void wsc_open(bool open)
     }
 }
 
-// "score": the new board where the server sends the channel, else as ever
+// "score": the server's own cycle - its team board, its second page (the
+// list: frags, time, ping...), closed - with ours as the first page where
+// the server sends the channel
 static void CL_WS_Score_f(void)
 {
     if (!CL_WS_Active()) {
         CL_ClientCommand("score");
         return;
     }
-    wsc_open(!wsc.open);
+    // a layout of the server's up (its second page, its board at
+    // intermission, a menu): the key is the server's, as ever
+    if (cl.frame.ps.stats[STAT_LAYOUTS] & LAYOUTS_LAYOUT) {
+        CL_ClientCommand("score");
+        return;
+    }
+    if (wsc.open) {
+        // ours was the first page: on to the server's second. Its cycle
+        // starts at the team board, so two steps, sent in one packet - the
+        // server runs both in a frame and only the last layout is drawn.
+        // Outside teamplay its second step closes it, as its own would.
+        wsc.open = false;
+        CL_ClientCommand("score");
+        CL_ClientCommand("score");
+        return;
+    }
+    wsc_open(true);
 }
 
 bool CL_WS_BoardOpen(void)

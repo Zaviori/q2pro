@@ -276,7 +276,12 @@ Where the server sends the channel - a snapshot has come since the
 connect or the map load - the `score` command (F1) opens the client's
 own board instead of asking the server for its layout; anywhere else
 `score` goes to the server as before, and the server's scoreboard is
-the fallback. `cl_statsboard 0` keeps the server's board everywhere.
+the fallback. The server's own cycle is kept, ours as its first page:
+the second `score` puts ours away and brings up the server's second
+page (frags, time, ping, damage, team - in teamplay; outside it the
+server's step closes), the third closes that. With any layout of the
+server's up - that page, its board at intermission, a menu - `score`
+goes to the server. `cl_statsboard 0` keeps the server's board everywhere.
 
 The board is the server's own matchmode scoreboard
 (`A_ScoreboardMessage` with `use_newscore 0`) drawn as the server draws
