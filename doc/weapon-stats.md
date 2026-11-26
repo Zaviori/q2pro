@@ -287,21 +287,20 @@ for the captain), in the server's order (score, fewer deaths, more
 damage, client slot), alive ones in the alt charset's green where the
 server says we may know - never under limchasecam, as its own board;
 "Subs" at yv 96 with as many of them as the server fits, Ready / Not
-Ready at yv 128. Where the server has its match clock (yv 144), which
-the channel does not carry, the map and round. Added to it: a faint bar
-for the cursor - only once the arrows are used, the first press showing
+Ready at yv 128. The server's match clock (yv 144, matchmode) is left
+out: the channel does not carry it. Added to it: a faint bar
+for the cursor - only once Enter is pressed, the first press showing
 it on your own row - who left greyed (they keep their stats), and the
 selected player's weapon table under the board, headed by their name,
 its captions in green as the layout's headings, and the key hints under
 that table, only while it is open.
 
 - The board opens as the server's own looks, every time: no cursor bar
-  until a key is pressed (the first Enter or Up/Down shows it on your
-  own row),
+  until Enter shows it on your own row - the arrows go through to their
+  binds until then -
   no weapon table and so no key hints until Enter.
 - **Up/Down** walks the players, **Left/Right** crosses to the other
-  team's column at the same place in its list (its last when shorter) -
-  once the bar shows; before that Left/Right go through to their binds.
+  team's column at the same place in its list (its last when shorter).
 - **Enter** - once the bar shows; the first press only shows it - opens
   the selected player's weapons under the board - shots,
   hits, accuracy, headshots, kills, damage and the locations per weapon,

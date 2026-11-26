@@ -595,12 +595,6 @@ static void wsc_move(int step)
 
     if (!n)
         return;
-    // the first press shows the bar where the cursor is - on you - and
-    // only the next ones move it
-    if (!wsc.cursor_shown) {
-        wsc.cursor_shown = true;
-        return;
-    }
     for (i = 0; i < n && list[i] != wsc.cursor; i++)
         ;
     if (i == n)
@@ -677,12 +671,18 @@ bool CL_WS_KeyEvent(int key)
     case K_ESCAPE:
         wsc.open = false;
         return true;
+    // the arrows only once Enter has shown the bar; before that they go
+    // through, to whatever they are bound
     case K_UPARROW:
     case K_KP_UPARROW:
+        if (!wsc.cursor_shown)
+            return false;
         wsc_move(-1);
         return true;
     case K_DOWNARROW:
     case K_KP_DOWNARROW:
+        if (!wsc.cursor_shown)
+            return false;
         wsc_move(1);
         return true;
     case K_ENTER:
@@ -702,8 +702,6 @@ bool CL_WS_KeyEvent(int key)
             wsc.scope = 0;
         }
         return true;
-    // the teams only once the bar shows (Enter or Up/Down brings it):
-    // before that the keys go through, to whatever they are bound
     case K_LEFTARROW:
     case K_KP_LEFTARROW:
         if (!wsc.cursor_shown)
@@ -1098,14 +1096,6 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
                           wsc.team_ready[t] ? "Ready" : "Not Ready");
     }
 
-    // where the server has its match clock (yv 144): the map and round,
-    // which is what the channel knows
-    if (wsc.round)
-        Q_snprintf(buf, sizeof(buf), "%s - round %d%s", wsc.mapname, wsc.round,
-                   wsc.going ? "" : " over");
-    else
-        Q_strlcpy(buf, wsc.mapname, sizeof(buf));
-    wsc_text(ox + 160, oy + 144, AL_CENTER, false, 0, buf);
 
     // below: the opened player's weapons, a row two pixels taller for the
     // icons, then the keys
