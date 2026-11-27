@@ -525,6 +525,20 @@ void CL_WS_ParseLine(const char *line)
         return;
     }
 
+    // the backfill's past rounds: their results, nothing of the one played
+    if (!strcmp(l.event, "wround_past")) {
+        int r = wsc_int(&l, "r", 0);
+        if (r > 0 && r < WSC_ROUNDS) {
+            wsc_round_t *rd = &wsc.rounds[r];
+            rd->seen = true;
+            rd->start = wsc_int(&l, "start", 0);
+            rd->end = wsc_int(&l, "f", 0);
+            rd->winner = wsc_int(&l, "winner", 0);
+            Q_strlcpy(rd->reason, wsc_get(&l, "reason") ? wsc_get(&l, "reason") : "", sizeof(rd->reason));
+        }
+        return;
+    }
+
     if (!strcmp(l.event, "wround")) {
         const char *state = wsc_get(&l, "state");
         int r = wsc_int(&l, "r", wsc.round);
@@ -536,15 +550,11 @@ void CL_WS_ParseLine(const char *line)
                 rd->end = 0;
             } else if (state && !strcmp(state, "end")) {
                 rd->end = wsc_int(&l, "f", 0);
-                rd->start = wsc_int(&l, "start", rd->start);
                 rd->winner = wsc_int(&l, "winner", 0);
                 Q_strlcpy(rd->reason, wsc_get(&l, "reason") ? wsc_get(&l, "reason") : "",
                           sizeof(rd->reason));
             }
         }
-        // the backfill's past rounds say nothing of the one being played
-        if (wsc_int(&l, "hist", 0))
-            return;
         wsc.round = r;
         if (state && !strcmp(state, "start")) {
             wsc.going = true;

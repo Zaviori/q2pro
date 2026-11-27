@@ -1068,7 +1068,7 @@ static void ws_history(edict_t *ent, ws_client_t *c)
 			int i;
 			if (!rd->end)
 				continue;
-			ws_line("wround r=%d state=end f=%d winner=%d reason=%s start=%d hist=1",
+			ws_line("wround_past r=%d f=%d winner=%d reason=%s start=%d",
 				c->log_next + 1, rd->end, rd->winner, rd->reason, rd->start);
 			c->budget -= 80;
 			for (i = 0; c->events && i < rd->ev_n; i++) {

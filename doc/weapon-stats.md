@@ -233,9 +233,10 @@ lines with their `r=`:
   32 KB of queue a client has (and crowds out the frames).
 
 After the `wstats` records and before the done line, the backfill sends
-each past round as it went, newest first: `wround r=12 state=end f=…
-winner=1 reason=eliminated start=… hist=1` (`hist=1`: not the round
-being played), then - to an event subscriber - its kill and death
+each past round as it went, newest first: `wround_past r=12 f=…
+winner=1 reason=eliminated start=…` (a line of its own: a client that
+knows `wround` alone would take a past round's end for the round being
+played), then - to an event subscriber - its kill and death
 lines. ~1.5 KB a round at 5v5.
 
 History is never sent to the MVD dummy: the demo already holds every
