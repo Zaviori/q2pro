@@ -306,13 +306,16 @@ Stats Scoreboard cycles it, with a picture of each): 0 **extended dark**
 (default) - per team a
 band and its players best first, score, kills, deaths, accuracy, damage,
 K/D, ping and their three best weapons, a weapon table opening under the
-player's row; 1 **extended light** - the teams side by side,
+player's row; 4 **extended light** - the same, light grey with dark
+text; 1 **classic light modernized** - the teams side by side,
 name, icon and big score over each, the table across the board under
-them, light letters with a dark edge when see-through
-(`scr_statsboard_alpha` under 0.5); both in the TrueType font where
-`scr_statsboard_font` is on, at `scr_statsboard_size` (0: 16 classic, 10
-dark), placed by `scr_statsboard_x`/`_y`. 2, **classic**, is the replica
-below. The keys and the plain opening are the same on all three; the
+them, light grey with dark text; 3 **classic dark modernized** - the
+same on the dark panel in light letters with a dark edge. The light ones
+take the light letters when see-through (`scr_statsboard_alpha` under
+0.5); all in the TrueType font where `scr_statsboard_font` is on, at
+`scr_statsboard_size` (0: 16 the classic modernized, 10 the extended),
+placed by `scr_statsboard_x`/`_y`. 2, **classic**, is the replica
+below. The keys and the plain opening are the same on all five; the
 list page is the classic layout's alone (F1's second press) - the
 extended boards have the frags and the weapons in their rows, and F1
 opens and closes them. The classic layout and its list are conchars, or

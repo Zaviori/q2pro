@@ -891,8 +891,9 @@ static const char ui_menu_statsboard[] =
     "title \"Stats Scoreboard\"\n"
     "toggle \"stats boards (off: the server's own)\" cl_statsboard\n"
     "blank\n"
-    "pairs \"layout\" scr_statsboard_style \"classic\" 2 \"extended dark\" 0 "
-        "\"extended light\" 1\n"
+    "pairs \"layout\" scr_statsboard_style \"classic\" 2 "
+        "\"classic light modernized\" 1 \"classic dark modernized\" 3 "
+        "\"extended dark\" 0 \"extended light\" 4\n"
     "blank\n"
     "range \"background opacity\" scr_statsboard_alpha 0 1 0.05\n"
     "toggle \"truetype text\" scr_statsboard_font\n"
@@ -909,7 +910,8 @@ static const char ui_menu_statsboard[] =
 // list page's
 static void StatsboardMenu_Draw(menuFrameWork_t *self)
 {
-    static const char *const layouts[] = { "style0", "style1", "style2" };
+    static const char *const layouts[] = { "style0", "style1", "style2", "style3", "style4" };
+    char buf[16];
     bool ttf = Cvar_VariableInteger("scr_statsboard_font") != 0;
     menuCommon_t *focus;
     const char *name;
@@ -928,7 +930,7 @@ static void StatsboardMenu_Draw(menuFrameWork_t *self)
             sc->curvalue >= 0 && sc->curvalue < sc->numItems) {
             style = Q_atoi(sc->itemvalues[sc->curvalue]);
         }
-        // the font's switch likewise: the classic layout has a picture in each
+        // the font's switch likewise: each layout has a picture in each
         if (sc->generic.type == MTYPE_TOGGLE && sc->cvar &&
             !strcmp(sc->cvar->name, "scr_statsboard_font"))
             ttf = (sc->curvalue != 0) != sc->negate;
@@ -937,10 +939,10 @@ static void StatsboardMenu_Draw(menuFrameWork_t *self)
     focus = Menu_ItemAtCursor(self);
     if (focus && focus->name && strstr(focus->name, "on the list"))
         name = ttf ? "list_ttf" : "list";
-    else if (style == 2 && ttf)
-        name = "style2_ttf";
-    else
-        name = layouts[Q_clip(style, 0, 2)];
+    else {
+        Q_snprintf(buf, sizeof(buf), "%s%s", layouts[Q_clip(style, 0, 4)], ttf ? "_ttf" : "");
+        name = buf;
+    }
     pic = R_RegisterPic(va("statsboard/%s", name));
     if (!pic)
         return;

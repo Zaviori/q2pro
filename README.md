@@ -435,10 +435,10 @@ key (`score`, F1) opens the client's own board instead of the server's.
 Anywhere else `score` goes to the server and its own scoreboard shows as
 before; `cmd score` opens the server's board on any server.
 
-**Three layouts**, `scr_statsboard_style`, cycled in **Settings > Extras >
+**Five layouts**, `scr_statsboard_style`, cycled in **Settings > Extras >
 Stats Scoreboard**, which shows an example of the one picked under its
-items (`pics/statsboard/`; on the list's switch, the list page's) - no
-server needed:
+items (`pics/statsboard/`, in conchars or the font as `scr_statsboard_font`
+is set; on the list's switch, the list page's) - no server needed:
 
 - **0, extended dark** (default): the teams' names, icons and scores,
   the map and the round; per team its players, best score first: score,
@@ -447,17 +447,23 @@ server needed:
   got most kills with, as a count and the kill feed's icon. A team's subs
   come after its players under **SUBS**, spectators on a line under the
   teams. In the TrueType font where `scr_statsboard_font` is on.
-- **1, extended light**: the teams side by side like the old AQ2
-  scoreboard - name, icon and big score over each team's players (score,
-  kills, deaths, accuracy, damage, ping), light grey with dark text.
-  See-through (`scr_statsboard_alpha` under 0.5) it takes the old board's
-  light letters with a dark edge.
+- **4, extended light**: the same board light grey with dark text; the
+  big scores in the font's bold where it is on.
+- **1, classic light modernized**: the teams side by side like the old
+  AQ2 scoreboard - name, icon and big score over each team's players
+  (score, kills, deaths, accuracy, damage, ping), light grey with dark
+  text.
+- **3, classic dark modernized**: the same on the dark board's panel, in
+  the old board's light letters with a dark edge.
 - **2, classic**: AQtion's matchmode scoreboard as the server draws it,
   at its places - team pics, totals, big scores, names, subs, Ready /
   Not Ready - in conchars, or with `scr_statsboard_font` in the font at
   the server layouts' size (10), its green lines in the conchars' green.
 
-On all three: who left stays, greyed; a captain has an **@**; who is alive
+The light ones (1 and 4) see-through (`scr_statsboard_alpha` under 0.5)
+take the dark ones' light letters with a dark edge.
+
+On all of them: who left stays, greyed; a captain has an **@**; who is alive
 is in the server board's green where the server's own boards show it (the
 dead and spectators, or between rounds; nobody under `limchasecam`).
 
@@ -466,10 +472,10 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
   the server's second page (frags, time, ping, damage, team) with
   **Acc** and the **kills per weapon**, a column per weapon used, its icon
   over it, most used on the left (`scr_statslist_weapons 0` leaves them
-  out) - then closed; the dark and classic boards have those in their
-  rows and skip it. With a server layout up (a menu, its own board), F1
+  out) - then closed; the other layouts have those in their rows and skip
+  it. With a server layout up (a menu, its own board), F1
   puts it away and goes on from there.
-- Both open plain: no highlight and no key help. **Enter** shows the
+- All open plain: no highlight and no key help. **Enter** shows the
   highlight on you; the **arrows** move it (Up/Down a player, Left/Right
   the other team), **Enter** opens that player's **weapon table** -
   shots, hits, accuracy, headshots, kills, damage and where the hits
@@ -484,11 +490,11 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
 | Cvar | Default | What |
 | --- | --- | --- |
 | `cl_statsboard` | 1 | 0 keeps the server's scoreboard everywhere (not saved) |
-| `scr_statsboard_style` | 0 | 0 extended dark, 1 extended light, 2 classic (the server's own board) |
-| `scr_statsboard_alpha` | 0.85 | the background's opacity, 0 (none) to 1 (opaque); dark and classic |
+| `scr_statsboard_style` | 0 | 0 extended dark, 4 extended light, 1 classic light modernized, 3 classic dark modernized, 2 classic (the server's own board) |
+| `scr_statsboard_alpha` | 0.85 | the background's opacity, 0 (none) to 1 (opaque) |
 | `scr_statsboard_font` | 1 | the boards in the TrueType font; 0 the old characters |
-| `scr_statsboard_size` | 0 | the text size; 0 the layout's own: 16 extended light (about the conchars' size), 10 extended dark and classic |
-| `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width (dark and classic) |
+| `scr_statsboard_size` | 0 | the text size; 0 the layout's own: 16 the classic modernized (about the conchars' size), 10 the extended and classic |
+| `scr_statsboard_x` | 0.5 | the board's middle, a fraction of the screen's width |
 | `scr_statsboard_y` | 0.1 | its upper edge, a fraction of the height (at most 0.9) |
 | `scr_statslist_weapons` | 1 | the classic layout's player list: kills per weapon; 0 leaves them out |
 | `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |

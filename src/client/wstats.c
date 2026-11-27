@@ -95,8 +95,9 @@ static cvar_t *cl_statsboard;
 static cvar_t *scr_statslist_weapons;   // the list page's kills per weapon, icons over them
 static cvar_t *scr_statsboard_x;    // the board's middle, a fraction of the width
 static cvar_t *scr_statsboard_y;    // its upper edge, a fraction of the height
-static cvar_t *scr_statsboard_style;    // 0 the dark board, 1 the classic two columns,
-                                        // 2 the server's own board replicated, in conchars
+static cvar_t *scr_statsboard_style;    // 0 the extended board dark, 4 light; the
+                                        // classic two columns modernized, 1 light and
+                                        // 3 dark; 2 the server's own board replicated
 static cvar_t *scr_statsboard_alpha;    // the backgrounds' opacity, 0..1
 #ifdef TEXT_BOLD                // the refresh has TrueType text (the extras branch)
 static cvar_t *scr_statsboard_font;
@@ -1113,6 +1114,23 @@ static void wsc_fmt_acc(char *out, size_t size, int hits, int shots)
         Q_strlcpy(out, "-", size);
 }
 
+// the colours of the weapon table, the one part both boards draw
+typedef struct {
+    uint32_t    text, caption, dim, scope, alive, ready, unready;
+    uint32_t    head_bg, row_bg[2];
+} wsc_theme_t;
+
+#define wsc_ext_dark_panel MakeColor(0, 0, 0, 215)
+
+// The extended board's colours: dark (style 0) or light (style 4)
+typedef struct {
+    uint32_t    panel, text, caption, dim, alive, cursor, me, mark, info, unready, rule;
+    int         band_a, row_a[2];
+    const wsc_theme_t *weapons;
+} wsc_ext_t;
+
+static const wsc_ext_t *wsc_ext;
+
 static int wsc_draw_header(int px, int pw, int y)
 {
     int mid = px + pw / 2;
@@ -1130,15 +1148,29 @@ static int wsc_draw_header(int px, int pw, int y)
         for (int t = 1; t <= 2; t++)
             if (wsc.team_ready[t] == 0)
                 wsc_text(t == 1 ? mid - pw / 4 : mid + pw / 4, y, AL_CENTER, false,
-                         MakeColor(255, 170, 60, 255), "NOT READY");
+                         wsc_ext->unready, "NOT READY");
         y += wsc_rh + 2;
     }
 
     // team icons beside the big scores, the scores hugging the middle
     for (int t = 1; t <= 2; t++) {
         char buf[16];
-        int sw = Q_snprintf(buf, sizeof(buf), "%d", wsc.team_score[t]) * 16;
+        int len = Q_snprintf(buf, sizeof(buf), "%d", wsc.team_score[t]);
+        int sw = len * 16;
+#ifdef TEXT_BOLD
+        // the HUD's silver digits are faint on the light board: there the
+        // score is the font's bold in the text colour, where there is one
+        bool font_score = wsc_ttf && wsc_ext->panel != wsc_ext_dark_panel;
+        if (font_score)
+            sw = R_MeasureText(TEXT_BOLD, 24, buf, len);
+#endif
         int sx = t == 1 ? mid - CW * 2 - sw : mid + CW * 2;
+#ifdef TEXT_BOLD
+        if (font_score)
+            R_DrawText(sx, y + (24 - R_TextLineHeight(TEXT_BOLD, 24)) / 2, TEXT_BOLD, 24,
+                       wsc_ext->text, wsc_ext->text, buf, len);
+        else
+#endif
         wsc_draw_number(sx, y, wsc.team_score[t]);
 
         qhandle_t icon = wsc.team_icon[t][0] ? R_RegisterPic(wsc.team_icon[t]) : 0;
@@ -1151,7 +1183,7 @@ static int wsc_draw_header(int px, int pw, int y)
             R_DrawStretchPic(ix, y, dw, 24, icon);
         }
     }
-    wsc_text(mid, y + (24 - wsc_rh) / 2, AL_CENTER, false, MakeColor(200, 200, 200, 255), "-");
+    wsc_text(mid, y + (24 - wsc_rh) / 2, AL_CENTER, false, wsc_ext->info, "-");
     y += 24 + 4;
 
     char info[64];
@@ -1160,7 +1192,7 @@ static int wsc_draw_header(int px, int pw, int y)
                    wsc.going ? "" : " over");
     else
         Q_strlcpy(info, wsc.mapname, sizeof(info));
-    wsc_text(mid, y, AL_CENTER, false, MakeColor(170, 170, 170, 255), info);
+    wsc_text(mid, y, AL_CENTER, false, wsc_ext->info, info);
     return y + wsc_rh + 4;
 }
 
@@ -1200,12 +1232,6 @@ static void wsc_draw_icon(int x, int y, int wi)
     }
     R_DrawStretchPic(x + (CW * 2 - dw) / 2, y + (wsc_rh - h) / 2, dw, h, pic);
 }
-
-// the colours of the weapon table, the one part both boards draw
-typedef struct {
-    uint32_t    text, caption, dim, scope, alive, ready, unready;
-    uint32_t    head_bg, row_bg[2];
-} wsc_theme_t;
 
 static const wsc_theme_t wsc_dark = {
     .text = U32_WHITE,
@@ -1367,12 +1393,13 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     char line[160], num[8][12], acc[8], kd[12];
     int shots, hits;
 
-    uint32_t bg = selected ? MakeColor(60, 60, 140, 200) :
+    const wsc_ext_t *e = wsc_ext;
+    uint32_t bg = selected ? e->cursor :
                   p->sub ? MakeColor(110, 110, 110, alt ? 40 : 26) :    // greyed: not in play
-                  wsc_team_color(p->team, alt ? 60 : 40);
+                  wsc_team_color(p->team, e->row_a[alt]);
     wsc_fill(x, y, w, wsc_rh, bg);
     if (pi == wsc.me && !selected)
-        R_DrawFill32(x, y, 2, wsc_rh, MakeColor(230, 230, 120, 255));
+        R_DrawFill32(x, y, 2, wsc_rh, e->me);
 
     wsc_accuracy(pi, &shots, &hits);
     wsc_fmt_acc(acc, sizeof(acc), hits, shots);
@@ -1393,8 +1420,8 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
                num[1], num[2], num[3], acc, num[4], kd, num[5]);
     // who is alive in the green the server's own scoreboard has for them,
     // where the server says we may know (dead, spectating, between rounds)
-    uint32_t color = (gone || p->sub) && !selected ? MakeColor(150, 150, 150, 255) :
-                     wsc.alive_shown && p->alive ? MakeColor(120, 230, 120, 255) : 0;
+    uint32_t color = (gone || p->sub) && !selected ? e->dim :
+                     wsc.alive_shown && p->alive ? e->alive : e->text;
     wsc_grid(x, y, false, color, line, row_cols, q_countof(row_cols), -1);
     {
         // a team's captain wears an @ before the name, as on the server's board
@@ -1410,8 +1437,7 @@ static int wsc_draw_row(int x, int y, int w, int rank, int pi, bool alt)
     wsc_draw_row_weapons(x, y, w, pi, color);
 
     // the expand mark at the row's end
-    wsc_text(x + w - CW, y, AL_RIGHT, false, MakeColor(170, 170, 170, 255),
-             wsc.expanded == pi ? "-" : "+");
+    wsc_text(x + w - CW, y, AL_RIGHT, false, e->mark, wsc.expanded == pi ? "-" : "+");
     return y + wsc_rh;
 }
 
@@ -1443,8 +1469,43 @@ static void wsc_draw_spectators(int x, int y, int w, int bottom, uint32_t color)
     }
 }
 
+static const wsc_ext_t wsc_ext_dark = {
+    .panel = wsc_ext_dark_panel,
+    .text = U32_WHITE,
+    .caption = MakeColor(185, 185, 185, 235),
+    .dim = MakeColor(150, 150, 150, 220),
+    .alive = MakeColor(120, 230, 120, 255),
+    .cursor = MakeColor(60, 60, 140, 200),
+    .me = MakeColor(230, 230, 120, 255),
+    .mark = MakeColor(170, 170, 170, 255),
+    .info = MakeColor(170, 170, 170, 255),
+    .unready = MakeColor(255, 170, 60, 255),
+    .rule = MakeColor(120, 120, 120, 160),
+    .band_a = 150, .row_a = { 40, 60 },
+    .weapons = &wsc_dark,
+};
+
+static const wsc_theme_t wsc_light;
+
+static const wsc_ext_t wsc_ext_light = {
+    .panel = MakeColor(238, 238, 241, 238),
+    .text = MakeColor(28, 28, 34, 255),
+    .caption = MakeColor(95, 95, 105, 255),
+    .dim = MakeColor(140, 140, 148, 255),
+    .alive = MakeColor(20, 135, 45, 255),
+    .cursor = MakeColor(176, 198, 238, 240),
+    .me = MakeColor(150, 95, 0, 255),
+    .mark = MakeColor(105, 105, 115, 255),
+    .info = MakeColor(95, 95, 105, 255),
+    .unready = MakeColor(205, 105, 0, 255),
+    .rule = MakeColor(165, 165, 172, 200),
+    .band_a = 230, .row_a = { 34, 56 },
+    .weapons = &wsc_light,
+};
+
 static void wsc_draw_dark(int hud_x, int hud_y, int hud_w, int hud_h)
 {
+    const wsc_ext_t *e = wsc_ext;
     int list[WSC_MAX_P];
     char line[160];
 
@@ -1484,17 +1545,17 @@ static void wsc_draw_dark(int hud_x, int hud_y, int hud_w, int hud_h)
     int ph = min(h + CH, hud_y + hud_h - py);
     int bottom = py + ph - wsc_rh * 2;
 
-    wsc_fill(px, py, pw, ph, MakeColor(0, 0, 0, 215));
+    wsc_fill(px, py, pw, ph, e->panel);
 
     int x = px + CW, w = pw - CW * 2;
     int y = wsc_draw_header(px, pw, py + CH / 2);
-    uint32_t cap = MakeColor(185, 185, 185, 235);
+    uint32_t cap = e->caption;
 
     for (int t = 1; t <= nteams && y + wsc_rh * 3 <= bottom; t++) {
         int n = wsc_team_list(t, list);
         const char *tname = wsc.team_name[t][0] ? wsc.team_name[t] : va("Team %d", t);
 
-        wsc_fill(x, y, w, wsc_rh + 2, wsc_team_color(t, 150));
+        wsc_fill(x, y, w, wsc_rh + 2, wsc_team_color(t, e->band_a));
         wsc_text(x + CW, y + 1, AL_LEFT, true, U32_WHITE, tname);
         y += wsc_rh + 3;
 
@@ -1509,22 +1570,22 @@ static void wsc_draw_dark(int hud_x, int hud_y, int hud_w, int hud_h)
             if (wsc.p[list[i]].sub && (!i || !wsc.p[list[i - 1]].sub)) {
                 if (y + wsc_rh * 2 + 2 > bottom)
                     break;
-                wsc_fill(x, y, w, 1, MakeColor(120, 120, 120, 160));
+                wsc_fill(x, y, w, 1, e->rule);
                 y += 2;
-                wsc_text(x + CW, y, AL_LEFT, false, MakeColor(150, 150, 150, 220), "SUBS");
+                wsc_text(x + CW, y, AL_LEFT, false, e->dim, "SUBS");
                 y += wsc_rh;
             }
             y = wsc_draw_row(x, y, w, i + 1, list[i], i & 1);
             if (list[i] == wsc.expanded)
-                y = wsc_draw_weapons(x, y, w, bottom, list[i], &wsc_dark, NULL, 0);
+                y = wsc_draw_weapons(x, y, w, bottom, list[i], e->weapons, NULL, 0);
         }
         y += CH / 2;
     }
 
-    wsc_draw_spectators(x, y, w, bottom, MakeColor(150, 150, 150, 220));
+    wsc_draw_spectators(x, y, w, bottom, e->dim);
 
     if (wsc.expanded)
-        wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, MakeColor(150, 150, 150, 220), wsc_hints());
+        wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, e->dim, wsc_hints());
 }
 
 /* ------------------------------------------------------------------ */
@@ -1560,9 +1621,25 @@ static const wsc_theme_t wsc_light_clear = {
     .row_bg = { MakeColor(255, 255, 255, 140), MakeColor(226, 226, 232, 160) },
 };
 
-#define CL_BG       MakeColor(238, 238, 241, 238)
-#define CL_EDGE     MakeColor(165, 165, 172, 255)
-#define CL_CURSOR   MakeColor(176, 198, 238, 240)
+// classic dark modernized (style 3): the old board's light letters with
+// their shadow, on the dark board's panel
+static const wsc_theme_t wsc_classic_dark = {
+    .text = U32_WHITE,
+    .caption = MakeColor(190, 190, 198, 255),
+    .dim = MakeColor(150, 150, 158, 255),
+    .scope = MakeColor(230, 230, 120, 255),
+    .alive = MakeColor(120, 230, 120, 255),
+    .ready = MakeColor(120, 230, 120, 255),
+    .unready = MakeColor(255, 170, 60, 255),
+    .head_bg = MakeColor(40, 40, 52, 200),
+    .row_bg = { MakeColor(255, 255, 255, 12), MakeColor(255, 255, 255, 24) },
+};
+
+// the panel, its edge and the cursor's bar, light (style 1) and dark (3)
+static uint32_t cl_bg, cl_edge, cl_cursor;
+#define CL_BG       cl_bg
+#define CL_EDGE     cl_edge
+#define CL_CURSOR   cl_cursor
 
 // a team's numbers, each right-aligned at its end and a cell apart
 static const struct {
@@ -1716,7 +1793,11 @@ static void wsc_classic_row(int x, int colw, int y, const int *ends, int name_en
 
 static void wsc_draw_classic(int hud_x, int hud_y, int hud_w, int hud_h)
 {
-    const wsc_theme_t *th = wsc_clear ? &wsc_light_clear : &wsc_light;
+    bool dark = scr_statsboard_style->integer == 3;
+    const wsc_theme_t *th = dark ? &wsc_classic_dark : wsc_clear ? &wsc_light_clear : &wsc_light;
+    cl_bg = dark ? MakeColor(0, 0, 0, 215) : MakeColor(238, 238, 241, 238);
+    cl_edge = dark ? MakeColor(85, 85, 95, 255) : MakeColor(165, 165, 172, 255);
+    cl_cursor = dark ? MakeColor(60, 60, 140, 200) : MakeColor(176, 198, 238, 240);
     static int lists[WSC_MAX_TEAMS][WSC_MAX_P];
     int counts[WSC_MAX_TEAMS], ends[CL_NCOLS];
     int nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
@@ -2209,25 +2290,33 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
         return;
     }
 
+    int style = scr_statsboard_style->integer;
+    bool classic = style == 1 || style == 3;
 #ifdef TEXT_BOLD
     if (scr_statsboard_font && scr_statsboard_font->integer && R_TextAvailable()) {
         wsc_ttf = true;
         wsc_size = scr_statsboard_size->value ? Cvar_ClampValue(scr_statsboard_size, 6, 24) :
-                   scr_statsboard_style->integer == 1 ? 16 : 10;
+                   classic ? 16 : 10;
         wsc_rh = max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
     }
 #endif
     wsc_alt_green = false;
-    // the classic board's dark text on light: the alt charset's green would
-    // stand out of it, so its bold is the plain letters in their colour
-    wsc_alt_bold = scr_statsboard_style->integer != 1;
     // The old scoreboard reads on anything as light letters with a dark
-    // edge (the conchars' own, or the font's shadow); the classic board's
+    // edge (the conchars' own, or the font's shadow); the light boards'
     // dark letters need the light panel behind them, so below half its
-    // opacity it takes the old scheme
-    wsc_clear = !wsc_alt_bold && Cvar_ClampValue(scr_statsboard_alpha, 0, 1) < 0.5f;
-    if (!wsc_alt_bold)
+    // opacity they take the dark scheme
+    bool light = (style == 1 || style == 4) && Cvar_ClampValue(scr_statsboard_alpha, 0, 1) >= 0.5f;
+    // dark text on light: the alt charset's green would stand out of it,
+    // so bold is the plain letters in their colour - on the classic
+    // boards always, as the old board's captions
+    wsc_alt_bold = !classic && !light;
+    if (classic) {
+        // the light board's letters and the dark one's both get the shadow
+        wsc_clear = !light;
         wsc_draw_classic(hud_x, hud_y, hud_w, hud_h);
-    else
+    } else {
+        wsc_clear = false;
+        wsc_ext = light ? &wsc_ext_light : &wsc_ext_dark;
         wsc_draw_dark(hud_x, hud_y, hud_w, hud_h);
+    }
 }
