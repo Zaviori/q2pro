@@ -64,6 +64,33 @@ typedef struct {
     int v[WSC_NF];
 } wsc_hist_t;
 
+// The rounds view: each round as it went - its result from the wround
+// lines, its kills and deaths from the events (aq2events)
+#define WSC_ROUNDS      256
+#define WSC_EV_MAX      4096
+
+static const char *const wsc_locname[] = { "", "head", "chest", "stomach", "legs", "helmet", "vest" };
+
+typedef struct {
+    unsigned char r;
+    bool        kill;           // a kill; else a death of its own (reason)
+    unsigned char a, v;         // stats ids
+    unsigned char ateam, vteam; // their teams then
+    unsigned char w, loc;
+    bool        hs, ff;
+    short       dist, dmg;
+    unsigned char alive[WSC_MAX_TEAMS];  // the teams' alive counts after it
+    char        reason[10];
+    int         f;
+} wsc_ev_t;
+
+typedef struct {
+    int     start, end;         // frames; end 0 while it is played
+    int     winner;             // 0 a tie
+    char    reason[12];
+    bool    seen;               // a start or an end came
+} wsc_round_t;
+
 static struct {
     bool            active;     // the server sends the channel: a snapshot came
     char            mapname[MAX_QPATH];
@@ -82,6 +109,13 @@ static struct {
     bool            team_seen[WSC_MAX_TEAMS];
     wsc_hist_t      *hist;
     int             nhist, hist_alloc;
+    int             hz;         // the server's frames a second, for the times
+    wsc_round_t     rounds[WSC_ROUNDS];
+    wsc_ev_t        *ev;
+    int             nev, ev_alloc;
+    int             rsel;       // the rounds view: the round picked, 0 the latest
+    int             rscroll;    // its events scrolled by
+    bool            rdetail;    // the round picked as it went; else every round on a line
 
     // the board
     bool            open;
@@ -115,16 +149,23 @@ static void wsc_clear_counts(void)
         wsc.p[i].live_r = -1;
     }
     wsc.nhist = 0;
+    wsc.nev = 0;
+    memset(wsc.rounds, 0, sizeof(wsc.rounds));
 }
 
 void CL_WS_Clear(void)
 {
     wsc_hist_t *hist = wsc.hist;
     int alloc = wsc.hist_alloc;
+    wsc_ev_t *ev = wsc.ev;
+    int ev_alloc = wsc.ev_alloc;
 
     memset(&wsc, 0, sizeof(wsc));
     wsc.hist = hist;
     wsc.hist_alloc = alloc;
+    wsc.ev = ev;
+    wsc.ev_alloc = ev_alloc;
+    wsc.hz = 10;
     for (int t = 0; t < WSC_MAX_TEAMS; t++)
         wsc.team_ready[t] = -1;     // until a wteam says
     wsc_clear_counts();
@@ -274,6 +315,72 @@ static void wsc_fields(const wsc_line_t *l, int *v, bool delta)
     }
 }
 
+// a kill or a death into its round, once (a recap at the round's end may
+// repeat what came live)
+static void wsc_event(const wsc_line_t *l, bool kill)
+{
+    int r = wsc_int(l, "r", wsc.round), f = wsc_int(l, "f", 0);
+    int a = wsc_int(l, "a", 0), v = wsc_int(l, "v", 0);
+
+    if (r < 1 || r >= WSC_ROUNDS || v < 1 || v >= WSC_MAX_P || a < 0 || a >= WSC_MAX_P)
+        return;
+    // after the round's end (a team kill once the time ran out): not the
+    // round's, and the server's log of it has none either
+    if (wsc.rounds[r].end && f > wsc.rounds[r].end)
+        return;
+    for (int i = wsc.nev - 1; i >= 0; i--) {
+        const wsc_ev_t *e = &wsc.ev[i];
+        if (e->r == r && e->f == f && e->v == v && e->kill == kill)
+            return;
+    }
+    if (wsc.nev >= WSC_EV_MAX)
+        return;
+    if (wsc.nev == wsc.ev_alloc) {
+        int n = wsc.ev_alloc ? wsc.ev_alloc * 2 : 256;
+        wsc_ev_t *ne = Z_Malloc(n * sizeof(*ne));
+        if (wsc.ev) {
+            memcpy(ne, wsc.ev, wsc.nev * sizeof(*ne));
+            Z_Free(wsc.ev);
+        }
+        wsc.ev = ne;
+        wsc.ev_alloc = n;
+    }
+
+    // in its round's place: the backfill comes newest round first
+    int at = wsc.nev;
+    while (at > 0 && (wsc.ev[at - 1].r > r || (wsc.ev[at - 1].r == r && wsc.ev[at - 1].f > f)))
+        at--;
+    memmove(&wsc.ev[at + 1], &wsc.ev[at], (wsc.nev - at) * sizeof(wsc.ev[0]));
+    wsc.nev++;
+
+    wsc_ev_t *e = &wsc.ev[at];
+    memset(e, 0, sizeof(*e));
+    e->r = r;
+    e->f = f;
+    e->kill = kill;
+    e->a = kill ? a : 0;
+    e->v = v;
+    wsc.p[v].used = true;
+    e->vteam = wsc.p[v].team;
+    if (kill) {
+        wsc.p[a].used = true;
+        e->ateam = wsc.p[a].team;
+        e->w = wsc_weapon(l);
+        e->hs = wsc_int(l, "hs", 0) != 0;
+        e->ff = wsc_int(l, "ff", 0) != 0;
+        e->dist = wsc_int(l, "dist", 0);
+        e->dmg = wsc_int(l, "dmg", 0);
+        const char *loc = wsc_get(l, "loc");
+        for (int i = 1; loc && i < (int)q_countof(wsc_locname); i++)
+            if (!strcmp(loc, wsc_locname[i]))
+                e->loc = i;
+    } else {
+        Q_strlcpy(e->reason, wsc_get(l, "reason") ? wsc_get(l, "reason") : "", sizeof(e->reason));
+    }
+    for (int t = 1; t < WSC_MAX_TEAMS; t++)
+        e->alive[t] = wsc_int(l, va("a%d", t), 0);
+}
+
 static void wsc_take_token(const char *token)
 {
     if (token && *token && strlen(token) < 32)
@@ -308,6 +415,7 @@ void CL_WS_ParseLine(const char *line)
             wsc.scope = 0;
         }
         Q_strlcpy(wsc.mapname, wsc_get(&l, "map") ? wsc_get(&l, "map") : "", sizeof(wsc.mapname));
+        wsc.hz = max(wsc_int(&l, "hz", wsc.hz), 1);
         wsc.round = wsc_int(&l, "r", wsc.round);
         if (state && !strcmp(state, "end"))
             wsc.going = false;
@@ -412,9 +520,32 @@ void CL_WS_ParseLine(const char *line)
         return;
     }
 
+    if (!strcmp(l.event, "kill") || !strcmp(l.event, "death")) {
+        wsc_event(&l, l.event[0] == 'k');
+        return;
+    }
+
     if (!strcmp(l.event, "wround")) {
         const char *state = wsc_get(&l, "state");
-        wsc.round = wsc_int(&l, "r", wsc.round);
+        int r = wsc_int(&l, "r", wsc.round);
+        if (r > 0 && r < WSC_ROUNDS) {
+            wsc_round_t *rd = &wsc.rounds[r];
+            rd->seen = true;
+            if (state && !strcmp(state, "start")) {
+                rd->start = wsc_int(&l, "f", 0);
+                rd->end = 0;
+            } else if (state && !strcmp(state, "end")) {
+                rd->end = wsc_int(&l, "f", 0);
+                rd->start = wsc_int(&l, "start", rd->start);
+                rd->winner = wsc_int(&l, "winner", 0);
+                Q_strlcpy(rd->reason, wsc_get(&l, "reason") ? wsc_get(&l, "reason") : "",
+                          sizeof(rd->reason));
+            }
+        }
+        // the backfill's past rounds say nothing of the one being played
+        if (wsc_int(&l, "hist", 0))
+            return;
+        wsc.round = r;
         if (state && !strcmp(state, "start")) {
             wsc.going = true;
         } else if (state && !strcmp(state, "end")) {
@@ -680,6 +811,57 @@ static void CL_WS_Score_f(void)
     wsc_open(true);
 }
 
+// the rounds the view knows, oldest first
+static int wsc_rv_rounds(int *out)
+{
+    int n = 0;
+    for (int r = 1; r < WSC_ROUNDS; r++)
+        if (wsc.rounds[r].seen)
+            out[n++] = r;
+    return n;
+}
+
+static int wsc_rv_selected(const int *rounds, int n)
+{
+    if (!n)
+        return 0;
+    for (int i = 0; i < n; i++)
+        if (rounds[i] == wsc.rsel)
+            return i;
+    return n - 1;       // the latest
+}
+
+// "rounds": the rounds view, opened on the latest; again closes it
+static void CL_WS_Rounds_f(void)
+{
+    if (!CL_WS_Active()) {
+        Com_Printf("The rounds view needs a server with the stats channel.\n");
+        return;
+    }
+    if (wsc.open && wsc.page == 3) {
+        wsc.open = false;
+        return;
+    }
+    if (cl.frame.ps.stats[STAT_LAYOUTS] & LAYOUTS_LAYOUT)
+        CL_ClientCommand("putaway");
+    wsc.page = 3;
+    wsc.open = true;
+    wsc.rsel = 0;
+    wsc.rscroll = 0;
+}
+
+// Up/Down (and Left/Right) a round, back in time going up
+static void wsc_rv_step(int dir)
+{
+    int rounds[WSC_ROUNDS], n = wsc_rv_rounds(rounds);
+    if (!n)
+        return;
+    int i = Q_clip(wsc_rv_selected(rounds, n) + dir, 0, n - 1);
+    // the latest followed as new rounds come, unless one was picked
+    wsc.rsel = i == n - 1 ? 0 : rounds[i];
+    wsc.rscroll = 0;
+}
+
 bool CL_WS_BoardOpen(void)
 {
     // The server opening something of its own - a menu (TAB, inven), the
@@ -778,6 +960,34 @@ bool CL_WS_KeyEvent(int key)
     if (!CL_WS_BoardOpen())
         return false;
 
+    if (wsc.page == 3) {
+        switch (key) {
+        case K_ESCAPE:
+            wsc.open = false;
+            return true;
+        case K_UPARROW: case K_KP_UPARROW: case K_LEFTARROW: case K_KP_LEFTARROW:
+            wsc_rv_step(-1);
+            return true;
+        case K_DOWNARROW: case K_KP_DOWNARROW: case K_RIGHTARROW: case K_KP_RIGHTARROW:
+            wsc_rv_step(1);
+            return true;
+        case K_PGUP: case K_KP_PGUP:
+            wsc.rscroll = max(wsc.rscroll - 5, 0);
+            return true;
+        case K_PGDN: case K_KP_PGDN:
+            wsc.rscroll += 5;
+            return true;
+        case K_ENTER: case K_KP_ENTER:
+            wsc.rdetail = !wsc.rdetail;
+            wsc.rscroll = 0;
+            return true;
+        case K_HOME: case K_KP_HOME:
+            wsc.rsel = wsc.rscroll = 0;
+            return true;
+        }
+        return false;
+    }
+
     switch (key) {
     case K_ESCAPE:
         wsc.open = false;
@@ -859,6 +1069,7 @@ void CL_WS_Init(void)
     scr_statsboard_size = Cvar_Get("scr_statsboard_size", "0", CVAR_ARCHIVE);
 #endif
     Cmd_AddCommand("score", CL_WS_Score_f);
+    Cmd_AddCommand("rounds", CL_WS_Rounds_f);
     CL_WS_Clear();
 }
 
@@ -2255,6 +2466,496 @@ static void wsc_draw_list(int hud_x, int hud_y, int hud_w, int hud_h)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* the rounds view (page 3): how the map went, round by round - a strip */
+/* of the rounds in their winners' colours, the list of them with the   */
+/* score as it stood, and the round picked as it went: who was alive    */
+/* over its time, its kills and deaths in order, and who stood out     */
+
+#define RV_LIST_W   36          // the list's cells, the round's pane beside it
+
+static void wsc_rv_time(char *out, size_t size, int frames)
+{
+    int sec = max(frames, 0) / max(wsc.hz, 1);
+    Q_snprintf(out, size, "%d:%02d", sec / 60, sec % 60);
+}
+
+static const char *wsc_rv_name(int p)
+{
+    return p > 0 && p < WSC_MAX_P && wsc.p[p].name[0] ? wsc.p[p].name : "?";
+}
+
+// a name cut to `cells`
+static void wsc_rv_name_at(int x, int y, int cells, bool bold, uint32_t color, const char *name)
+{
+    int len = (int)strlen(name);
+    while (len > 1 && wsc_measure(bold, name, len) > cells * CW)
+        len--;
+    wsc_str(x, y, AL_LEFT, bold, color, name, len);
+}
+
+// a team's colour readable as text on the panel
+static uint32_t wsc_rv_team_text(int t)
+{
+    color_t c = { .u32 = wsc_team_color(t, 255) };
+    if (t < 1 || t > 3)
+        return wsc_ext->dim;
+    if (wsc_ext->panel == wsc_ext_dark_panel)
+        for (int i = 0; i < 3; i++)
+            c.u8[i] += (255 - c.u8[i]) / 3;
+    return c.u32;
+}
+
+static const char *wsc_rv_reason(const char *reason)
+{
+    if (!strcmp(reason, "eliminated"))
+        return "elim";
+    if (!strcmp(reason, "time"))
+        return "time";
+    if (!strcmp(reason, "mapend"))
+        return "map end";
+    return reason;
+}
+
+// the events of round r: the first's index, their count
+static int wsc_rv_events(int r, int *first)
+{
+    int n = 0;
+    *first = 0;
+    for (int i = 0; i < wsc.nev; i++) {
+        if (wsc.ev[i].r != r)
+            continue;
+        if (!n)
+            *first = i;
+        n++;
+    }
+    return n;
+}
+
+// The alive counts over the round, a line per team stepping down at each
+// death, and a tick under it per kill in the killer's colour
+static void wsc_rv_chart(int x, int y, int w, int h, int r, int first, int n)
+{
+    const wsc_round_t *rd = &wsc.rounds[r];
+    int nteams = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
+    int start[WSC_MAX_TEAMS] = { 0 }, top = 1;
+    int end_f = rd->end ? rd->end : (n ? wsc.ev[first + n - 1].f : rd->start + 1);
+    int dur = max(end_f - rd->start, 1);
+    char buf[16];
+
+    wsc_fill(x, y, w, h, wsc_ext->panel == wsc_ext_dark_panel ? MakeColor(255, 255, 255, 14)
+                                                              : MakeColor(0, 0, 0, 14));
+    if (!n)
+        return;
+    // who was alive at the start: the first death's counts, and its victim
+    const wsc_ev_t *e0 = &wsc.ev[first];
+    for (int t = 1; t <= nteams; t++) {
+        start[t] = e0->alive[t] + (e0->vteam == t);
+        top = max(top, start[t]);
+    }
+    int ch = h - 6, base = y + h - 4;
+    for (int t = 1; t <= nteams; t++) {
+        uint32_t c = wsc_team_color(t, 255);
+        // where they start, a count beside the line; one in grey where both do
+        bool same = nteams == 2 && start[1] == start[2];
+        if (!same || t == 1)
+            wsc_text(x - CW / 2, base - start[t] * ch / top - (t - 1) - wsc_rh / 2, AL_RIGHT, false,
+                     same ? wsc_ext->caption : wsc_rv_team_text(t), va("%d", start[t]));
+        int alive = start[t], lx = x, off = t - 1;      // apart a pixel where they run together
+        for (int i = 0; i <= n; i++) {
+            int f = i < n ? wsc.ev[first + i].f : end_f;
+            int ex = x + (int)((int64_t)(f - rd->start) * (w - 1) / dur);
+            int ly = base - alive * ch / top - off;
+            if (ex > lx)
+                R_DrawFill32(lx, ly, ex - lx + 1, 2, c);
+            if (i == n)
+                break;
+            int na = wsc.ev[first + i].alive[t];
+            if (na != alive) {
+                int ny = base - na * ch / top - off;
+                R_DrawFill32(ex, min(ly, ny), 2, abs(ny - ly) + 2, c);
+                alive = na;
+            }
+            lx = ex;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        const wsc_ev_t *e = &wsc.ev[first + i];
+        int ex = x + (int)((int64_t)(e->f - rd->start) * (w - 1) / dur);
+        R_DrawFill32(ex - 1, y + h - 3, 3, 3, e->kill ? wsc_team_color(e->ateam, 255) : wsc_ext->dim);
+    }
+    wsc_rv_time(buf, sizeof(buf), dur);
+    wsc_text(x + w - 2, y + 1, AL_RIGHT, false, wsc_ext->dim, buf);
+}
+
+// "First blood ... Most kills ... Most damage ... Clutch"
+static int wsc_rv_summary(int x, int y, int w, int r, int first, int n)
+{
+    const wsc_round_t *rd = &wsc.rounds[r];
+    int kills[WSC_MAX_P] = { 0 }, best_k = 0, best_d = 0, best_dmg = 0;
+    char line[256];
+    size_t len = 0;
+
+    for (int i = 0; i < n; i++) {
+        const wsc_ev_t *e = &wsc.ev[first + i];
+        if (e->kill && !e->ff)
+            kills[e->a]++;
+    }
+    for (int p = 1; p < WSC_MAX_P; p++) {
+        if (kills[p] > (best_k ? kills[best_k] : 0))
+            best_k = p;
+        int dmg = 0;
+        for (int wi = 1; wi < WSC_NW; wi++) {
+            const wsc_hist_t *h = wsc_hist_get(p, r, wi);
+            if (h)
+                dmg += h->v[F_DMG];
+        }
+        if (dmg > best_dmg) {
+            best_dmg = dmg;
+            best_d = p;
+        }
+    }
+
+    const wsc_ev_t *fb = NULL;
+    for (int i = 0; i < n && !fb; i++)
+        if (wsc.ev[first + i].kill && !wsc.ev[first + i].ff)
+            fb = &wsc.ev[first + i];
+
+    // a clutch: the winners down to one against two or more, and won
+    int clutch = 0, against = 0;
+    if (rd->end && rd->winner > 0 && rd->winner < WSC_MAX_TEAMS) {
+        int other = rd->winner == 1 ? 2 : 1;
+        for (int i = 0; i < n; i++) {
+            const wsc_ev_t *e = &wsc.ev[first + i];
+            if (e->alive[rd->winner] == 1 && e->alive[other] >= 2) {
+                against = max(against, e->alive[other]);
+                if (!clutch)
+                    clutch = -1;
+            }
+        }
+        // the one who was left: the winners' last killer
+        for (int i = n - 1; clutch && i >= 0; i--)
+            if (wsc.ev[first + i].kill && wsc.ev[first + i].ateam == rd->winner) {
+                clutch = wsc.ev[first + i].a;
+                break;
+            }
+        if (clutch < 0)
+            clutch = 0;
+    }
+
+    uint32_t cap = wsc_ext->caption, val = wsc_ext->text;
+    int cx = x;
+#define RV_PAIR(label, value) do { \
+        wsc_text(cx, y, AL_LEFT, true, cap, label); \
+        cx += wsc_measure(true, label, strlen(label)) + CW; \
+        wsc_text(cx, y, AL_LEFT, false, val, value); \
+        cx += wsc_measure(false, value, strlen(value)) + CW * 3; \
+    } while (0)
+    if (fb)
+        RV_PAIR("FIRST BLOOD", wsc_rv_name(fb->a));
+    if (best_k && kills[best_k] > 1)
+        RV_PAIR("MOST KILLS", va("%s %d", wsc_rv_name(best_k), kills[best_k]));
+    if (best_d)
+        RV_PAIR("MOST DAMAGE", va("%s %d", wsc_rv_name(best_d), best_dmg));
+    if (clutch)
+        RV_PAIR("CLUTCH", va("%s 1v%d", wsc_rv_name(clutch), against));
+#undef RV_PAIR
+    (void)line; (void)len; (void)w;
+    return y + wsc_rh;
+}
+
+static const char *wsc_rv_hints(void)
+{
+    return wsc.rdetail ? "[UP/DOWN] Round   [PGUP/PGDN] Scroll   [ENTER] All rounds   [ESC] Close"
+                       : "[UP/DOWN] Round   [ENTER] The round as it went   [ESC] Close";
+}
+
+// The overview: every round on a line - who won, the score after it,
+// and a bar of its time with a mark per kill in the killer's colour
+// (a team kill orange, a death of its own grey), the bars on one scale,
+// so a long round reads long; then who was left and who killed most
+static void wsc_rv_overview(int x, int y, int w, int bottom, const int *rounds, int n, int sel)
+{
+    const wsc_ext_t *e = wsc_ext;
+    int nt = min(wsc_num_teams(), WSC_MAX_TEAMS - 1), longest = 1;
+    int bx = x + 24 * CW, bw = w - 24 * CW - 31 * CW;
+    char buf[64];
+
+    for (int i = 0; i < n; i++) {
+        const wsc_round_t *rd = &wsc.rounds[rounds[i]];
+        int first, ne = wsc_rv_events(rounds[i], &first);
+        int end = rd->end ? rd->end : ne ? wsc.ev[first + ne - 1].f : rd->start;
+        longest = max(longest, end - rd->start);
+    }
+
+    wsc_text(x + 3 * CW, y, AL_RIGHT, true, e->caption, "RND");
+    wsc_text(x + 5 * CW, y, AL_LEFT, true, e->caption, "WINNER");
+    wsc_text(x + 22 * CW, y, AL_RIGHT, true, e->caption, "SCORE");
+    wsc_text(bx, y, AL_LEFT, true, e->caption, "KILLS OVER THE ROUND");
+    wsc_rv_time(buf, sizeof(buf), longest);
+    wsc_text(bx + bw, y, AL_RIGHT, false, e->dim, buf);
+    wsc_text(bx + bw + 7 * CW, y, AL_RIGHT, true, e->caption, "LEFT");
+    wsc_text(bx + bw + 9 * CW, y, AL_LEFT, true, e->caption, "END");
+    wsc_text(bx + bw + 15 * CW, y, AL_LEFT, true, e->caption, "TOP KILLER");
+    y += wsc_rh;
+
+    int rows = max((bottom - y) / wsc_rh, 1);
+    int from = Q_clip(sel - rows / 2, 0, max(n - rows, 0));
+    int score[WSC_MAX_TEAMS] = { 0 };
+    for (int i = 0; i < from; i++)
+        if (wsc.rounds[rounds[i]].end && wsc.rounds[rounds[i]].winner < WSC_MAX_TEAMS)
+            score[wsc.rounds[rounds[i]].winner]++;
+
+    for (int i = from; i < n && y + wsc_rh <= bottom; i++) {
+        const wsc_round_t *rd = &wsc.rounds[rounds[i]];
+        int first, ne = wsc_rv_events(rounds[i], &first);
+        if (rd->end && rd->winner < WSC_MAX_TEAMS)
+            score[rd->winner]++;
+        if (i == sel)
+            wsc_fill(x, y, w, wsc_rh, e->cursor);
+        else if (rd->end && rd->winner)
+            wsc_fill(x, y, w, wsc_rh, wsc_team_color(rd->winner, e->row_a[i & 1]));
+        if (rd->end && rd->winner)
+            R_DrawFill32(x, y, 2, wsc_rh, wsc_team_color(rd->winner, 255));
+
+        Q_snprintf(buf, sizeof(buf), "%d", rounds[i]);
+        wsc_text(x + 3 * CW, y, AL_RIGHT, false, e->text, buf);
+        if (!rd->end)
+            wsc_text(x + 5 * CW, y, AL_LEFT, false, e->alive, "playing");
+        else if (rd->winner)
+            wsc_rv_name_at(x + 5 * CW, y, 11, false, i == sel ? e->text : wsc_rv_team_text(rd->winner),
+                           wsc_team_title(rd->winner));
+        else
+            wsc_text(x + 5 * CW, y, AL_LEFT, false, e->dim, "tie");
+        Q_snprintf(buf, sizeof(buf), "%d-%d", score[1], score[2]);
+        wsc_text(x + 22 * CW, y, AL_RIGHT, false, e->text, buf);
+
+        // the bar: the round's length on the common scale, a mark per kill
+        int end = rd->end ? rd->end : ne ? wsc.ev[first + ne - 1].f : rd->start;
+        int len = max((int)((int64_t)(end - rd->start) * bw / longest), 2);
+        wsc_fill(bx, y + 2, len, wsc_rh - 4, e->panel == wsc_ext_dark_panel ? MakeColor(255, 255, 255, 30)
+                                                                          : MakeColor(0, 0, 0, 30));
+        for (int k = 0; k < ne; k++) {
+            const wsc_ev_t *ev = &wsc.ev[first + k];
+            int mx = bx + (int)((int64_t)(ev->f - rd->start) * bw / longest);
+            uint32_t c = !ev->kill ? e->dim : ev->ff ? e->unready : wsc_team_color(ev->ateam, 255);
+            R_DrawFill32(mx - 1, y + 1, 3, wsc_rh - 2, c);
+        }
+        if (rd->end)
+            wsc_text(bx + bw + 9 * CW, y, AL_LEFT, false, e->dim, wsc_rv_reason(rd->reason));
+
+        // who was left, as the alive counts after the last death
+        if (rd->end && ne) {
+            size_t bl = 0;
+            buf[0] = 0;
+            for (int t = 1; t <= nt && bl < sizeof(buf); t++)
+                bl += Q_snprintf(buf + bl, sizeof(buf) - bl, t > 1 ? "v%d" : "%d",
+                                 wsc.ev[first + ne - 1].alive[t]);
+            wsc_text(bx + bw + 7 * CW, y, AL_RIGHT, false, e->caption, buf);
+        }
+        int kills[WSC_MAX_P] = { 0 }, best = 0;
+        for (int k = 0; k < ne; k++)
+            if (wsc.ev[first + k].kill && !wsc.ev[first + k].ff &&
+                ++kills[wsc.ev[first + k].a] > (best ? kills[best] : 0))
+                best = wsc.ev[first + k].a;
+        if (best)
+            wsc_rv_name_at(bx + bw + 15 * CW, y, 15, false, wsc_rv_team_text(wsc.p[best].team),
+                           va("%s %d", wsc_rv_name(best), kills[best]));
+        y += wsc_rh;
+    }
+}
+
+static void wsc_draw_rounds(int hud_x, int hud_y, int hud_w, int hud_h)
+{
+    const wsc_ext_t *e = wsc_ext;
+    int rounds[WSC_ROUNDS], n = wsc_rv_rounds(rounds);
+    int sel = wsc_rv_selected(rounds, n), r = n ? rounds[sel] : 0;
+    int first = 0, nev = r ? wsc_rv_events(r, &first) : 0;
+    char buf[64];
+
+    int pw = min(BOARD_CHARS * CW + CW * 2, (int)(hud_w * 0.96f));
+    int px = hud_x + (int)(hud_w * Cvar_ClampValue(scr_statsboard_x, 0, 1)) - pw / 2;
+    int py = hud_y + (int)(hud_h * Cvar_ClampValue(scr_statsboard_y, 0, 0.9f));
+    px = Q_clip(px, hud_x, hud_x + hud_w - pw);
+
+    int chart_h = wsc_rh * 4;
+    int body = wsc.rdetail ? max((n + 1) * wsc_rh, wsc_rh + 2 + chart_h + CH / 2 + max(nev, 2) * wsc_rh + 4 + wsc_rh)
+                           : (n + 1) * wsc_rh;
+    int h = CH / 2 + wsc_big_h() + 4 + 24 + 4 + wsc_rh + 4 + wsc_rh + 8 + body + CH / 2 + wsc_rh + CH;
+    if (wsc.team_ready[1] == 0 || wsc.team_ready[2] == 0)
+        h += wsc_rh + 2;
+    int ph = min(h, hud_y + hud_h - py);
+    int bottom = py + ph - wsc_rh - CH;
+
+    wsc_fill(px, py, pw, ph, e->panel);
+    int x = px + CW, w = pw - CW * 2;
+    int y = wsc_draw_header(px, pw, py + CH / 2);
+
+    if (!n) {
+        wsc_text(px + pw / 2, y + wsc_rh, AL_CENTER, false, e->dim, "No rounds played yet");
+        wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, e->dim, "[ESC] Close");
+        return;
+    }
+
+    // the strip: a box per round in its winner's colour, the score's story
+    int bw = Q_clip(w / n, CW + 2, CW * 3), bh = wsc_rh + 2;
+    int sx = px + (pw - bw * n) / 2;
+    for (int i = 0; i < n; i++) {
+        const wsc_round_t *rd = &wsc.rounds[rounds[i]];
+        int bx = sx + i * bw;
+        uint32_t c = !rd->end ? 0 : rd->winner ? wsc_team_color(rd->winner, 220) : MakeColor(128, 128, 128, 200);
+        if (c)
+            R_DrawFill32(bx + 1, y, bw - 2, bh, c);
+        else {      // being played: hollow
+            R_DrawFill32(bx + 1, y, bw - 2, 1, e->dim);
+            R_DrawFill32(bx + 1, y + bh - 1, bw - 2, 1, e->dim);
+            R_DrawFill32(bx + 1, y, 1, bh, e->dim);
+            R_DrawFill32(bx + bw - 2, y, 1, bh, e->dim);
+        }
+        if (bw >= CW * 2 + 4) {
+            Q_snprintf(buf, sizeof(buf), "%d", rounds[i]);
+            wsc_text(bx + bw / 2, y + 1, AL_CENTER, i == sel, c ? U32_WHITE : e->dim, buf);
+        }
+        if (i == sel)
+            R_DrawFill32(bx + 1, y + bh + 1, bw - 2, 2, e->text);
+    }
+    y += bh + 6;
+
+    if (!wsc.rdetail) {
+        wsc_rv_overview(x, y, w, bottom, rounds, n, sel);
+        wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, e->dim, wsc_rv_hints());
+        return;
+    }
+
+    // the list: round, who won, the score after it, its length, how
+    int lx = x, top = y;
+    wsc_text(lx + 3 * CW, y, AL_RIGHT, true, e->caption, "RND");
+    wsc_text(lx + 5 * CW, y, AL_LEFT, true, e->caption, "WINNER");
+    wsc_text(lx + 22 * CW, y, AL_RIGHT, true, e->caption, "SCORE");
+    wsc_text(lx + 28 * CW, y, AL_RIGHT, true, e->caption, "TIME");
+    wsc_text(lx + 30 * CW, y, AL_LEFT, true, e->caption, "END");
+    y += wsc_rh;
+    int rows = max((bottom - y) / wsc_rh, 1);
+    int from = Q_clip(sel - rows / 2, 0, max(n - rows, 0));
+    int score[WSC_MAX_TEAMS] = { 0 };
+    for (int i = 0; i < from; i++)
+        if (wsc.rounds[rounds[i]].end && wsc.rounds[rounds[i]].winner < WSC_MAX_TEAMS)
+            score[wsc.rounds[rounds[i]].winner]++;
+    for (int i = from; i < n && y + wsc_rh <= bottom; i++) {
+        const wsc_round_t *rd = &wsc.rounds[rounds[i]];
+        if (rd->end && rd->winner < WSC_MAX_TEAMS)
+            score[rd->winner]++;
+        if (i == sel)
+            wsc_fill(lx, y, (RV_LIST_W - 1) * CW, wsc_rh, e->cursor);
+        else if (rd->end && rd->winner)
+            wsc_fill(lx, y, (RV_LIST_W - 1) * CW, wsc_rh, wsc_team_color(rd->winner, e->row_a[i & 1]));
+        if (rd->end && rd->winner)
+            R_DrawFill32(lx, y, 2, wsc_rh, wsc_team_color(rd->winner, 255));
+        Q_snprintf(buf, sizeof(buf), "%d", rounds[i]);
+        wsc_text(lx + 3 * CW, y, AL_RIGHT, false, e->text, buf);
+        if (!rd->end)
+            wsc_text(lx + 5 * CW, y, AL_LEFT, false, e->alive, "playing");
+        else if (rd->winner)
+            wsc_rv_name_at(lx + 5 * CW, y, 11, false, i == sel ? e->text : wsc_rv_team_text(rd->winner),
+                           wsc_team_title(rd->winner));
+        else
+            wsc_text(lx + 5 * CW, y, AL_LEFT, false, e->dim, "tie");
+        Q_snprintf(buf, sizeof(buf), "%d-%d", score[1], score[2]);
+        wsc_text(lx + 22 * CW, y, AL_RIGHT, false, e->text, buf);
+        if (rd->start && (rd->end || i == n - 1)) {
+            wsc_rv_time(buf, sizeof(buf), (rd->end ? rd->end : cl.frame.number) - rd->start);
+            if (rd->end)
+                wsc_text(lx + 28 * CW, y, AL_RIGHT, false, e->text, buf);
+        }
+        if (rd->end)
+            wsc_text(lx + 30 * CW, y, AL_LEFT, false, e->dim, wsc_rv_reason(rd->reason));
+        y += wsc_rh;
+    }
+
+    // the round picked, beside the list
+    const wsc_round_t *rd = &wsc.rounds[r];
+    int rx = x + RV_LIST_W * CW, rw = w - RV_LIST_W * CW;
+    y = top;
+    Q_snprintf(buf, sizeof(buf), "ROUND %d", r);
+    wsc_text(rx, y, AL_LEFT, true, e->text, buf);
+    int tx = rx + wsc_measure(true, buf, strlen(buf)) + CW * 2;
+    if (!rd->end)
+        wsc_text(tx, y, AL_LEFT, false, e->alive, wsc.going && r == wsc.round ? "being played" : "");
+    else if (rd->winner) {
+        const char *t = wsc_team_title(rd->winner);
+        wsc_text(tx, y, AL_LEFT, true, wsc_rv_team_text(rd->winner), t);
+        tx += wsc_measure(true, t, strlen(t)) + CW;
+        wsc_text(tx, y, AL_LEFT, false, e->caption,
+                 !strcmp(rd->reason, "time") ? "won on time" :
+                 !strcmp(rd->reason, "eliminated") ? "won by elimination" : "won");
+    } else
+        wsc_text(tx, y, AL_LEFT, false, e->caption, "a tie");
+    y += wsc_rh + 2;
+
+    wsc_rv_chart(rx, y, rw, chart_h, r, first, nev);
+    y += chart_h + CH / 2;
+
+    if (!nev) {
+        wsc_text(rx, y, AL_LEFT, false, e->dim, "no kills recorded for this round");
+        y += wsc_rh;
+        wsc_text(rx, y, AL_LEFT, false, e->dim, "(the events: aq2events 1)");
+    } else {
+        // the kills as they came: time, alive after it, killer, weapon, victim, how
+        int room = max((bottom - wsc_rh - 4 - y) / wsc_rh, 1);
+        wsc.rscroll = Q_clip(wsc.rscroll, 0, max(nev - room, 0));
+        int nt = min(wsc_num_teams(), WSC_MAX_TEAMS - 1);
+        for (int i = wsc.rscroll; i < nev && y + wsc_rh <= bottom - wsc_rh - 4; i++) {
+            const wsc_ev_t *ev = &wsc.ev[first + i];
+            if (i & 1)
+                wsc_fill(rx, y, rw, wsc_rh, e->panel == wsc_ext_dark_panel ? MakeColor(255, 255, 255, 10)
+                                                                         : MakeColor(0, 0, 0, 10));
+            wsc_rv_time(buf, sizeof(buf), ev->f - rd->start);
+            wsc_text(rx + 5 * CW, y, AL_RIGHT, false, e->dim, buf);
+            // the alive counts after it, "4v3"
+            size_t bl = 0;
+            buf[0] = 0;
+            for (int t = 1; t <= nt && bl < sizeof(buf); t++)
+                bl += Q_snprintf(buf + bl, sizeof(buf) - bl, t > 1 ? "v%d" : "%d", ev->alive[t]);
+            wsc_text(rx + 7 * CW, y, AL_LEFT, false, e->caption, buf);
+            int ix = rx + 26 * CW;      // the weapon, the killer right up to it as in the kill feed
+            if (ev->kill) {
+                const char *an = wsc_rv_name(ev->a);
+                int len = (int)strlen(an);
+                while (len > 1 && wsc_measure(false, an, len) > 14 * CW)
+                    len--;
+                wsc_str(ix - CW / 2, y, AL_RIGHT, false, wsc_rv_team_text(ev->ateam), an, len);
+                wsc_draw_icon(ix, y, ev->w);
+                wsc_rv_name_at(ix + 2 * CW + CW / 2, y, 14, false, wsc_rv_team_text(ev->vteam), wsc_rv_name(ev->v));
+                // how: the place hit, the distance in metres, a team kill
+                bl = 0;
+                buf[0] = 0;
+                if (ev->ff)
+                    bl += Q_snprintf(buf + bl, sizeof(buf) - bl, "TEAMKILL ");
+                if (ev->loc && ev->w != 9 && ev->w != 13)
+                    bl += Q_snprintf(buf + bl, sizeof(buf) - bl, "%s ", wsc_locname[ev->loc]);
+                if (ev->dist > 0)
+                    Q_snprintf(buf + bl, sizeof(buf) - bl, "%dm", (int)(ev->dist * 0.0254f + 0.5f));
+                wsc_text(rx + rw - CW, y, AL_RIGHT, false, ev->ff ? e->unready : e->dim, buf);
+            } else {
+                wsc_rv_name_at(ix + 2 * CW + CW / 2, y, 14, false, wsc_rv_team_text(ev->vteam), wsc_rv_name(ev->v));
+                const char *how = !strcmp(ev->reason, "fall") ? "fell to death" :
+                                  !strcmp(ev->reason, "drown") ? "drowned" :
+                                  !strcmp(ev->reason, "lava") ? "melted" :
+                                  !strcmp(ev->reason, "crush") ? "was crushed" :
+                                  !strcmp(ev->reason, "suicide") ? "killed himself" : "died";
+                wsc_text(ix - CW / 2, y, AL_RIGHT, false, e->dim, how);
+            }
+            y += wsc_rh;
+        }
+        if (nev > room)
+            wsc_text(rx + rw - CW, top, AL_RIGHT, false, e->dim,
+                     va("%d-%d of %d", wsc.rscroll + 1, min(wsc.rscroll + room, nev), nev));
+        wsc_rv_summary(rx, min(y + 4, bottom - wsc_rh), rw, r, first, nev);
+    }
+
+    wsc_text(x, py + ph - wsc_rh - CH / 2, AL_LEFT, false, e->dim, wsc_rv_hints());
+}
+
 void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale, qhandle_t font)
 {
     if (!CL_WS_BoardOpen())
@@ -2266,6 +2967,26 @@ void CL_WS_DrawBoard(int hud_x, int hud_y, int hud_w, int hud_h, float hud_scale
     wsc_rh = CH + 2;
     wsc_bg_k = Cvar_ClampValue(scr_statsboard_alpha, 0, 1) / (215.0f / 255.0f);
     wsc_fix_cursor();
+
+    // the rounds view: the extended board's look, in its colours (light
+    // where the board is light), the font where the boards have it
+    if (wsc.page == 3) {
+        int style = scr_statsboard_style->integer;
+        bool light = (style == 1 || style == 4) && Cvar_ClampValue(scr_statsboard_alpha, 0, 1) >= 0.5f;
+#ifdef TEXT_BOLD
+        if (scr_statsboard_font && scr_statsboard_font->integer && R_TextAvailable()) {
+            wsc_ttf = true;
+            wsc_size = scr_statsboard_size->value ? Cvar_ClampValue(scr_statsboard_size, 6, 24) : 10;
+            wsc_rh = max(CH + 2, R_TextLineHeight(TEXT_BOLD, wsc_size) + 1);
+        }
+#endif
+        wsc_alt_green = false;
+        wsc_alt_bold = !light;
+        wsc_clear = false;
+        wsc_ext = light ? &wsc_ext_light : &wsc_ext_dark;
+        wsc_draw_rounds(hud_x, hud_y, hud_w, hud_h);
+        return;
+    }
 
     // the classic layout (and its list page): the server's own boards, at
     // their places on rows of eight - in conchars, or in the font at the

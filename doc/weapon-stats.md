@@ -178,13 +178,13 @@ runs all map, and only the `scope=map` keyframes come.
 ## Events
 
 What happened, as it happened - an opt-in of its own: userinfo
-`aq2events 1` (0 by default) on top of the channel, and the dummy when
+`aq2events 1` (1 by default on the extras client, for its rounds view) on top of the channel, and the dummy when
 `wstats_mvd` is on. `wstats_events 0` on the server sends none. About
 4 KB a round at 5v5; no per-hit lines and no round clock.
 
 ```
-kill a=1 v=3 w=3 loc=head hs=1 dist=735 dmg=195 f=365 a1=2 a2=1   ; dmg: the killer's on the victim this life; ff=1 a team kill
-death v=4 reason=fall|drown|lava|crush|telefrag|suicide|world f=370 a1=2 a2=0
+kill a=1 v=3 w=3 loc=head hs=1 dist=735 dmg=195 f=365 a1=2 a2=1 r=4   ; r: the round; dmg: the killer's on the victim this life; ff=1 a team kill
+death v=4 reason=fall|drown|lava|crush|telefrag|suicide|world f=370 a1=2 a2=0 r=4
 match state=start|pause|resume|over f=284      ; start: the map's first round; pause: a pause or a timeout
 player p=6 state=join|leave|team|sub|unsub|captain [team=2] f=112
 team t=1 state=ready|unready f=…               ; matchmode
@@ -205,6 +205,13 @@ counts after the death. The round's end, in the channel itself, says who
 won and why: `wround r=17 state=end winner=1 reason=eliminated|time|mapend`
 (winner 0: a tie).
 
+The module keeps each round's kill and death lines (4096 a map at most,
+~100 bytes each) with its start, end, winner and reason. Under
+`limchasecam`, the players who were not told the kills get the round's
+lines when it ends - it is over, nothing is given away. A late joiner
+gets them in the backfill (below). The snapshot's `wscope` carries
+`hz=` (the server's frames a second, for the times from `f=`).
+
 ## Round history
 
 The module keeps every round's `wstats` for the scope, players who left
@@ -224,6 +231,12 @@ lines with their `r=`:
   neither line, nor any history.
   ~90 KB is ~20 s at 4 KB/s. Sending it all at once would not fit the
   32 KB of queue a client has (and crowds out the frames).
+
+After the `wstats` records and before the done line, the backfill sends
+each past round as it went, newest first: `wround r=12 state=end f=…
+winner=1 reason=eliminated start=… hist=1` (`hist=1`: not the round
+being played), then - to an event subscriber - its kill and death
+lines. ~1.5 KB a round at 5v5.
 
 History is never sent to the MVD dummy: the demo already holds every
 round's keyframe from when it happened.
@@ -359,6 +372,37 @@ that table, only while it is open.
   something of its own - a menu (TAB), the inventory, its scoreboard at
   intermission - which shows in its place as before. Releases pass
   through, so a key held before it opened is let go of.
+
+## The rounds view
+
+`rounds` (client command, bind it) opens a page of the board of its own:
+how the map went. At the top the board's header (the teams, the score);
+under it a **strip** of the rounds, a box each in its winner's colour
+(grey a tie, hollow the one being played). It opens on the
+**overview**, every round on a line: its winner, the score after it, a
+bar of its time on one scale for all (a long round reads long) with a
+mark per kill in the killer's colour (a team kill orange, a death of
+its own grey), who was left ("2v0") and its top killer. **Enter** turns
+to the **round as it went** - the list of the rounds (winner, score
+after it, length, how it ended) and beside it the round picked:
+
+- who won and how,
+- a **chart** of the teams' alive counts over the round's time, a line
+  per team stepping down at each death, a tick under it per kill in the
+  killer's colour, the length at its corner,
+- its **kills and deaths** in order: the time from the round's start,
+  the alive counts after it ("4v3"), the killer, the weapon's icon, the
+  victim, where it hit and the distance in metres (TEAMKILL for one),
+- a line of who stood out: first blood, most kills (2+), most damage
+  (from the round's `wstats`), and a clutch - the winners down to one
+  against two or more.
+
+Up/Down (or Left/Right) pick a round, Enter turns between the two,
+PgUp/PgDn scroll a long one's kills, Home goes back to the latest (followed as rounds come), Esc or
+`rounds` again closes. It takes the board's look: light where the
+board's layout is light (1, 4), dark otherwise; the font where the
+boards have it. Without the events (`aq2events 0`, an older server) the
+rounds and their results still show, the kills do not.
 
 ## Size
 

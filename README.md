@@ -486,6 +486,18 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
   round ("live" to a spectator), and "loading rounds" spins while past
   rounds still arrive after joining mid-map. **Esc** closes.
 - The thrown knife and the slash have icons of their own.
+- **`rounds`** (bind it; Settings > Extras > Stats Scoreboard has the
+  bind) opens the **rounds view**: how the map went. A strip of the
+  rounds in their winners' colours over every round on a line - the
+  winner, the score after it, a bar of its time with a mark per kill in
+  the killer's colour, who was left and the top killer. **Enter** turns
+  to the round picked as it went - a chart of each team's alive count
+  over its time, its kills in order (time, "4v3", killer, weapon,
+  victim, where it hit, the distance), and first blood, most kills,
+  most damage and a clutch. Up/Down pick a round, PgUp/PgDn scroll its
+  kills, Esc closes. A late
+  joiner gets the past rounds from the server; it needs the events
+  (`aq2events`, on by default).
 
 | Cvar | Default | What |
 | --- | --- | --- |
@@ -499,7 +511,7 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
 | `scr_statslist_weapons` | 1 | the classic layout's player list: kills per weapon; 0 leaves them out |
 | `aq2feed` | 1 | asks the server for the channel (userinfo); 0 never |
 | `cl_stats_echo` | 0 | 1 prints every line of the channel as `[stat] ...` |
-| `aq2events` | 0 | 1 asks for the event lines too (kills, the match's state, chat...): see `doc/weapon-stats.md` |
+| `aq2events` | 1 | asks for the event lines too (kills, the match's state, chat...) - the rounds view's kills; 0 never: see `doc/weapon-stats.md` |
 
 On the server (`q2proded` and the game library of this release): `wstats`
 (1; 0 counts but sends nothing), `wstats_events` (1; 0 no event lines), `wstats_mvd` (1; the stats in recorded
