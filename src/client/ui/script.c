@@ -904,7 +904,6 @@ static const char ui_menu_statsboard[] =
     "toggle \"kills per weapon on the list (classic)\" scr_statslist_weapons\n"
     "blank\n"
     "bind \"rounds view (how the map went)\" rounds\n"
-    "bind \"players view (stats round by round)\" playerstats\n"
     "end\n";
 
 // The scoreboard's menu shows what the layout looks like - a picture of

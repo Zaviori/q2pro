@@ -495,15 +495,7 @@ dead and spectators, or between rounds; nobody under `limchasecam`).
   over its time, its kills in order (time, "4v3", killer, weapon,
   victim, where it hit, the distance), and first blood, most kills,
   most damage and a clutch. Up/Down pick a round, PgUp/PgDn scroll its
-  kills, **Tab** goes to the players view, Esc closes.
-- **`playerstats`** (bind it there too) opens the **players view**:
-  everyone's map in more numbers - rounds played and won, K, D, K/D,
-  kills a round, accuracy, headshot %, damage and damage a round, first
-  bloods, survival %, clutches and their best weapons. **Enter** turns
-  to the player picked round by round: a bar a round of their damage,
-  and each round won or lost, their kills, when they died, first blood
-  or clutch, damage, accuracy, headshots and whom they killed with
-  what. A late
+  kills, Esc closes. A late
   joiner gets the past rounds from the server; it needs the events
   (`aq2events`, on by default).
 

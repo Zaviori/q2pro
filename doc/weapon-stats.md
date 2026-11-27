@@ -405,25 +405,6 @@ board's layout is light (1, 4), dark otherwise; the font where the
 boards have it. Without the events (`aq2events 0`, an older server) the
 rounds and their results still show, the kills do not.
 
-## The players view
-
-`playerstats` (the game has a `players` of its own) opens another page:
-everyone on the teams, in the board's order under their team's band,
-with the map in more numbers than the board has room for - rounds
-played and won, kills, deaths, K/D, kills a round, accuracy (the aimed
-weapons), headshots of the hits, damage and damage a round, first
-bloods, rounds survived (of those with events), clutches won, and the
-two weapons they killed most with. Kills, deaths and damage are the
-board's (`pstats`); the rest is summed from the rounds' `wstats` and
-events. **Enter** turns to the player picked **round by round**: their
-line of the map, a bar a round of the damage they dealt (in the team's
-colour where the round was won, a mark at its foot where they died),
-and a line a round, newest first - won or lost, kills, when they died
-or that they survived, first blood and a clutch, damage, accuracy,
-headshots, and whom they killed with what. Up/Down pick a player,
-PgUp/PgDn scroll the rounds, **Tab** goes over to the rounds view (and
-back), Esc closes.
-
 ## Size
 
 | | Bytes |
