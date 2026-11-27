@@ -18,6 +18,9 @@
 #define WS_CHUNK        1200        // bytes per unicast: under the MVD's 2048
 #define WS_RATE         4000        // history bytes a second per client
 #define WS_HIST_MAX     16384       // history records kept per map
+#define WS_LOG_MAX      4096        // kill and death lines kept per map, for the rounds view
+#define WS_LOG_LINE     200
+#define WS_ROUNDS       256         // rounds a map keeps a log of (1..255)
 
 enum {
 	F_SHOTS, F_HITS, F_HS, F_K, F_DMG,
@@ -54,12 +57,21 @@ typedef struct {
 	int v[WS_NF];
 } ws_hist_t;
 
+// a round as it went, for the rounds view: kept for a late joiner
+typedef struct {
+	int      start, end;            // level.framenum at its start, its end (0 not over)
+	int      winner;
+	char     reason[12];
+	int      ev_first, ev_n;        // its kill and death lines in ws.log
+} ws_round_t;
+
 typedef struct {
 	qboolean begun;                 // in the game this map
 	qboolean sub;                   // subscribed
 	int      sid;                   // 1-based, 0 = none
 	int      budget;                // history bytes it may still send now
 	int      hist_next;             // backfill: next record, newest first; -1 the done line; -2 idle
+	int      log_next;              // backfill: the round log to send next, newest first; 0 none
 	int      req_p, req_r;          // a wstats_get being answered: p 0 = all, r 0 = all
 	int      req_next;              // its next record; -1 none
 	int      req_lines;
@@ -73,6 +85,9 @@ static struct {
 	ws_client_t  cl[MAX_CLIENTS];
 	ws_hist_t   *hist;
 	int          nhist, hist_alloc;
+	ws_round_t   rounds[WS_ROUNDS];
+	char       (*log)[WS_LOG_LINE];
+	int          nlog, log_alloc;
 	int          round;             // rounds started this map
 	qboolean     going;             // a round is being counted
 	qboolean     map_ended;
@@ -193,6 +208,7 @@ static void ws_token(char *out, size_t size, int sid)
 #define WS_TO_DEADVIEW  3   // who may see who is alive, the dummy included
 #define WS_TO_EVENTS    4   // the event subscribers, the dummy included
 #define WS_TO_EVENTS_WATCH 5    // those of them who watch: spectators and the dummy
+#define WS_TO_EVENTS_PLAY  6    // those of them who play: not told the kills under limchasecam
 
 static char ws_buf[8192];
 static int  ws_len;
@@ -248,6 +264,8 @@ static void ws_flush(void)
 			if ((ws_mode == WS_TO_EVENTS || ws_mode == WS_TO_EVENTS_WATCH) && !ws.cl[i].events)
 				continue;
 			if (ws_mode == WS_TO_EVENTS_WATCH && !ws_watcher(ent))
+				continue;
+			if (ws_mode == WS_TO_EVENTS_PLAY && (!ws.cl[i].events || ws_watcher(ent)))
 				continue;
 			ws_write(ent);
 		}
@@ -487,7 +505,7 @@ static void ws_snapshot(edict_t *ent)
 	int v[WS_NF];
 
 	ws_begin(WS_TO_ONE, ent);
-	ws_line("wscope map=%s r=%d going=%d", level.mapname, ws.round, ws.going);
+	ws_line("wscope map=%s r=%d going=%d hz=%d", level.mapname, ws.round, ws.going, HZ);
 	ws_flush();
 	ws_send_token(ent, ws.cl[slot].sid);
 
@@ -530,6 +548,7 @@ static void ws_snapshot(edict_t *ent)
 
 	// history is in the demo already, as it happened
 	ws.cl[slot].hist_next = ws_is_dummy(ent) ? -2 : ws.nhist - 1;
+	ws.cl[slot].log_next = ws_is_dummy(ent) ? 0 : min(ws.going ? ws.round - 1 : ws.round, WS_ROUNDS - 1);
 	ws.cl[slot].budget = 0;
 
 	// the backfill's start, for the client's "loading" until its done line
@@ -576,6 +595,7 @@ void WS_ClientBegin(edict_t *ent)
 		c->begun = true;
 		c->sub = false;
 		c->hist_next = -2;
+		c->log_next = 0;
 		c->req_next = -1;
 	}
 
@@ -716,12 +736,16 @@ static void ws_clear_counts(void)
 		ws.sids[p].changed = 0;
 	}
 	ws.nhist = 0;
+	ws.nlog = 0;
+	memset(ws.rounds, 0, sizeof(ws.rounds));
 }
 
 void WS_MapStart(void)
 {
 	if (ws.hist)
 		gi.TagFree(ws.hist);
+	if (ws.log)
+		gi.TagFree(ws.log);
 	memset(&ws, 0, sizeof(ws));
 	// without rounds the whole map is one, numbered 0
 	ws.going = !teamplay->value;
@@ -742,6 +766,7 @@ void WS_ResetScope(void)
 	ws.map_ended = false;
 	for (i = 0; i < game.maxclients; i++) {
 		ws.cl[i].hist_next = -2;
+		ws.cl[i].log_next = 0;
 		ws.cl[i].req_next = -1;
 	}
 	if (ws_on()) {
@@ -758,6 +783,12 @@ void WS_RoundStart(void)
 	ws.round++;
 	ws.going = true;
 	ws.map_ended = false;
+	if (ws.round < WS_ROUNDS) {
+		ws_round_t *rd = &ws.rounds[ws.round];
+		memset(rd, 0, sizeof(*rd));
+		rd->start = level.framenum;
+		rd->ev_first = ws.nlog;
+	}
 	for (p = 1; p <= ws.nsids; p++) {
 		memcpy(ws.sids[p].base, ws.sids[p].tot, sizeof(ws.sids[p].base));
 		memcpy(ws.sids[p].sent, ws.sids[p].tot, sizeof(ws.sids[p].sent));
@@ -817,6 +848,12 @@ void WS_RoundEnd(int winner)
 	if (!teamplay->value || !ws.going || !ws.round)
 		return;
 	ws.going = false;
+	if (ws.round < WS_ROUNDS) {
+		ws_round_t *rd = &ws.rounds[ws.round];
+		rd->end = level.framenum;
+		rd->winner = winner > NOTEAM && winner < TEAM_TOP ? winner : 0;
+		Q_strncpyz(rd->reason, reason, sizeof(rd->reason));
+	}
 
 	for (p = 1; p <= ws.nsids; p++) {
 		for (w = 1; w < WS_NW; w++) {
@@ -843,6 +880,16 @@ void WS_RoundEnd(int winner)
 	ws_line("wround r=%d state=end f=%d winner=%d reason=%s", ws.round, level.framenum,
 		winner > NOTEAM && winner < TEAM_TOP ? winner : 0, reason);
 	ws_flush();
+
+	// Under limchasecam the players were not told the kills as they
+	// happened: the round is over now, and its log goes to them
+	if (limchasecam->value != 0 && ws.round < WS_ROUNDS) {
+		const ws_round_t *rd = &ws.rounds[ws.round];
+		ws_begin(WS_TO_EVENTS_PLAY, NULL);
+		for (i = 0; i < rd->ev_n; i++)
+			ws_line("%s", ws.log[rd->ev_first + i]);
+		ws_flush();
+	}
 }
 
 void WS_MapEnd(void)
@@ -1014,6 +1061,22 @@ static void ws_history(edict_t *ent, ws_client_t *c)
 		c->req_next++;
 	}
 	while (c->req_next < 0 && c->hist_next >= -1 && c->budget > 0) {
+		if (c->hist_next == -1 && c->log_next > 0) {
+			// then each past round as it went: its result, and its kills
+			// and deaths to who takes the events
+			const ws_round_t *rd = &ws.rounds[c->log_next--];
+			int i;
+			if (!rd->end)
+				continue;
+			ws_line("wround_past r=%d f=%d winner=%d reason=%s start=%d",
+				c->log_next + 1, rd->end, rd->winner, rd->reason, rd->start);
+			c->budget -= 80;
+			for (i = 0; c->events && i < rd->ev_n; i++) {
+				ws_line("%s", ws.log[rd->ev_first + i]);
+				c->budget -= strlen(ws.log[rd->ev_first + i]) + 6;
+			}
+			continue;
+		}
 		if (c->hist_next == -1) {
 			ws_line("wstats_hist state=done r=1-%d", ws.round);
 			c->hist_next = -2;
@@ -1140,33 +1203,62 @@ static void ws_alive_counts(const edict_t *dying, char *out, size_t size)
 		len += Q_snprintf(out + len, size - len, " a%d=%d", t, alive[t]);
 }
 
+// a kill or death of a round being played, kept for the rounds view
+static void ws_log_add(const char *line)
+{
+	ws_round_t *rd;
+
+	if (!teamplay->value || !ws.going || ws.round < 1 || ws.round >= WS_ROUNDS || ws.nlog >= WS_LOG_MAX)
+		return;
+	if (ws.nlog == ws.log_alloc) {
+		int n = ws.log_alloc ? ws.log_alloc * 2 : 128;
+		char (*nl)[WS_LOG_LINE] = gi.TagMalloc(n * sizeof(*nl), TAG_GAME);
+
+		if (ws.log) {
+			memcpy(nl, ws.log, ws.nlog * sizeof(*nl));
+			gi.TagFree(ws.log);
+		}
+		ws.log = nl;
+		ws.log_alloc = n;
+	}
+	Q_strncpyz(ws.log[ws.nlog], line, WS_LOG_LINE);
+	rd = &ws.rounds[ws.round];
+	if (!rd->ev_n)
+		rd->ev_first = ws.nlog;
+	rd->ev_n++;
+	ws.nlog++;
+}
+
 // player_die, after the obituary: meansOfDeath and locOfDeath are this death's
 void WS_Death(edict_t *self, edict_t *attacker)
 {
 	ws_sid_t *v = ws_sid_of(self);
 	int mod = meansOfDeath & ~MOD_FRIENDLY_FIRE, vs = ws_slot(self);
-	char alive[48];
+	char alive[48], line[WS_LOG_LINE];
 
 	if (!ws_on() || !v)
 		return;
 	ws_alive_counts(self, alive, sizeof(alive));
-	ws_begin(limchasecam->value != 0 ? WS_TO_EVENTS_WATCH : WS_TO_EVENTS, NULL);
 	if (attacker && attacker != self && attacker->client && ws_sid_of(attacker)) {
 		int as = ws_slot(attacker);
-		ws_line("kill a=%d v=%d w=%d loc=%s hs=%d dist=%d dmg=%d%s f=%d%s",
+		Q_snprintf(line, sizeof(line), "kill a=%d v=%d w=%d loc=%s hs=%d dist=%d dmg=%d%s f=%d%s r=%d",
 			(int)(ws_sid_of(attacker) - ws.sids), (int)(v - ws.sids), ws_weapon(mod),
 			ws_loc_name(locOfDeath), locOfDeath == LOC_HDAM || locOfDeath == LOC_KVLR_HELMET,
 			(int)Distance(attacker->s.origin, self->s.origin),
 			as >= 0 && vs >= 0 ? ws.dmg_on[vs][as] : 0,
-			(meansOfDeath & MOD_FRIENDLY_FIRE) ? " ff=1" : "", level.framenum, alive);
+			(meansOfDeath & MOD_FRIENDLY_FIRE) ? " ff=1" : "", level.framenum, alive, ws.round);
 	} else {
 		const char *why =
 			mod == MOD_FALLING ? "fall" : mod == MOD_WATER ? "drown" :
 			mod == MOD_SLIME || mod == MOD_LAVA ? "lava" : mod == MOD_CRUSH ? "crush" :
 			mod == MOD_TELEFRAG ? "telefrag" : attacker == self ? "suicide" : "world";
-		ws_line("death v=%d reason=%s f=%d%s", (int)(v - ws.sids), why, level.framenum, alive);
+		Q_snprintf(line, sizeof(line), "death v=%d reason=%s f=%d%s r=%d", (int)(v - ws.sids), why,
+			level.framenum, alive, ws.round);
 	}
+	ws_begin(limchasecam->value != 0 ? WS_TO_EVENTS_WATCH : WS_TO_EVENTS, NULL);
+	ws_line("%s", line);
 	ws_flush();
+	ws_log_add(line);
 	if (vs >= 0)
 		memset(ws.dmg_on[vs], 0, sizeof(ws.dmg_on[vs]));
 }
