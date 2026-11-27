@@ -79,8 +79,10 @@ TrueType text
 Off by default: `r_ttf 1`, or Settings → Extras → **TrueType Text**, turns
 it on. In Noto Sans (SIL OFL 1.1, licence in `action/fonts/OFL.txt`), which
 is also built into the client: a font missing from `action/fonts/` falls
-back to the built-in copy, and a file there comes first, so `r_font` /
-`r_font_bold` can name another font.
+back to the built-in copy, and a file there comes first. **Intel One Mono**
+(SIL OFL 1.1, licence in `action/fonts/OFL-IntelOneMono.txt`), a monospaced
+font, ships beside it: the menu's **font** line, or `r_font_family
+IntelOneMono`, picks it.
 
 `r_ttf` (0) is the master switch: `0` is the old 8x8 characters
 everywhere. A config that has run an earlier release keeps its saved `1`. The places below have a switch each; every other text -
@@ -111,7 +113,10 @@ a size, the font's pixel height in HUD units (an old character is 8):
 - `con_hitcolors` (1) colours the fight's messages: hits you land blue,
   damage you take red, and players' kill reports ("Enemy Down", or the
   skull or dead face in their binds) cyan.
-- `r_font` / `r_font_bold` pick other `.ttf` files from `action/fonts/`;
+- `r_font_family` (`NotoSans`, saved) picks the font: `IntelOneMono` the
+  other one shipped, any `<name>` whose `<name>-Regular.ttf` and
+  `<name>-Bold.ttf` are in `action/fonts/`; empty leaves it to `r_font` /
+  `r_font_bold`, which then pick other `.ttf` files one by one;
   `r_font_test 1` draws a sample panel at several sizes, the kill
   report's icons in it.
 - Text being typed keeps its spacing, and the loading plaque is text.

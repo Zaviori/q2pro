@@ -59,7 +59,7 @@ cp -f "$SRCDIR/install-windows.bat" "$SHAREDIR/install-windows.bat"
 # The TrueType text reads its fonts from action/fonts; without them every
 # *_font cvar quietly falls back to conchars
 mkdir -p "$SHAREDIR/fonts"
-cp -f "$SRCDIR"/action/fonts/*.ttf "$SRCDIR/action/fonts/OFL.txt" "$SHAREDIR/fonts/"
+cp -f "$SRCDIR"/action/fonts/*.ttf "$SRCDIR"/action/fonts/OFL*.txt "$SHAREDIR/fonts/"
 # jmod's spawnpoint marker; the game falls back to a crosshair ring without it
 mkdir -p "$SHAREDIR/pics"
 cp -f "$SRCDIR/action/pics/jmod_spawn.png" "$SRCDIR/action/pics/mvd.png" "$SHAREDIR/pics/"

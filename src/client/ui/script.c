@@ -797,6 +797,7 @@ static const char ui_menu_ttf[] =
     "begin ttf\n"
     "title \"TrueType Text\"\n"
     "toggle \"truetype text\" r_ttf\n"
+    "pairs \"font\" r_font_family \"Noto Sans\" NotoSans \"Intel One Mono\" IntelOneMono\n"
     "toggle \"menus & other text\" r_ttf_menus\n"
     "range \"text size\" r_ttf_size 8 14 1\n"
     "range \"menu text size\" r_ttf_menu_size 8 20 1\n"

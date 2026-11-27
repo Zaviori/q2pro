@@ -19,7 +19,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 /*
 TrueType text, beside the 8x8 conchars rather than instead of them.
 
-A font is a .ttf under fonts/ in the game path (r_font, r_font_bold).
+A font is a .ttf under fonts/ in the game path: r_font_family's
+<family>-Regular and <family>-Bold (NotoSans, IntelOneMono), or with it
+empty r_font and r_font_bold, each a file's name.
 Glyphs are rasterised by stb_truetype at the size they land on screen -
 the virtual size divided by the 2D scale - so text is sharp at any HUD
 scale instead of a magnified 8x8 tile. Each (font, pixel size) pair gets
@@ -92,6 +94,7 @@ typedef struct {
 
 static cvar_t   *r_font;
 static cvar_t   *r_font_bold;
+static cvar_t   *r_font_family;
 
 static font_t       fonts[2];
 static uint32_t     text_tints[256];    // the charset's colour per cell, 0 = none
@@ -140,7 +143,7 @@ static font_t *text_font(int index)
 {
     font_t *f = &fonts[index];
     cvar_t *var = index ? r_font_bold : r_font;
-    char path[MAX_QPATH];
+    char path[MAX_QPATH], name[MAX_QPATH];
     void *buf;
     int len;
 
@@ -148,7 +151,12 @@ static font_t *text_font(int index)
         return f->ok ? f : NULL;
     f->tried = true;
 
-    Q_snprintf(path, sizeof(path), "fonts/%s.ttf", var->string);
+    // the family's pair, or the two names given one by one
+    if (r_font_family->string[0])
+        Q_snprintf(name, sizeof(name), "%s-%s", r_font_family->string, index ? "Bold" : "Regular");
+    else
+        Q_strlcpy(name, var->string, sizeof(name));
+    Q_snprintf(path, sizeof(path), "fonts/%s.ttf", name);
     len = FS_LoadFile(path, &buf);
     if (len > 0) {
         // stb keeps pointers into the file for the font's whole life
@@ -170,7 +178,7 @@ static font_t *text_font(int index)
         return NULL;
     }
 
-    Q_strlcpy(f->name, var->string, sizeof(f->name));
+    Q_strlcpy(f->name, name, sizeof(f->name));
     f->ok = true;
     return f;
 }
@@ -928,6 +936,10 @@ void Text_Init(void)
     r_font_bold = Cvar_Get("r_font_bold", "NotoSans-Bold", CVAR_ARCHIVE);
     r_font->changed = r_font_changed;
     r_font_bold->changed = r_font_changed;
+    // NotoSans is r_font's and r_font_bold's own defaults; "" leaves the
+    // choice to them
+    r_font_family = Cvar_Get("r_font_family", "NotoSans", CVAR_ARCHIVE);
+    r_font_family->changed = r_font_changed;
     r_font_test = Cvar_Get("r_font_test", "0", 0);
     // The master switch: 0 conchars everywhere, anything else the font
     // everywhere - 1 used to be "only where a place has its own switch"

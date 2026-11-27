@@ -49,7 +49,9 @@ off the branch it builds on) and is merged into `extras` when done.
            q2prox                          build/q2pro, strip
            q2prodedx                       build/q2proded, strip
            action/gamex86_64x.so           build/gamex86_64.so, strip
-           action/fonts/                   NotoSans-Regular.ttf, NotoSans-Bold.ttf, OFL.txt
+           action/fonts/                   NotoSans-Regular.ttf, NotoSans-Bold.ttf, OFL.txt,
+                                           IntelOneMono-Regular.ttf, IntelOneMono-Bold.ttf,
+                                           OFL-IntelOneMono.txt
            action/pics/jmod_spawn.png, mvd.png
            action/pics/xhair/*.png         the twenty crosshairs
            action/pics/glyph/*.png         the icon cells (6.png, the skull)
