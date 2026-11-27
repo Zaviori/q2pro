@@ -885,7 +885,7 @@ static const char ui_menu_xhair[] =
     "end\n";
 
 // The stats scoreboard (servers with the per-weapon stats channel): the
-// layout to cycle, a way out to the board to see it, and its knobs
+// layout to cycle (an example picture of it under the items) and its knobs
 static const char ui_menu_statsboard[] =
     "begin statsboard\n"
     "title \"Stats Scoreboard\"\n"
@@ -893,8 +893,6 @@ static const char ui_menu_statsboard[] =
     "blank\n"
     "pairs \"layout\" scr_statsboard_style \"classic\" 2 \"extended dark\" 0 "
         "\"extended light\" 1\n"
-    "action -s \"the picture below is an example; this opens the real board (on a server with the stats channel)\" "
-        "\"show the board\" \"forcemenuoff; score\"\n"
     "blank\n"
     "range \"background opacity\" scr_statsboard_alpha 0 1 0.05\n"
     "toggle \"truetype text\" scr_statsboard_font\n"
