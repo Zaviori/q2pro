@@ -498,7 +498,9 @@ static void ws_send_token(edict_t *ent, int p)
 
 // What a client that has just subscribed needs: the scope, its token,
 // who is who, the map's totals and the round so far; then the history.
-static void ws_snapshot(edict_t *ent)
+// The dummy's history is in the demo as it happened, unless the stream
+// started after it (backfill: WS_MvdStreamStarted).
+static void ws_snapshot(edict_t *ent, qboolean backfill)
 {
 	int slot = ws_slot(ent), p, w;
 	char fields[256];
@@ -546,13 +548,12 @@ static void ws_snapshot(edict_t *ent)
 	// who is alive: the next frame sends the list, if they may see it
 	ws.cl[slot].deadview = false;
 
-	// history is in the demo already, as it happened
-	ws.cl[slot].hist_next = ws_is_dummy(ent) ? -2 : ws.nhist - 1;
-	ws.cl[slot].log_next = ws_is_dummy(ent) ? 0 : min(ws.going ? ws.round - 1 : ws.round, WS_ROUNDS - 1);
+	ws.cl[slot].hist_next = backfill ? ws.nhist - 1 : -2;
+	ws.cl[slot].log_next = backfill ? min(ws.going ? ws.round - 1 : ws.round, WS_ROUNDS - 1) : 0;
 	ws.cl[slot].budget = 0;
 
 	// the backfill's start, for the client's "loading" until its done line
-	if (!ws_is_dummy(ent)) {
+	if (backfill) {
 		ws_begin(WS_TO_ONE, ent);
 		ws_line("wstats_hist state=start r=1-%d", ws.round);
 		ws_flush();
@@ -570,7 +571,7 @@ static void ws_subscribe(edict_t *ent)
 	if (wants && !ws.cl[slot].sub) {
 		ws.cl[slot].sub = true;
 		ws.cl[slot].req_next = -1;
-		ws_snapshot(ent);
+		ws_snapshot(ent, !ws_is_dummy(ent));
 	} else if (!wants) {
 		ws.cl[slot].sub = false;
 	}
@@ -632,6 +633,26 @@ void WS_ClientBegin(edict_t *ent)
 	}
 
 	ws_subscribe(ent);
+}
+
+// An MVD stream (a recording, a GTV client, a new map's gamestate) has
+// just started: what the dummy was sent before it is in no stream - the
+// engine records nothing while inactive, and the dummy begins before the
+// gamestate is written. Send its snapshot again, with the rounds already
+// played, so a demo knows who each p is from its first frame.
+void WS_MvdStreamStarted(void)
+{
+	int i;
+
+	if (!ws_on())
+		return;
+	for (i = 0; i < game.maxclients; i++) {
+		edict_t *ent = g_edicts + 1 + i;
+
+		if (!ent->inuse || !ws_is_dummy(ent) || !ws.cl[i].sub)
+			continue;
+		ws_snapshot(ent, true);
+	}
 }
 
 void WS_ClientUserinfoChanged(edict_t *ent)
@@ -1355,7 +1376,8 @@ void WS_Frame(void)
 		ws_client_t *c = &ws.cl[i];
 		edict_t *ent = g_edicts + 1 + i;
 
-		if (!c->sub || !ent->inuse || ws_is_dummy(ent))
+		// the dummy only after WS_MvdStreamStarted: its history is idle otherwise
+		if (!c->sub || !ent->inuse)
 			continue;
 		if (c->req_next >= 0 || c->hist_next >= -1)
 			ws_history(ent, c);

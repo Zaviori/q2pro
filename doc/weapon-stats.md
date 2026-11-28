@@ -86,7 +86,10 @@ sidmap p=3 c=-1                            ; left
 ```
 
 The MVD dummy gets every `sidmap` (never a `sid` token), so a demo
-reader links ids the same way.
+reader links ids the same way. The dummy's subscribe snapshot -
+`wscope`, every `sidmap`, `pstats`, `wteam` and the map's `wstats` -
+is sent again each time an MVD stream starts (below), so every demo
+opens with it.
 
 ## Counters
 
@@ -239,8 +242,22 @@ knows `wround` alone would take a past round's end for the round being
 played), then - to an event subscriber - its kill and death
 lines. ~1.5 KB a round at 5v5.
 
-History is never sent to the MVD dummy: the demo already holds every
-round's keyframe from when it happened.
+History is sent to the MVD dummy only when a stream starts after
+rounds were played - a recording begun mid-map, a GTV client - as the
+ordinary backfill after its snapshot. Otherwise the demo already holds
+every round's keyframe from when it happened.
+
+**When a stream starts.** The engine records nothing for the dummy
+while no MVD stream is active (`SV_MvdUnicast`), and the dummy begins
+*before* the gamestate is written - on `mvd_enable`, and on every map
+change - so the snapshot sent from `ClientBegin` was in no demo (an
+autorecorded match on 28 Nov 2026 had every stats line but no
+`sidmap`). The engine now calls the game's `Mvd_StreamStarted`
+extension after each gamestate it writes - a recording started, the
+streams resumed, a new map, a GTV client joined - and the mod
+(`WS_MvdStreamStarted`) sends the dummy its snapshot there, the rounds
+so far behind it. A GTV join while recording repeats the snapshot in
+the demo; every line in it is a keyframe, so that is harmless.
 
 ## Grenade counting fixes
 
@@ -279,7 +296,9 @@ no damage. Grenade accuracy is victims per throw and can pass 100%.
   `Stats_AddDamage` and `Add_Frag`.
 - Cvars: `wstats` (1; 0 counts, sends nothing), `wstats_mvd` (1),
   `wstats_live_ms` (1000).
-- Engine: the two MVD filters and the `Stats_Channel` extension above.
+- Engine: the two MVD filters and the `Stats_Channel` extension above;
+  the game's `Mvd_StreamStarted` extension, called after every MVD
+  gamestate.
 - Client (`src/client/wstats.c`): userinfo `aq2feed` (**1**) and
   `aq2sid` (set from the `sid` line); `cl_stats_echo 1` prints every
   line as `[stat] ...`.

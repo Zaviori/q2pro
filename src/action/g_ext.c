@@ -300,6 +300,7 @@ void G_InitExtEntrypoints(void)
 {
 	g_addextension("customizeentityforclient", G_customizeentityforclient);
 	g_addextension("CvarSync_Updated", G_CvarSync_Updated);
+	g_addextension("Mvd_StreamStarted", WS_MvdStreamStarted);
 }
 
 

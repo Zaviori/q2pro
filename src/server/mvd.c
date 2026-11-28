@@ -123,6 +123,7 @@ static void     rec_stop(void);
 static bool     rec_allowed(void);
 static void     rec_start(qhandle_t demofile);
 static void     rec_write(void);
+static void     stream_started(void);
 
 
 /*
@@ -871,6 +872,19 @@ static void resume_streams(void)
 
     Com_DPrintf("Resuming MVD streams.\n");
     mvd.active = true;
+
+    stream_started();
+}
+
+// The game's per-client data sent while no stream was active never made
+// it into one: let the game send the dummy what a stream starts with.
+// msg_write must be empty here - the game builds its unicasts in it.
+static void stream_started(void)
+{
+    if (!mvd.active || !GE_Mvd_StreamStarted)
+        return;
+    SZ_Clear(&msg_write);
+    GE_Mvd_StreamStarted();
 }
 
 static bool players_active(void)
@@ -1602,6 +1616,7 @@ static void parse_stream_start(gtv_client_t *client)
         }
         write_message(client, GTS_STREAM_DATA);
         SZ_Clear(&msg_write);
+        stream_started();
     } else {
         // send stream suspend marker
         write_message(client, GTS_STREAM_DATA);
@@ -2070,6 +2085,8 @@ void SV_MvdMapChanged(void)
 
     SZ_Clear(&mvd.datagram);
     SZ_Clear(&mvd.message);
+
+    stream_started();
 }
 
 /*
@@ -2294,6 +2311,8 @@ static void rec_start(qhandle_t demofile)
 
     rec_write();
     SZ_Clear(&msg_write);
+
+    stream_started();
 }
 
 /*

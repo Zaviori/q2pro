@@ -20,6 +20,7 @@ void WS_ResetScope(void);
 
 void WS_ClientBegin(edict_t *ent);
 void WS_ClientUserinfoChanged(edict_t *ent);
+void WS_MvdStreamStarted(void);
 void WS_ClientDisconnect(edict_t *ent);
 void WS_Cmd_Get(edict_t *ent);
 

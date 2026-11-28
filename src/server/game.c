@@ -951,6 +951,7 @@ void SV_ShutdownGameProgs(void)
 #ifdef AQTION_EXTENSION
 	GE_customizeentityforclient = NULL;
 	GE_CvarSync_Updated = NULL;
+	GE_Mvd_StreamStarted = NULL;
 #endif
 
 }
@@ -1009,6 +1010,11 @@ extension_func_t *g_extension_funcs;
 
 int(*GE_customizeentityforclient)(edict_t *client, edict_t *ent, entity_state_t *state);
 void(*GE_CvarSync_Updated)(int index, edict_t *clent);
+// Called after a gamestate starts an MVD stream: a recording, a resume,
+// a new map, a GTV client. Whatever the game unicast to the dummy before
+// it was dropped (SV_MvdUnicast records nothing while inactive), so the
+// game sends the dummy's subscribe snapshot again here.
+void(*GE_Mvd_StreamStarted)(void);
 
 /*
 ================
@@ -1202,6 +1208,7 @@ void SV_InitGameProgs(void)
 
             GE_customizeentityforclient = gex->GetExtension("customizeentityforclient");
             GE_CvarSync_Updated = gex->GetExtension("CvarSync_Updated");
+            GE_Mvd_StreamStarted = gex->GetExtension("Mvd_StreamStarted");
         }
     }
 

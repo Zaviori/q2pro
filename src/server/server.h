@@ -838,6 +838,7 @@ void SV_Ghud_SetSize(edict_t *ent, int i, int x, int y);
 #ifdef AQTION_EXTENSION
 extern int(*GE_customizeentityforclient)(edict_t *client, edict_t *ent, entity_state_t *state); // 0 don't send, 1 send normally
 extern void(*GE_CvarSync_Updated)(int index, edict_t *clent);
+extern void(*GE_Mvd_StreamStarted)(void);
 #endif
 //
 // ugly gclient_(old|new)_t accessors
